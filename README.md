@@ -68,6 +68,14 @@ By default, the command logs strategy and engine parameters plus aggregate metri
 
 The diagnostic report separates gross return before execution costs, trading fees, and slippage. It breaks performance down by long/short direction and exit reason, reports holding duration, average win/loss, expectancy, UTC monthly return and drawdown, and compares the strategy with an unleveraged BTC buy-and-hold benchmark over the same candles. Cost sensitivity is shown for zero, configured, and doubled fee/slippage settings. These are fixed diagnostic scenarios; the command does not optimize EMA or risk parameters.
 
+## Timeframe verification
+
+```powershell
+npm run verify:timeframes
+```
+
+This read-only command loads completed BTC/USD `5m` candles from the shared SQLite database and deterministically aggregates fully covered UTC buckets into `15m` and `1h` candles. It validates source alignment, chronological order, continuity, uniqueness, and OHLCV data. Leading or trailing boundary fragments and candles unfinished at the verification cutoff are not aggregated. The command does not persist derived timeframes; it prints only each timeframe's count, first/last timestamps, and latest completed candle.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
