@@ -182,6 +182,18 @@ export class candlestick_repository {
     return row?.count ?? 0;
   }
 
+  getMarketAddresses(interval: candle_interval): string[] {
+    return this.database
+      .prepare<[string], { market_address: string }>(
+        `SELECT DISTINCT market_address
+         FROM candlesticks
+         WHERE interval = ?
+         ORDER BY market_address ASC`,
+      )
+      .all(interval)
+      .map((row) => row.market_address);
+  }
+
   findMissingTimestamps(
     marketAddress: string,
     interval: candle_interval,

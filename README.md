@@ -47,6 +47,18 @@ The dedicated command always backfills BTC/USD five-minute candles from `CANDLE_
 
 Progress is emitted as compact public-data-only JSON per completed page and retry, followed by final inserted, updated, unchanged, total, and missing-interval counts. `npm run backfill` remains a separate one-time command and is never launched by the continuous service.
 
+## Backtesting
+
+```powershell
+npm run backtest
+```
+
+The offline backtest command reads the single stored BTC/USD `5m` market from SQLite in chronological order and runs a deterministic buy-and-hold example through the reusable `backtesting_engine`. It does not connect to a wallet or expose any live-order functionality.
+
+Strategies implement `backtest_strategy.evaluate(context)` and return `LONG`, `SHORT`, `EXIT`, or `HOLD`. The context contains only candles available through the current timestamp, current equity, and at most one position. Signals are queued and executed at the next candle open to prevent look-ahead bias. Any position left open is force-closed at the final candle close.
+
+Engine configuration covers starting equity, maker/taker fee rates, adverse slippage, leverage, equity-at-risk per position, stop-loss distance, and take-profit distance. Position size is risk-based and capped by leverage. Stop-losses use conservative taker fills, take-profits use maker fills, and equity is marked to market for drawdown. Results include every trade plus net return, total fees, win rate, profit factor, maximum drawdown, and ending equity. Missing, duplicate, unordered, misaligned, or malformed candles are rejected before simulation.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
