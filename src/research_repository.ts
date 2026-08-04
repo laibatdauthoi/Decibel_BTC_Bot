@@ -3,6 +3,10 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { MICROSTRUCTURE_FEATURE_VERSION } from './microstructure_repository.js';
+import type {
+  maker_market_metadata,
+  maker_simulation_result,
+} from './maker_execution_simulator.js';
 import type { research_source } from './research_dataset.js';
 import type { research_sample } from './research_types.js';
 
@@ -121,9 +125,17 @@ export class research_source_repository {
           classification_source: research_source['trades'][number]['source'];
           classification_reason: research_source['trades'][number]['reason'];
           ambiguous: number;
+          aggressor_side: research_source['trades'][number]['side'];
+          price: number;
+          size: number;
         }
       >(
-        `SELECT e.economic_trade_id, MIN(p.received_at_ms) AS received_at_ms, e.classification_source, e.classification_reason, e.ambiguous FROM microstructure_economic_trades e JOIN microstructure_trade_participants p ON p.economic_trade_id=e.economic_trade_id WHERE e.market_address=? AND p.ingestion_source='WEBSOCKET' AND p.received_at_ms<=? GROUP BY e.economic_trade_id`,
+        `SELECT e.economic_trade_id, MIN(p.received_at_ms) AS received_at_ms,
+         e.classification_source, e.classification_reason, e.ambiguous,
+         e.aggressor_side, e.price, e.size FROM microstructure_economic_trades e
+         JOIN microstructure_trade_participants p ON p.economic_trade_id=e.economic_trade_id
+         WHERE e.market_address=? AND p.ingestion_source='WEBSOCKET' AND p.received_at_ms<=?
+         GROUP BY e.economic_trade_id`,
       )
       .all(marketAddress, endTimeMs)
       .map((row) => ({
@@ -132,8 +144,29 @@ export class research_source_repository {
         source: row.classification_source,
         reason: row.classification_reason,
         ambiguous: row.ambiguous === 1,
+        side: row.aggressor_side,
+        price: row.price,
+        size: row.size,
       }));
     return { marketAddress, aggregates, books, trades, compatibleSegments };
+  }
+  getMarketMetadata(marketAddress: string): maker_market_metadata | null {
+    const row = this.database
+      .prepare<
+        [string],
+        { market_address: string; tick_size: number; minimum_size: number; lot_size: number }
+      >(
+        'SELECT market_address, tick_size, minimum_size, lot_size FROM microstructure_market_metadata WHERE market_address=?',
+      )
+      .get(marketAddress);
+    return row === undefined
+      ? null
+      : {
+          marketAddress: row.market_address,
+          tickSize: row.tick_size,
+          minimumSize: row.minimum_size,
+          lotSize: row.lot_size,
+        };
   }
   close(): void {
     this.database.close();
@@ -144,6 +177,21 @@ const migrations = [
   {
     version: 1,
     sql: `CREATE TABLE research_samples (market_address TEXT NOT NULL, candidate_id TEXT NOT NULL, feature_version TEXT NOT NULL, decision_timestamp_ms INTEGER NOT NULL, candidate_json TEXT NOT NULL, features_json TEXT NOT NULL, outcomes_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL, PRIMARY KEY(market_address, candidate_id, feature_version)) WITHOUT ROWID;`,
+  },
+  {
+    version: 2,
+    sql: `CREATE TABLE maker_simulation_orders (
+      market_address TEXT NOT NULL, candidate_id TEXT NOT NULL, feature_version TEXT NOT NULL,
+      simulator_version TEXT NOT NULL, fill_assumption TEXT NOT NULL, order_json TEXT NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      PRIMARY KEY(market_address, candidate_id, feature_version, simulator_version, fill_assumption)
+    ) WITHOUT ROWID;
+    CREATE TABLE maker_simulation_fills (
+      market_address TEXT NOT NULL, candidate_id TEXT NOT NULL, feature_version TEXT NOT NULL,
+      simulator_version TEXT NOT NULL, fill_assumption TEXT NOT NULL, fill_index INTEGER NOT NULL,
+      fill_json TEXT NOT NULL,
+      PRIMARY KEY(market_address, candidate_id, feature_version, simulator_version, fill_assumption, fill_index)
+    ) WITHOUT ROWID;`,
   },
 ] as const;
 export type research_write_result = {
@@ -204,6 +252,82 @@ export class research_dataset_repository {
     })();
     const total = (
       this.database.prepare('SELECT COUNT(*) AS count FROM research_samples').get() as {
+        count: number;
+      }
+    ).count;
+    return { ...counters, total };
+  }
+  getSamples(): research_sample[] {
+    return this.database
+      .prepare<
+        [],
+        {
+          market_address: string;
+          candidate_id: string;
+          feature_version: string;
+          candidate_json: string;
+          features_json: string;
+          outcomes_json: string;
+        }
+      >(
+        'SELECT market_address, candidate_id, feature_version, candidate_json, features_json, outcomes_json FROM research_samples ORDER BY decision_timestamp_ms, candidate_id',
+      )
+      .all()
+      .map((row) => ({
+        marketAddress: row.market_address,
+        candidateId: row.candidate_id,
+        featureVersion: row.feature_version,
+        candidate: JSON.parse(row.candidate_json) as research_sample['candidate'],
+        features: JSON.parse(row.features_json) as research_sample['features'],
+        outcomes: JSON.parse(row.outcomes_json) as research_sample['outcomes'],
+      }));
+  }
+  saveMakerSimulations(results: readonly maker_simulation_result[]): research_write_result {
+    const get = this.database.prepare<
+      [string, string, string, string, string],
+      { order_json: string }
+    >(
+      `SELECT order_json FROM maker_simulation_orders WHERE market_address=? AND candidate_id=? AND feature_version=? AND simulator_version=? AND fill_assumption=?`,
+    );
+    const upsert = this.database.prepare(
+      `INSERT INTO maker_simulation_orders VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(market_address, candidate_id, feature_version, simulator_version, fill_assumption)
+       DO UPDATE SET order_json=excluded.order_json, updated_at_ms=excluded.updated_at_ms`,
+    );
+    const deleteFills = this.database.prepare(
+      `DELETE FROM maker_simulation_fills WHERE market_address=? AND candidate_id=? AND feature_version=? AND simulator_version=? AND fill_assumption=?`,
+    );
+    const insertFill = this.database.prepare(
+      'INSERT INTO maker_simulation_fills VALUES (?, ?, ?, ?, ?, ?, ?)',
+    );
+    const counters = this.database.transaction(() => {
+      let inserted = 0,
+        updated = 0,
+        unchanged = 0;
+      for (const result of results) {
+        const orderJson = JSON.stringify(result);
+        const key = [
+          result.marketAddress,
+          result.candidateId,
+          result.featureVersion,
+          result.simulatorVersion,
+          result.fillAssumption,
+        ] as const;
+        const old = get.get(...key);
+        if (old?.order_json === orderJson) {
+          unchanged++;
+          continue;
+        }
+        upsert.run(...key, orderJson, Date.now());
+        deleteFills.run(...key);
+        result.fills.forEach((fill, index) => insertFill.run(...key, index, JSON.stringify(fill)));
+        if (old === undefined) inserted++;
+        else updated++;
+      }
+      return { inserted, updated, unchanged };
+    })();
+    const total = (
+      this.database.prepare('SELECT COUNT(*) AS count FROM maker_simulation_orders').get() as {
         count: number;
       }
     ).count;

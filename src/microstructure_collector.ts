@@ -50,6 +50,7 @@ export interface microstructure_store {
     occurredAtMs?: number,
   ): void;
   incrementDiagnostic?(metric: string, stream?: string, amount?: number): void;
+  saveMarketMetadata?(market: BTC_market_metadata, recordedAtMs?: number): void;
 }
 
 export type microstructure_collector_options = {
@@ -135,6 +136,7 @@ export class microstructure_collector {
 
   async start(): Promise<trade_bootstrap_result> {
     this.market = await this.client.getBTCMarketMetadata();
+    this.repository.saveMarketMetadata?.(this.market);
     const bootstrap = await bootstrapRecentBTCTrades(
       this.client,
       this.repository,

@@ -42,6 +42,9 @@ export type research_trade_classification = {
   source: aggressor_classification_source;
   reason: aggressor_classification_reason;
   ambiguous: boolean;
+  side: 'BUY' | 'SELL' | 'UNKNOWN';
+  price: number;
+  size: number;
 };
 export type research_segment = { startTimeMs: number; endTimeMs: number };
 export type research_source = {

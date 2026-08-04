@@ -167,6 +167,18 @@ Research-only outcomes use completed five-minute candles after the decision and 
 
 Derived rows are stored in `data/btc_usd_research.sqlite` under feature version `BTC_5M_MICROSTRUCTURE_V1`, keyed by market, stable candidate identity, and feature version. Rebuilds deterministically update changed rows and skip identical rows. A concise summary is logged and formatted JSON is written to ignored `data/microstructure_research_report.json`. Fewer than 100 valid outcome-complete samples is reported as `NOT_ENOUGH_DATA`; no thresholds or strategy parameters are optimized.
 
+## Offline maker-execution research
+
+```bash
+npm run simulate:maker-execution
+```
+
+This command reads only candidates whose 15-second, 60-second, and 300-second microstructure windows are valid. It uses the persisted normalized BTC/USD tick size, minimum size, and lot size; compatible current-version collector sessions; and WebSocket economic trades observed after the configured placement latency. Run the read-only microstructure collector once after upgrading so normalized market metadata is available. The command does not load a wallet, sign transactions, submit orders, or turn an unfilled maker order into a taker order.
+
+`STRICT_TRADE_THROUGH` requires an eligible opposite-aggressor economic trade strictly through the limit. `TOUCH_WITH_FLOW` consumes eligible opposite-aggressor volume at the limit or better. Both exclude REST bootstrap, ambiguous, unknown-direction, replayed, and out-of-session evidence, and both count each economic trade once. Level-1 observations cannot establish queue position, so `TOUCH_WITH_FLOW` is explicitly reported as a flow proxy rather than a queue-accurate fill. Unfilled remainders expire; fills before cancellation effectiveness remain valid and equal-time events use deterministic conservative ordering.
+
+Configuration defaults are `MAKER_SIMULATOR_ENTRY_OFFSET_TICKS=0`, `MAKER_SIMULATOR_TTL_SECONDS=30`, `MAKER_SIMULATOR_PLACEMENT_LATENCY_MS=250`, `MAKER_SIMULATOR_CANCEL_LATENCY_MS=250`, `MAKER_SIMULATOR_FEE_RATE=0.00011`, `MAKER_SIMULATOR_STARTING_EQUITY=10000`, `MAKER_SIMULATOR_RISK_PER_CANDIDATE=0.0025`, and `MAKER_SIMULATOR_LEVERAGE_CAP=2`. The simulator records lifecycle events, partial fills, maker fees, and 5/15/30/60-second mid-price markouts, but intentionally does not simulate exits or profitability. Results are versioned and idempotently persisted in `data/btc_usd_research.sqlite`; a formatted ignored report is written to `data/maker_execution_report.json`. Fewer than 100 eligible candidates is `NOT_ENOUGH_DATA`.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.

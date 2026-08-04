@@ -8,3 +8,6 @@ export function resolveResearchDatabasePath(projectRoot = PROJECT_ROOT): string 
 export function resolveResearchReportPath(projectRoot = PROJECT_ROOT): string {
   return resolve(projectRoot, 'data', 'microstructure_research_report.json');
 }
+export function resolveMakerExecutionReportPath(projectRoot = PROJECT_ROOT): string {
+  return resolve(projectRoot, 'data', 'maker_execution_report.json');
+}

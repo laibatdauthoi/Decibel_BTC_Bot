@@ -83,6 +83,9 @@ function source(seconds = 15): research_source {
         source: 'EXPLICIT',
         reason: 'EXPLICIT_IS_TAKER',
         ambiguous: false,
+        side: 'BUY',
+        price: 100,
+        size: 1,
       },
       {
         economicTradeId: 'estimated',
@@ -90,6 +93,9 @@ function source(seconds = 15): research_source {
         source: 'ESTIMATED_QUOTE_TEST',
         reason: 'QUOTE_TEST_AT_ASK',
         ambiguous: false,
+        side: 'SELL',
+        price: 100,
+        size: 1,
       },
       {
         economicTradeId: 'ambiguous',
@@ -97,6 +103,9 @@ function source(seconds = 15): research_source {
         source: 'EXPLICIT',
         reason: 'AMBIGUOUS_ECONOMIC_FIELDS',
         ambiguous: true,
+        side: 'UNKNOWN',
+        price: 100,
+        size: 1,
       },
     ],
   };
