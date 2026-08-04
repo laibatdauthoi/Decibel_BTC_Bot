@@ -1,11 +1,10 @@
 import 'dotenv/config';
 
-import { resolve } from 'node:path';
-
 import { candlestick_repository } from './candlestick_repository.js';
 import { candlestick_service } from './candlestick_service.js';
 import { loadConfig } from './config.js';
 import { decibel_client } from './decibel_client.js';
+import { resolveCandlestickDatabasePath } from './database_path.js';
 import { createLogger } from './logger.js';
 
 let ApplicationLogger = createLogger('pretty');
@@ -14,9 +13,7 @@ async function startApplication(): Promise<void> {
   const config = loadConfig();
   ApplicationLogger = createLogger(config.logFormat);
   const DecibelClient = new decibel_client(config);
-  const CandlestickRepository = new candlestick_repository(
-    resolve('data', 'btc_usd_candlesticks.sqlite'),
-  );
+  const CandlestickRepository = new candlestick_repository(resolveCandlestickDatabasePath());
   const CandleService = new candlestick_service(DecibelClient, CandlestickRepository, {
     logger: ApplicationLogger,
   });

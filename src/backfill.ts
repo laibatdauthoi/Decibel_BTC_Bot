@@ -1,11 +1,10 @@
 import 'dotenv/config';
 
-import { resolve } from 'node:path';
-
 import { syncBTCCandlesticks } from './candlestick_pipeline.js';
 import { candlestick_repository } from './candlestick_repository.js';
 import { loadConfig } from './config.js';
 import { decibel_client } from './decibel_client.js';
+import { resolveCandlestickDatabasePath } from './database_path.js';
 import { createLogger } from './logger.js';
 
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1_000;
@@ -15,9 +14,7 @@ async function runBackfill(): Promise<void> {
   const config = loadConfig();
   BackfillLogger = createLogger(config.logFormat);
   const DecibelClient = new decibel_client(config);
-  const CandlestickRepository = new candlestick_repository(
-    resolve('data', 'btc_usd_candlesticks.sqlite'),
-  );
+  const CandlestickRepository = new candlestick_repository(resolveCandlestickDatabasePath());
   try {
     const result = await syncBTCCandlesticks(
       DecibelClient,

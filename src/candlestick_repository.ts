@@ -50,6 +50,12 @@ export type candlestick_write_result = {
   total: number;
 };
 
+export type candlestick_group_count = {
+  marketAddress: string;
+  interval: string;
+  candleCount: number;
+};
+
 export class candlestick_repository {
   private readonly database: Database.Database;
 
@@ -192,6 +198,22 @@ export class candlestick_repository {
       )
       .all(interval)
       .map((row) => row.market_address);
+  }
+
+  getCandleGroupCounts(): candlestick_group_count[] {
+    return this.database
+      .prepare<[], { market_address: string; interval: string; candle_count: number }>(
+        `SELECT market_address, interval, COUNT(*) AS candle_count
+         FROM candlesticks
+         GROUP BY market_address, interval
+         ORDER BY market_address ASC, interval ASC`,
+      )
+      .all()
+      .map((row) => ({
+        marketAddress: row.market_address,
+        interval: row.interval,
+        candleCount: row.candle_count,
+      }));
   }
 
   findMissingTimestamps(

@@ -20,6 +20,9 @@ Configuration:
 - `CANDLE_HISTORY_DAYS`: dedicated five-minute backfill depth from 1 through 365 days; defaults to `90`.
 - `LIVE_TRADING_ENABLED`: explicit informational trading authorization flag, defaulting to `false`. The current application has no order execution and setting this flag does not submit or enable orders.
 - `LOG_FORMAT`: `pretty` (default for local development) or `json`. JSON mode emits newline-delimited structured Pino records for log aggregation.
+- `EMA_FAST_PERIOD`, `EMA_SLOW_PERIOD`, and `EMA_TREND_PERIOD`: EMA backtest periods, defaulting to `9`, `21`, and `50`. They must be positive integers satisfying fast < slow < trend.
+- `EMA_MAXIMUM_HOLDING_BARS`: maximum open-position lifetime in completed five-minute bars, defaulting to `48`.
+- `BACKTEST_VERBOSE`: print each simulated trade when `true`; defaults to `false`.
 
 No wallet address, account, or private key is needed. Do not add private keys to `.env`.
 
@@ -53,11 +56,15 @@ Progress is emitted as compact public-data-only JSON per completed page and retr
 npm run backtest
 ```
 
-The offline backtest command reads the single stored BTC/USD `5m` market from SQLite in chronological order and runs a deterministic buy-and-hold example through the reusable `backtesting_engine`. It does not connect to a wallet or expose any live-order functionality.
+The offline backtest command requires `DECIBEL_NETWORK=mainnet` and reads the single persisted BTC/USD `5m` market identity from SQLite in chronological order. This deliberately uses the concrete address returned by Decibel metadata during collection instead of independently deriving a potentially different address from an SDK deployment constant. If the dataset is missing or ambiguous, the failure log includes the absolute database path and public candle counts grouped by market address and interval; it never includes credentials. The command runs the deterministic `ema_trend_strategy` through the reusable `backtesting_engine`; it does not connect to a wallet or expose any live-order functionality.
+
+The strategy requires at least 50 completed warm-up candles (or the configured trend period when it is larger). It returns `LONG` when the fast EMA crosses above the slow EMA and the current close is above the trend EMA. It returns `SHORT` for the inverse conditions. An opposite fast/slow cross exits an existing position, as does `EMA_MAXIMUM_HOLDING_BARS`. Defaults are EMA 9/21/50 with a 48-bar holding cap. Every evaluation receives only the candle prefix completed at that point.
 
 Strategies implement `backtest_strategy.evaluate(context)` and return `LONG`, `SHORT`, `EXIT`, or `HOLD`. The context contains only candles available through the current timestamp, current equity, and at most one position. Signals are queued and executed at the next candle open to prevent look-ahead bias. Any position left open is force-closed at the final candle close.
 
 Engine configuration covers starting equity, maker/taker fee rates, adverse slippage, leverage, equity-at-risk per position, stop-loss distance, and take-profit distance. Position size is risk-based and capped by leverage. Stop-losses use conservative taker fills, take-profits use maker fills, and equity is marked to market for drawdown. Results include every trade plus net return, total fees, win rate, profit factor, maximum drawdown, and ending equity. Missing, duplicate, unordered, misaligned, or malformed candles are rejected before simulation.
+
+By default, the command logs strategy and engine parameters plus aggregate metrics only. Set `BACKTEST_VERBOSE=true` to emit individual simulated trades. No credentials are loaded or printed by the strategy, and the command never submits orders.
 
 The reusable `decibel_client` exposes:
 
@@ -69,7 +76,7 @@ Market metadata uses human-readable units. The SDK's integer `tick_size` is divi
 
 Historical retrieval first resolves the concrete BTC perpetual market address from Decibel market metadata. Each candle contains a UTC `Date` timestamp, USD-per-BTC OHLC values, and BTC volume. Results are validated, sorted from oldest to newest, checked for duplicate timestamps, and omit any unfinished candle. Five-minute timestamps must be exact multiples of 300,000 milliseconds from the Unix epoch, which keeps them aligned to UTC five-minute boundaries.
 
-SQLite schema migrations are applied automatically and tracked by version. The candlestick table uses `(market_address, interval, timestamp_ms)` as its primary key, enables WAL mode for file-backed databases, and uses one transaction per batch so repeated startup runs update existing candles without introducing duplicates. Runtime database files under `data/` are ignored by Git.
+SQLite schema migrations are applied automatically and tracked by version. The candlestick table uses `(market_address, interval, timestamp_ms)` as its primary key, enables WAL mode for file-backed databases, and uses one transaction per batch so repeated startup runs update existing candles without introducing duplicates. Startup, backfill, and backtest all use the same module-relative absolute path resolver for `data/btc_usd_candlesticks.sqlite`, so their database selection does not depend on the shell's working directory. Runtime database files under `data/` are ignored by Git.
 
 ## Development
 

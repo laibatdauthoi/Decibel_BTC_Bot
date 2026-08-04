@@ -21,6 +21,7 @@ export type backtest_config = z.infer<typeof BacktestConfigSchema>;
 
 export type strategy_position = {
   side: position_side;
+  entryTime: Date;
   entryPrice: number;
   quantity: number;
   stopLossPrice: number;
@@ -61,7 +62,6 @@ export type backtest_result = {
 };
 
 type open_position = strategy_position & {
-  entryTime: Date;
   entryFee: number;
 };
 
