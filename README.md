@@ -84,6 +84,16 @@ npm run verify:market-structure
 
 The deterministic detector consumes only completed in-memory `1h` aggregates. `SWING_LEFT_BARS` and `SWING_RIGHT_BARS` configure strict pivot windows and both default to `2`. Equal highs or lows are not pivots. Each swing records its original `pivotTime` and the close boundary `confirmedAtTime` of its final right-side bar, so it cannot appear early. Two rising confirmed swing highs and lows produce `TREND_UP`; two falling highs and lows produce `TREND_DOWN`; mixed structure produces `RANGE`; insufficient swings produce `UNKNOWN`. The command prints the current regime and latest two confirmed highs and lows without persisting anything or using EMA data.
 
+## Breakout-setup verification
+
+```powershell
+npm run verify:breakout-setups
+```
+
+The deterministic detector consumes only completed in-memory `15m` aggregates and does not combine setups with the hourly regime. A bullish setup closes strictly above the previous `BREAKOUT_RANGE_WINDOW` highs; a bearish setup closes strictly below the previous range lows. The breakout candle is excluded from range, ATR, and median-volume inputs. Prior compression requires the short/long ATR ratio to be at most `BREAKOUT_COMPRESSION_RATIO`, while breakout volume must strictly exceed `BREAKOUT_VOLUME_MULTIPLE` times prior median volume. Defaults are range `20`, ATR `5/14`, compression `0.75`, and volume `1.5`. Gapped, malformed, incomplete, or insufficient data produces no setup.
+
+Each setup exposes `breakoutCandleTime` as the interval start and `confirmedAtTime` as exactly 15 minutes later. A setup is never returned before `confirmedAtTime`, so a `22:00` breakout candle remains unavailable throughout `22:00–22:15`. The command prints the total count and latest three confirmed setups without executing or persisting anything.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
