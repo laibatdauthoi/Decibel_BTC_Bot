@@ -15,6 +15,7 @@
     "analyze:opportunities": "tsx src/analyze_opportunities.ts",
     "analyze:outcomes": "tsx src/analyze_outcomes.ts",
     "collect:microstructure": "tsx src/collect_microstructure.ts",
+    "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 import type {
   market_price_snapshot,
@@ -65,6 +66,37 @@ const migrations = [
     version: 3,
     sql: `ALTER TABLE microstructure_aggregates_1s ADD COLUMN unknown_volume REAL NOT NULL DEFAULT 0;`,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE microstructure_trades ADD COLUMN ingestion_source TEXT NOT NULL DEFAULT 'UNKNOWN';
+      ALTER TABLE microstructure_trades ADD COLUMN classification_reason TEXT NOT NULL DEFAULT 'LEGACY_UNKNOWN';
+      ALTER TABLE microstructure_trades ADD COLUMN persisted_at_ms INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE microstructure_economic_trades ADD COLUMN ingestion_source TEXT NOT NULL DEFAULT 'UNKNOWN';
+      ALTER TABLE microstructure_economic_trades ADD COLUMN classification_reason TEXT NOT NULL DEFAULT 'LEGACY_UNKNOWN';
+      ALTER TABLE microstructure_economic_trades ADD COLUMN persisted_at_ms INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE microstructure_trade_participants ADD COLUMN ingestion_source TEXT NOT NULL DEFAULT 'UNKNOWN';
+      ALTER TABLE microstructure_trade_participants ADD COLUMN classification_reason TEXT NOT NULL DEFAULT 'LEGACY_UNKNOWN';
+      ALTER TABLE microstructure_trade_participants ADD COLUMN persisted_at_ms INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE order_book_snapshots ADD COLUMN persisted_at_ms INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE market_price_snapshots ADD COLUMN persisted_at_ms INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN persisted_at_ms INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE microstructure_collector_sessions (
+        session_id TEXT PRIMARY KEY, market_address TEXT NOT NULL, started_at_ms INTEGER NOT NULL,
+        stopped_at_ms INTEGER, graceful_shutdown_at_ms INTEGER
+      ) WITHOUT ROWID;
+      CREATE TABLE microstructure_collector_session_events (
+        event_id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, event_type TEXT NOT NULL,
+        occurred_at_ms INTEGER NOT NULL,
+        FOREIGN KEY(session_id) REFERENCES microstructure_collector_sessions(session_id)
+      );
+      CREATE INDEX collector_session_event_time ON microstructure_collector_session_events(session_id, occurred_at_ms);
+      CREATE TABLE microstructure_diagnostics (
+        metric TEXT NOT NULL, stream TEXT NOT NULL DEFAULT '', count INTEGER NOT NULL,
+        PRIMARY KEY(metric, stream)
+      ) WITHOUT ROWID;
+    `,
+  },
 ] as const;
 
 export type persistence_counters = {
@@ -90,6 +122,8 @@ type economic_trade_row = {
   aggressor_side: normalized_trade['side'];
   ambiguous: number;
   flow_counted: number;
+  ingestion_source: normalized_trade['ingestionSource'];
+  classification_reason: normalized_trade['classificationReason'];
 };
 
 export class microstructure_repository {
@@ -117,34 +151,49 @@ export class microstructure_repository {
       'SELECT * FROM microstructure_economic_trades WHERE economic_trade_id = ?',
     );
     const insertEconomicTrade = this.database.prepare(
-      `INSERT INTO microstructure_economic_trades VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO microstructure_economic_trades
+       (economic_trade_id, market_address, price, size, exchange_timestamp_ms,
+        transaction_version, aggressor_side, ambiguous, flow_counted, ingestion_source,
+        classification_reason, persisted_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     );
     const updateEconomicTrade = this.database.prepare(
-      `UPDATE microstructure_economic_trades SET aggressor_side = ?, ambiguous = ?
+      `UPDATE microstructure_economic_trades SET aggressor_side = ?, ambiguous = ?, classification_reason = ?
        WHERE economic_trade_id = ?`,
     );
     const markFlowCounted = this.database.prepare(
       'UPDATE microstructure_economic_trades SET flow_counted = 1 WHERE economic_trade_id = ?',
     );
     const insertTradeParticipant = this.database.prepare(
-      `INSERT OR IGNORE INTO microstructure_trade_participants VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO microstructure_trade_participants
+       (row_key, economic_trade_id, market_address, participant_account, order_id, action,
+        aggressor_side, price, size, exchange_timestamp_ms, transaction_version, received_at_ms,
+        ingestion_source, classification_reason, persisted_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertBook = this.database.prepare(
-      `INSERT OR IGNORE INTO order_book_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO order_book_snapshots
+       (market_address, exchange_timestamp_ms, received_at_ms, best_bid, best_ask, spread,
+        mid_price, microprice, best_bid_size, best_ask_size, depth_imbalance, persisted_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertPrice = this.database.prepare(
-      `INSERT OR IGNORE INTO market_price_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO market_price_snapshots
+       (market_address, exchange_timestamp_ms, received_at_ms, mark_price, mid_price,
+        oracle_price, funding_rate, open_interest, persisted_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const upsertAggregate = this.database.prepare(
       `INSERT INTO microstructure_aggregates_1s (
          market_address, second_timestamp_ms, buy_volume, sell_volume, trade_count,
          vwap, spread, depth_imbalance, order_flow_imbalance, unknown_volume
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         , persisted_at_ms
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(market_address, second_timestamp_ms) DO UPDATE SET
        buy_volume=excluded.buy_volume, sell_volume=excluded.sell_volume,
        trade_count=excluded.trade_count, vwap=excluded.vwap, spread=excluded.spread,
        depth_imbalance=excluded.depth_imbalance, order_flow_imbalance=excluded.order_flow_imbalance,
-       unknown_volume=excluded.unknown_volume`,
+       unknown_volume=excluded.unknown_volume, persisted_at_ms=excluded.persisted_at_ms`,
     );
     return this.database.transaction(() => {
       let savedTrades = 0;
@@ -154,6 +203,7 @@ export class microstructure_repository {
       let ambiguousTrades = 0;
       const ambiguousTradeIds: string[] = [];
       const aggregateTrades: normalized_trade[] = [];
+      const persistedAtMs = Date.now();
       const groupedTrades = new Map<string, normalized_trade[]>();
       for (const trade of trades) {
         const group = groupedTrades.get(trade.economicTradeId) ?? [];
@@ -188,6 +238,17 @@ export class microstructure_repository {
         if (knownSides.size > 1) ambiguous = true;
         const aggressorSide = knownSides.size === 1 ? ([...knownSides][0] ?? 'UNKNOWN') : 'UNKNOWN';
         const finalAmbiguous = ambiguous || existing?.ambiguous === 1;
+        const classificationReason = finalAmbiguous
+          ? knownSides.size > 1
+            ? 'CONFLICTING_AGGRESSOR_SIDES'
+            : 'AMBIGUOUS_ECONOMIC_FIELDS'
+          : aggressorSide === 'UNKNOWN'
+            ? (rows.find((row) => row.side === 'UNKNOWN')?.classificationReason ??
+              existing?.classification_reason ??
+              'LEGACY_UNKNOWN')
+            : (rows.find((row) => row.side === aggressorSide)?.classificationReason ??
+              existing?.classification_reason ??
+              'LEGACY_UNKNOWN');
         if (existing === undefined)
           insertEconomicTrade.run(
             economicTradeId,
@@ -198,8 +259,17 @@ export class microstructure_repository {
             first.transactionVersion,
             aggressorSide,
             finalAmbiguous ? 1 : 0,
+            first.ingestionSource,
+            classificationReason,
+            persistedAtMs,
           );
-        else updateEconomicTrade.run(aggressorSide, finalAmbiguous ? 1 : 0, economicTradeId);
+        else
+          updateEconomicTrade.run(
+            aggressorSide,
+            finalAmbiguous ? 1 : 0,
+            classificationReason,
+            economicTradeId,
+          );
         if (finalAmbiguous) {
           ambiguousTrades += 1;
           ambiguousTradeIds.push(economicTradeId);
@@ -218,6 +288,9 @@ export class microstructure_repository {
             trade.exchangeTimestamp.getTime(),
             trade.transactionVersion,
             trade.receivedAt.getTime(),
+            trade.ingestionSource,
+            trade.classificationReason,
+            persistedAtMs,
           ).changes;
         if (!finalAmbiguous && (existing?.flow_counted ?? 0) === 0) {
           markFlowCounted.run(economicTradeId);
@@ -237,6 +310,7 @@ export class microstructure_repository {
           book.bestBidSize,
           book.bestAskSize,
           book.top5DepthImbalance,
+          persistedAtMs,
         ).changes;
       for (const price of prices)
         savedPrices += insertPrice.run(
@@ -248,6 +322,7 @@ export class microstructure_repository {
           price.oraclePrice,
           price.fundingRate,
           price.openInterest,
+          persistedAtMs,
         ).changes;
       for (const aggregate of aggregates)
         savedAggregates += upsertAggregate.run(
@@ -261,6 +336,7 @@ export class microstructure_repository {
           aggregate.depthImbalance,
           aggregate.orderFlowImbalance,
           aggregate.unknownVolume,
+          persistedAtMs,
         ).changes;
       return {
         trades: savedTrades,
@@ -326,6 +402,44 @@ export class microstructure_repository {
 
   getJournalMode(): string {
     return this.database.pragma('journal_mode', { simple: true }) as string;
+  }
+
+  startCollectorSession(marketAddress: string, startedAtMs = Date.now()): string {
+    const sessionId = randomUUID();
+    this.database
+      .prepare('INSERT INTO microstructure_collector_sessions VALUES (?, ?, ?, NULL, NULL)')
+      .run(sessionId, marketAddress, startedAtMs);
+    this.recordSessionEvent(sessionId, 'START', startedAtMs);
+    return sessionId;
+  }
+
+  recordSessionEvent(
+    sessionId: string,
+    eventType: 'START' | 'DISCONNECT' | 'RECONNECT' | 'STOP' | 'GRACEFUL_SHUTDOWN',
+    occurredAtMs = Date.now(),
+  ): void {
+    this.database
+      .prepare(
+        'INSERT INTO microstructure_collector_session_events (session_id, event_type, occurred_at_ms) VALUES (?, ?, ?)',
+      )
+      .run(sessionId, eventType, occurredAtMs);
+    if (eventType === 'STOP' || eventType === 'GRACEFUL_SHUTDOWN')
+      this.database
+        .prepare(
+          `UPDATE microstructure_collector_sessions SET stopped_at_ms=?, graceful_shutdown_at_ms=CASE WHEN ?='GRACEFUL_SHUTDOWN' THEN ? ELSE graceful_shutdown_at_ms END WHERE session_id=?`,
+        )
+        .run(occurredAtMs, eventType, occurredAtMs, sessionId);
+  }
+
+  incrementDiagnostic(metric: string, stream = '', amount = 1): void {
+    if (!Number.isInteger(amount) || amount < 0)
+      throw new Error('Diagnostic increment must be nonnegative');
+    this.database
+      .prepare(
+        `INSERT INTO microstructure_diagnostics VALUES (?, ?, ?)
+      ON CONFLICT(metric, stream) DO UPDATE SET count=count+excluded.count`,
+      )
+      .run(metric, stream, amount);
   }
 
   close(): void {

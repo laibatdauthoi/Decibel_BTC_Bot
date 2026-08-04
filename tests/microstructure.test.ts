@@ -127,6 +127,14 @@ describe('microstructure normalization', () => {
     const normalizedTrades = normalizeTradePayload(trades(), marketAddress, new Date(10_000));
     const normalizedPrice = normalizeMarketPricePayload(price(), marketAddress, new Date(10_000));
     expect(normalizedTrades.map((trade) => trade.side)).toEqual(['BUY', 'SELL']);
+    expect(normalizedTrades.map((trade) => trade.classificationReason)).toEqual([
+      'EXPLICIT_IS_TAKER',
+      'EXPLICIT_IS_TAKER',
+    ]);
+    expect(normalizedTrades.map((trade) => trade.ingestionSource)).toEqual([
+      'WEBSOCKET',
+      'WEBSOCKET',
+    ]);
     expect(normalizedTrades[0]?.exchangeTimestamp).toEqual(new Date(9_100));
     expect(normalizedPrice).toMatchObject({ fundingRate: 0.00015, openInterest: 50 });
     expect(normalizedPrice.receivedAt).toEqual(new Date(10_000));
@@ -148,7 +156,10 @@ describe('microstructure normalization', () => {
         },
       ],
     };
-    expect(normalizeTradePayload(payload, marketAddress)[0]?.side).toBe('UNKNOWN');
+    expect(normalizeTradePayload(payload, marketAddress)[0]).toMatchObject({
+      side: 'UNKNOWN',
+      classificationReason: 'NO_EXPLICIT_AGGRESSOR_SEMANTICS',
+    });
   });
 });
 

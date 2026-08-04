@@ -51,6 +51,15 @@ const PriceMessageSchema = z.object({
 });
 
 export type trade_side = 'BUY' | 'SELL' | 'UNKNOWN';
+export type ingestion_source = 'REST_BOOTSTRAP' | 'WEBSOCKET' | 'UNKNOWN';
+export type aggressor_classification_reason =
+  | 'EXPLICIT_IS_TAKER'
+  | 'EXPLICIT_LIQUIDITY_ROLE'
+  | 'NO_EXPLICIT_AGGRESSOR_SEMANTICS'
+  | 'UNRECOGNIZED_TAKER_ACTION'
+  | 'AMBIGUOUS_ECONOMIC_FIELDS'
+  | 'CONFLICTING_AGGRESSOR_SIDES'
+  | 'LEGACY_UNKNOWN';
 export type stream_name = 'depth' | 'trades' | 'marketPrice';
 export type stream_health =
   'starting' | 'waiting' | 'healthy' | 'stale' | 'reconnecting' | 'stopped';
@@ -60,6 +69,8 @@ export type normalized_trade = {
   economicTradeId: string;
   marketAddress: string;
   side: trade_side;
+  classificationReason: aggressor_classification_reason;
+  ingestionSource: ingestion_source;
   participantAccount: string;
   orderId: string;
   action: string;
@@ -160,19 +171,36 @@ function normalizeSide(action: string): trade_side {
   const normalized = action.toLowerCase();
   if (normalized.includes('buy') || normalized.includes('long')) return 'BUY';
   if (normalized.includes('sell') || normalized.includes('short')) return 'SELL';
-  throw new Error('Unknown Decibel trade side');
+  return 'UNKNOWN';
 }
 
-function inferAggressorSide(trade: z.infer<typeof TradeSchema>): trade_side {
+function classifyAggressor(trade: z.infer<typeof TradeSchema>): {
+  side: trade_side;
+  reason: aggressor_classification_reason;
+} {
   const role = trade.liquidity_role?.toLowerCase();
-  if (trade.is_taker === true || role === 'taker') return normalizeSide(trade.action);
-  return 'UNKNOWN';
+  if (trade.is_taker === true) {
+    const side = normalizeSide(trade.action);
+    return {
+      side,
+      reason: side === 'UNKNOWN' ? 'UNRECOGNIZED_TAKER_ACTION' : 'EXPLICIT_IS_TAKER',
+    };
+  }
+  if (role === 'taker') {
+    const side = normalizeSide(trade.action);
+    return {
+      side,
+      reason: side === 'UNKNOWN' ? 'UNRECOGNIZED_TAKER_ACTION' : 'EXPLICIT_LIQUIDITY_ROLE',
+    };
+  }
+  return { side: 'UNKNOWN', reason: 'NO_EXPLICIT_AGGRESSOR_SEMANTICS' };
 }
 
 function normalizeTradeRow(
   trade: z.infer<typeof TradeSchema>,
   marketAddress: string,
   receivedAt: Date,
+  ingestionSource: ingestion_source,
 ): normalized_trade {
   validateMarket(trade.market, marketAddress);
   const tradeId = trade.trade_id === undefined ? undefined : String(trade.trade_id);
@@ -191,11 +219,14 @@ function normalizeTradeRow(
     trade.size,
     trade.transaction_unix_ms,
   ]);
+  const classification = classifyAggressor(trade);
   return {
     eventId: createHash('sha256').update(stableRowIdentity).digest('hex'),
     economicTradeId,
     marketAddress,
-    side: inferAggressorSide(trade),
+    side: classification.side,
+    classificationReason: classification.reason,
+    ingestionSource,
     participantAccount: trade.account,
     orderId,
     action: trade.action,
@@ -211,9 +242,10 @@ export function normalizeTradePayload(
   payload: unknown,
   marketAddress: string,
   receivedAt = new Date(),
+  ingestionSource: ingestion_source = 'WEBSOCKET',
 ): normalized_trade[] {
   return TradeMessageSchema.parse(payload).trades.map((trade) =>
-    normalizeTradeRow(trade, marketAddress, receivedAt),
+    normalizeTradeRow(trade, marketAddress, receivedAt, ingestionSource),
   );
 }
 
@@ -228,7 +260,9 @@ export function normalizeRESTTradePage(
   receivedAt = new Date(),
 ): normalized_trade_page {
   const page = RESTTradePageSchema.parse(payload);
-  const trades = page.items.map((trade) => normalizeTradeRow(trade, marketAddress, receivedAt));
+  const trades = page.items.map((trade) =>
+    normalizeTradeRow(trade, marketAddress, receivedAt, 'REST_BOOTSTRAP'),
+  );
   return { trades, totalCount: page.total_count ?? null };
 }
 

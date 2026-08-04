@@ -41,6 +41,13 @@ export interface microstructure_store {
     maximumBatchSize: number,
   ): persistence_counters;
   getCounts(): { trades: number; books: number; prices: number; aggregates: number };
+  startCollectorSession?(marketAddress: string, startedAtMs?: number): string;
+  recordSessionEvent?(
+    sessionId: string,
+    eventType: 'START' | 'DISCONNECT' | 'RECONNECT' | 'STOP' | 'GRACEFUL_SHUTDOWN',
+    occurredAtMs?: number,
+  ): void;
+  incrementDiagnostic?(metric: string, stream?: string, amount?: number): void;
 }
 
 export type microstructure_collector_options = {
@@ -112,6 +119,7 @@ export class microstructure_collector {
   private lastWebSocketActivityAt = 0;
   private lastLoggedPersistenceTotal = 0;
   private stopped = false;
+  private sessionId: string | undefined;
 
   constructor(
     private readonly client: microstructure_client,
@@ -135,6 +143,11 @@ export class microstructure_collector {
     this.counters.duplicateRows += bootstrap.duplicateRows;
     this.counters.participantRows += bootstrap.participantRows;
     this.counters.ambiguousTrades += bootstrap.ambiguousTrades;
+    this.repository.incrementDiagnostic?.('bootstrap_fetched', '', bootstrap.fetched);
+    this.repository.incrementDiagnostic?.('bootstrap_duplicate', '', bootstrap.duplicateRows);
+    this.repository.incrementDiagnostic?.('bootstrap_participant', '', bootstrap.participantRows);
+    this.repository.incrementDiagnostic?.('bootstrap_economic', '', bootstrap.economicTrades);
+    this.repository.incrementDiagnostic?.('bootstrap_ambiguous', '', bootstrap.ambiguousTrades);
     this.options.logger?.info(
       {
         event: 'microstructure_trade_bootstrap_complete',
@@ -143,6 +156,7 @@ export class microstructure_collector {
       'Recent BTC trade bootstrap completed',
     );
     this.unsubscribeError = this.client.onWebSocketError(() => this.reconnect('heartbeat_failure'));
+    this.sessionId = this.repository.startCollectorSession?.(this.market.marketAddress);
     this.beginSubscriptionWindow();
     this.subscribe();
     this.sampleTimer = setInterval(() => this.sampleBook(), this.options.sampleIntervalMs);
@@ -178,6 +192,8 @@ export class microstructure_collector {
     if (this.heartbeatTimer !== undefined) clearInterval(this.heartbeatTimer);
     if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer);
     this.client.closeWebSocket();
+    if (this.sessionId !== undefined)
+      this.repository.recordSessionEvent?.(this.sessionId, 'GRACEFUL_SHUTDOWN');
     for (const stream of Object.keys(this.health) as stream_name[])
       this.setStreamHealth(stream, 'stopped');
     this.options.logger?.info(
@@ -237,6 +253,7 @@ export class microstructure_collector {
       const maximumTimestamp = Math.max(...timestamps);
       if (minimumTimestamp < this.lastExchangeAt.trades) {
         this.counters.regressions += 1;
+        this.repository.incrementDiagnostic?.('timestamp_regressions', 'trades');
         throw new Error('trades exchange timestamp regressed');
       }
       this.validateTimestamp('trades', new Date(maximumTimestamp));
@@ -261,6 +278,7 @@ export class microstructure_collector {
 
   private handleMessage(stream: stream_name, handler: () => void): void {
     this.lastWebSocketActivityAt = Date.now();
+    this.repository.incrementDiagnostic?.('received_events', stream);
     try {
       handler();
       this.lastReceivedAt[stream] = Date.now();
@@ -268,6 +286,7 @@ export class microstructure_collector {
       this.reconnectAttempt = 0;
     } catch (error) {
       this.counters.malformed += 1;
+      this.repository.incrementDiagnostic?.('malformed_messages', stream);
       const safeError =
         error instanceof Error && error.name !== 'ZodError'
           ? error.message
@@ -287,6 +306,7 @@ export class microstructure_collector {
     const value = timestamp.getTime();
     if (value < this.lastExchangeAt[stream]) {
       this.counters.regressions += 1;
+      this.repository.incrementDiagnostic?.('timestamp_regressions', stream);
       throw new Error(`${stream} exchange timestamp regressed`);
     }
     this.lastExchangeAt[stream] = value;
@@ -371,6 +391,9 @@ export class microstructure_collector {
 
   private reconnect(reason = 'stale_stream'): void {
     if (this.stopped || this.reconnectTimer !== undefined) return;
+    this.repository.incrementDiagnostic?.('reconnects');
+    if (this.sessionId !== undefined)
+      this.repository.recordSessionEvent?.(this.sessionId, 'DISCONNECT');
     this.clearSubscriptions();
     for (const stream of Object.keys(this.health) as stream_name[])
       this.setStreamHealth(stream, 'reconnecting');
@@ -386,6 +409,8 @@ export class microstructure_collector {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       try {
+        if (this.sessionId !== undefined)
+          this.repository.recordSessionEvent?.(this.sessionId, 'RECONNECT');
         this.beginSubscriptionWindow();
         this.subscribe();
       } catch {

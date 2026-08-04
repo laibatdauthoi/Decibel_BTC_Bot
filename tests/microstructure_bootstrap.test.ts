@@ -6,6 +6,7 @@ import {
   type recent_trade_client,
 } from '../src/microstructure_bootstrap.js';
 import { microstructure_repository } from '../src/microstructure_repository.js';
+import { normalizeRESTTradePage } from '../src/microstructure.js';
 
 const market: BTC_market_metadata = {
   symbol: 'BTC/USD',
@@ -75,6 +76,13 @@ describe('recent trade REST bootstrap', () => {
       newestTimestamp: new Date(1_000_000),
     });
     expect(Repository.getCounts().trades).toBe(450);
+    expect(
+      normalizeRESTTradePage({ items: [makeTrade(0)], total_count: 1 }, market.marketAddress)
+        .trades[0],
+    ).toMatchObject({
+      ingestionSource: 'REST_BOOTSTRAP',
+      classificationReason: 'EXPLICIT_IS_TAKER',
+    });
     Repository.close();
   });
 
