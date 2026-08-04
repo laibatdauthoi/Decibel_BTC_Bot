@@ -1,7 +1,11 @@
 import 'dotenv/config';
 
 import { getBacktestFailureDiagnostics, readMainnetBTCBacktestDataset } from './backtest_data.js';
-import { backtesting_engine } from './backtesting_engine.js';
+import {
+  backtesting_engine,
+  type backtest_config,
+  type backtest_result,
+} from './backtesting_engine.js';
 import { candlestick_repository } from './candlestick_repository.js';
 import { loadConfig } from './config.js';
 import { resolveCandlestickDatabasePath } from './database_path.js';
@@ -9,6 +13,18 @@ import { ema_trend_strategy, loadBacktestCommandConfig } from './ema_trend_strat
 import { createLogger } from './logger.js';
 
 let BacktestLogger = createLogger('pretty');
+
+function summarizeCostScenario(result: backtest_result): object {
+  return {
+    netReturn: result.netReturn,
+    grossReturnBeforeCosts: result.grossReturnBeforeCosts,
+    tradingFeeCost: result.tradingFeeCost,
+    slippageCost: result.slippageCost,
+    maximumDrawdown: result.maximumDrawdown,
+    endingEquity: result.endingEquity,
+    tradeCount: result.trades.length,
+  };
+}
 
 function runBacktest(): void {
   const applicationConfig = loadConfig();
@@ -21,7 +37,7 @@ function runBacktest(): void {
       CandlestickRepository,
       applicationConfig.network,
     );
-    const engineConfig = {
+    const engineConfig: backtest_config = {
       startingEquity: 10_000,
       makerFeeRate: 0.0002,
       takerFeeRate: 0.0005,
@@ -30,11 +46,23 @@ function runBacktest(): void {
       positionRisk: 0.01,
       stopLossRate: 0.01,
       takeProfitRate: 0.02,
-    } as const;
+    };
     const BacktestEngine = new backtesting_engine(engineConfig);
     const EMATrendStrategy = new ema_trend_strategy(strategyConfig);
     const result = BacktestEngine.run(candles, EMATrendStrategy);
     const { trades, ...summary } = result;
+    const zeroCostResult = new backtesting_engine({
+      ...engineConfig,
+      makerFeeRate: 0,
+      takerFeeRate: 0,
+      slippageRate: 0,
+    }).run(candles, new ema_trend_strategy(strategyConfig));
+    const doubledCostResult = new backtesting_engine({
+      ...engineConfig,
+      makerFeeRate: engineConfig.makerFeeRate * 2,
+      takerFeeRate: engineConfig.takerFeeRate * 2,
+      slippageRate: engineConfig.slippageRate * 2,
+    }).run(candles, new ema_trend_strategy(strategyConfig));
 
     BacktestLogger.info(
       {
@@ -45,6 +73,11 @@ function runBacktest(): void {
         strategyParameters: EMATrendStrategy.config,
         engineParameters: engineConfig,
         tradeCount: trades.length,
+        costScenarios: {
+          zero: summarizeCostScenario(zeroCostResult),
+          configured: summarizeCostScenario(result),
+          doubled: summarizeCostScenario(doubledCostResult),
+        },
         ...summary,
       },
       'BTC/USD 5m EMA trend backtest completed',

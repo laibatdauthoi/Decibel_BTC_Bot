@@ -66,6 +66,8 @@ Engine configuration covers starting equity, maker/taker fee rates, adverse slip
 
 By default, the command logs strategy and engine parameters plus aggregate metrics only. Set `BACKTEST_VERBOSE=true` to emit individual simulated trades. No credentials are loaded or printed by the strategy, and the command never submits orders.
 
+The diagnostic report separates gross return before execution costs, trading fees, and slippage. It breaks performance down by long/short direction and exit reason, reports holding duration, average win/loss, expectancy, UTC monthly return and drawdown, and compares the strategy with an unleveraged BTC buy-and-hold benchmark over the same candles. Cost sensitivity is shown for zero, configured, and doubled fee/slippage settings. These are fixed diagnostic scenarios; the command does not optimize EMA or risk parameters.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
