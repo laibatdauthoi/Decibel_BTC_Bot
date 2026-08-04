@@ -25,6 +25,8 @@ async function collectMicrostructure(): Promise<void> {
       marketPriceStaleAfterMs: config.microstructureMarketPriceStaleAfterMs,
       maximumBatchSize: config.microstructureBatchSize,
       bootstrapTradeLimit: config.microstructureBootstrapTradeLimit,
+      maximumBookAgeMs: config.microstructureMaximumBookAgeMs,
+      maximumPriceAgeMs: config.microstructureMaximumPriceAgeMs,
       logger: CollectorLogger,
     },
   );

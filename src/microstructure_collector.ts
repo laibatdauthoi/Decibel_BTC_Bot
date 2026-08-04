@@ -2,12 +2,14 @@ import type { Logger } from 'pino';
 
 import type { BTC_market_metadata } from './decibel_client.js';
 import {
+  estimateWebSocketTradeAggressors,
   normalizeDepthPayload,
   normalizeMarketPricePayload,
   normalizeTradePayload,
   type microstructure_aggregate,
   type normalized_trade,
   type order_book_snapshot,
+  type market_price_snapshot,
   type stream_health,
   type stream_name,
 } from './microstructure.js';
@@ -61,6 +63,8 @@ export type microstructure_collector_options = {
   heartbeatIntervalMs?: number;
   reconnectBaseDelayMs?: number;
   reconnectMaximumDelayMs?: number;
+  maximumBookAgeMs: number;
+  maximumPriceAgeMs: number;
   logger?: Pick<Logger, 'info' | 'warn' | 'error'>;
 };
 
@@ -70,8 +74,6 @@ type aggregate_accumulator = {
   unknownVolume: number;
   tradeCount: number;
   notional: number;
-  spread: number | null;
-  depthImbalance: number | null;
 };
 
 export class microstructure_collector {
@@ -107,6 +109,10 @@ export class microstructure_collector {
   };
   private readonly aggregateBuckets = new Map<number, aggregate_accumulator>();
   private latestBook: order_book_snapshot | undefined;
+  private bookObservations: order_book_snapshot[] = [];
+  private priceObservations: market_price_snapshot[] = [];
+  private nextAggregateSecond: number | null = null;
+  private aggregateSegmentActive = false;
   private lastBookFingerprint = '';
   private unsubscribes: (() => void)[] = [];
   private unsubscribeError: (() => void) | undefined;
@@ -160,7 +166,7 @@ export class microstructure_collector {
     this.beginSubscriptionWindow();
     this.subscribe();
     this.sampleTimer = setInterval(() => this.sampleBook(), this.options.sampleIntervalMs);
-    this.aggregateTimer = setInterval(() => this.flushAggregates(), 1_000);
+    this.aggregateTimer = setInterval(() => this.flushCompletedAggregates(), 1_000);
     this.heartbeatTimer = setInterval(
       () => this.checkHealth(),
       this.options.heartbeatIntervalMs ?? 1_000,
@@ -184,7 +190,8 @@ export class microstructure_collector {
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
-    this.flushAggregates(true);
+    this.flushCompletedAggregates();
+    this.aggregateSegmentActive = false;
     this.clearSubscriptions();
     this.unsubscribeError?.();
     if (this.sampleTimer !== undefined) clearInterval(this.sampleTimer);
@@ -237,16 +244,23 @@ export class microstructure_collector {
       const book = normalizeDepthPayload(message, this.requireMarketAddress(), new Date());
       this.validateTimestamp('depth', book.exchangeTimestamp);
       this.latestBook = book;
-      const second = Math.floor(book.exchangeTimestamp.getTime() / 1_000) * 1_000;
-      const bucket = this.getAggregateBucket(second);
-      bucket.spread = book.spread;
-      bucket.depthImbalance = book.top5DepthImbalance;
+      this.bookObservations.push(book);
     });
   }
 
   private handleTrades(message: unknown): void {
     this.handleMessage('trades', () => {
-      const trades = normalizeTradePayload(message, this.requireMarketAddress(), new Date());
+      const normalizedTrades = normalizeTradePayload(
+        message,
+        this.requireMarketAddress(),
+        new Date(),
+      );
+      const tradeReceivedAt = normalizedTrades[0]?.receivedAt.getTime() ?? Date.now();
+      const trades = estimateWebSocketTradeAggressors(
+        normalizedTrades,
+        this.findLatestObservation(this.bookObservations, tradeReceivedAt),
+        this.options.maximumBookAgeMs,
+      );
       if (trades.length === 0) return;
       const timestamps = trades.map((trade) => trade.exchangeTimestamp.getTime());
       const minimumTimestamp = Math.min(...timestamps);
@@ -270,6 +284,7 @@ export class microstructure_collector {
     this.handleMessage('marketPrice', () => {
       const price = normalizeMarketPricePayload(message, this.requireMarketAddress(), new Date());
       this.validateTimestamp('marketPrice', price.exchangeTimestamp);
+      this.priceObservations.push(price);
       this.addPersistence(
         this.repository.saveBatch([], [], [price], [], this.options.maximumBatchSize),
       );
@@ -330,7 +345,7 @@ export class microstructure_collector {
   }
 
   private addTradeToAggregate(trade: normalized_trade): void {
-    const second = Math.floor(trade.exchangeTimestamp.getTime() / 1_000) * 1_000;
+    const second = Math.floor(trade.receivedAt.getTime() / 1_000) * 1_000;
     const bucket = this.getAggregateBucket(second);
     if (trade.side === 'BUY') bucket.buyVolume += trade.size;
     else if (trade.side === 'SELL') bucket.sellVolume += trade.size;
@@ -340,13 +355,25 @@ export class microstructure_collector {
     this.aggregateBuckets.set(second, bucket);
   }
 
-  private flushAggregates(includeCurrent = false): void {
+  private flushCompletedAggregates(): void {
+    if (!this.aggregateSegmentActive || this.nextAggregateSecond === null) return;
     const cutoff = Math.floor(Date.now() / 1_000) * 1_000;
-    for (const [second, bucket] of [...this.aggregateBuckets]) {
-      if (!includeCurrent && second >= cutoff) continue;
+    const aggregates: microstructure_aggregate[] = [];
+    while (this.nextAggregateSecond < cutoff) {
+      const second = this.nextAggregateSecond;
+      const boundary = second + 1_000;
+      const bucket = this.aggregateBuckets.get(second) ?? this.createAggregateBucket();
       const directionalVolume = bucket.buyVolume + bucket.sellVolume;
       const totalVolume = directionalVolume + bucket.unknownVolume;
-      const aggregate: microstructure_aggregate = {
+      const aggregateBook = this.findLatestObservation(this.bookObservations, boundary - 1);
+      const aggregatePrice = this.findLatestObservation(this.priceObservations, boundary - 1);
+      const bookAgeMs =
+        aggregateBook === undefined ? null : boundary - aggregateBook.receivedAt.getTime();
+      const priceAgeMs =
+        aggregatePrice === undefined ? null : boundary - aggregatePrice.receivedAt.getTime();
+      const bookAvailable = bookAgeMs !== null && bookAgeMs <= this.options.maximumBookAgeMs;
+      const priceAvailable = priceAgeMs !== null && priceAgeMs <= this.options.maximumPriceAgeMs;
+      aggregates.push({
         marketAddress: this.requireMarketAddress(),
         secondTimestamp: new Date(second),
         buyVolume: bucket.buyVolume,
@@ -354,30 +381,65 @@ export class microstructure_collector {
         unknownVolume: bucket.unknownVolume,
         tradeCount: bucket.tradeCount,
         vwap: totalVolume === 0 ? null : bucket.notional / totalVolume,
-        spread: bucket.spread,
-        depthImbalance: bucket.depthImbalance,
+        spread: bookAvailable ? (aggregateBook?.spread ?? null) : null,
+        depthImbalance: bookAvailable ? (aggregateBook?.top5DepthImbalance ?? null) : null,
         orderFlowImbalance:
           directionalVolume === 0 ? 0 : (bucket.buyVolume - bucket.sellVolume) / directionalVolume,
-      };
-      this.addPersistence(
-        this.repository.saveBatch([], [], [], [aggregate], this.options.maximumBatchSize),
-      );
+        bookAgeMs,
+        marketPriceAgeMs: priceAgeMs,
+        markPrice: priceAvailable ? (aggregatePrice?.markPrice ?? null) : null,
+        midPrice: priceAvailable ? (aggregatePrice?.midPrice ?? null) : null,
+        oraclePrice: priceAvailable ? (aggregatePrice?.oraclePrice ?? null) : null,
+        fundingRate: priceAvailable ? (aggregatePrice?.fundingRate ?? null) : null,
+        openInterest: priceAvailable ? (aggregatePrice?.openInterest ?? null) : null,
+      });
       this.aggregateBuckets.delete(second);
+      this.nextAggregateSecond += 1_000;
     }
+    for (let offset = 0; offset < aggregates.length; offset += this.options.maximumBatchSize) {
+      const batch = aggregates.slice(offset, offset + this.options.maximumBatchSize);
+      this.addPersistence(
+        this.repository.saveBatch([], [], [], batch, this.options.maximumBatchSize),
+      );
+    }
+    this.bookObservations = this.retainRelevantObservations(this.bookObservations, cutoff);
+    this.priceObservations = this.retainRelevantObservations(this.priceObservations, cutoff);
   }
 
   private getAggregateBucket(second: number): aggregate_accumulator {
-    const bucket = this.aggregateBuckets.get(second) ?? {
+    const bucket = this.aggregateBuckets.get(second) ?? this.createAggregateBucket();
+    this.aggregateBuckets.set(second, bucket);
+    return bucket;
+  }
+
+  private createAggregateBucket(): aggregate_accumulator {
+    return {
       buyVolume: 0,
       sellVolume: 0,
       unknownVolume: 0,
       tradeCount: 0,
       notional: 0,
-      spread: null,
-      depthImbalance: null,
     };
-    this.aggregateBuckets.set(second, bucket);
-    return bucket;
+  }
+
+  private findLatestObservation<T extends { receivedAt: Date }>(
+    observations: readonly T[],
+    boundary: number,
+  ): T | undefined {
+    return [...observations]
+      .filter((observation) => observation.receivedAt.getTime() <= boundary)
+      .sort((left, right) => right.receivedAt.getTime() - left.receivedAt.getTime())[0];
+  }
+
+  private retainRelevantObservations<T extends { receivedAt: Date }>(
+    observations: readonly T[],
+    boundary: number,
+  ): T[] {
+    const prior = this.findLatestObservation(observations, boundary);
+    return [
+      ...(prior === undefined ? [] : [prior]),
+      ...observations.filter((observation) => observation.receivedAt.getTime() > boundary),
+    ];
   }
 
   private checkHealth(): void {
@@ -391,6 +453,14 @@ export class microstructure_collector {
 
   private reconnect(reason = 'stale_stream'): void {
     if (this.stopped || this.reconnectTimer !== undefined) return;
+    this.flushCompletedAggregates();
+    this.aggregateSegmentActive = false;
+    this.nextAggregateSecond = null;
+    this.aggregateBuckets.clear();
+    this.latestBook = undefined;
+    this.bookObservations = [];
+    this.priceObservations = [];
+    this.lastBookFingerprint = '';
     this.repository.incrementDiagnostic?.('reconnects');
     if (this.sessionId !== undefined)
       this.repository.recordSessionEvent?.(this.sessionId, 'DISCONNECT');
@@ -426,6 +496,8 @@ export class microstructure_collector {
 
   private beginSubscriptionWindow(): void {
     const now = Date.now();
+    this.nextAggregateSecond = Math.ceil(now / 1_000) * 1_000;
+    this.aggregateSegmentActive = true;
     this.subscriptionStartedAt = now;
     this.lastWebSocketActivityAt = now;
     for (const stream of Object.keys(this.health) as stream_name[]) {

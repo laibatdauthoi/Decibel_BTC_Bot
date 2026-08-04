@@ -59,7 +59,17 @@ export type aggressor_classification_reason =
   | 'UNRECOGNIZED_TAKER_ACTION'
   | 'AMBIGUOUS_ECONOMIC_FIELDS'
   | 'CONFLICTING_AGGRESSOR_SIDES'
+  | 'QUOTE_TEST_AT_ASK'
+  | 'QUOTE_TEST_AT_BID'
+  | 'QUOTE_TEST_ABOVE_MID'
+  | 'QUOTE_TEST_BELOW_MID'
+  | 'QUOTE_TEST_EXACT_MID'
+  | 'QUOTE_TEST_NO_PRIOR_BOOK'
+  | 'QUOTE_TEST_STALE_BOOK'
+  | 'QUOTE_TEST_INVALID_BOOK'
   | 'LEGACY_UNKNOWN';
+export type aggressor_classification_source = 'EXPLICIT' | 'ESTIMATED_QUOTE_TEST' | 'UNKNOWN';
+export type aggressor_confidence = 'HIGH' | 'MEDIUM' | 'NONE';
 export type stream_name = 'depth' | 'trades' | 'marketPrice';
 export type stream_health =
   'starting' | 'waiting' | 'healthy' | 'stale' | 'reconnecting' | 'stopped';
@@ -70,6 +80,10 @@ export type normalized_trade = {
   marketAddress: string;
   side: trade_side;
   classificationReason: aggressor_classification_reason;
+  classificationSource: aggressor_classification_source;
+  classificationConfidence: aggressor_confidence;
+  matchedBookTimestamp: Date | null;
+  matchedBookAgeMs: number | null;
   ingestionSource: ingestion_source;
   participantAccount: string;
   orderId: string;
@@ -117,6 +131,13 @@ export type microstructure_aggregate = {
   spread: number | null;
   depthImbalance: number | null;
   orderFlowImbalance: number;
+  bookAgeMs: number | null;
+  marketPriceAgeMs: number | null;
+  markPrice: number | null;
+  midPrice: number | null;
+  oraclePrice: number | null;
+  fundingRate: number | null;
+  openInterest: number | null;
 };
 
 function validateMarket(received: string, expected: string): void {
@@ -226,6 +247,10 @@ function normalizeTradeRow(
     marketAddress,
     side: classification.side,
     classificationReason: classification.reason,
+    classificationSource: classification.side === 'UNKNOWN' ? 'UNKNOWN' : 'EXPLICIT',
+    classificationConfidence: classification.side === 'UNKNOWN' ? 'NONE' : 'HIGH',
+    matchedBookTimestamp: null,
+    matchedBookAgeMs: null,
     ingestionSource,
     participantAccount: trade.account,
     orderId,
@@ -236,6 +261,70 @@ function normalizeTradeRow(
     exchangeTimestamp: new Date(trade.transaction_unix_ms),
     receivedAt,
   };
+}
+
+export function estimateWebSocketTradeAggressors(
+  trades: readonly normalized_trade[],
+  latestBook: order_book_snapshot | undefined,
+  maximumBookAgeMs: number,
+): normalized_trade[] {
+  const grouped = new Map<string, normalized_trade[]>();
+  for (const trade of trades) {
+    const rows = grouped.get(trade.economicTradeId) ?? [];
+    rows.push(trade);
+    grouped.set(trade.economicTradeId, rows);
+  }
+  return trades.map((trade) => {
+    if (trade.ingestionSource !== 'WEBSOCKET' || trade.side !== 'UNKNOWN') return trade;
+    const rows = grouped.get(trade.economicTradeId) ?? [trade];
+    if (rows.some((row) => row.classificationSource === 'EXPLICIT' && row.side !== 'UNKNOWN'))
+      return trade;
+    const agrees = rows.every(
+      (row) =>
+        row.marketAddress === trade.marketAddress &&
+        row.price === trade.price &&
+        row.size === trade.size &&
+        row.exchangeTimestamp.getTime() === trade.exchangeTimestamp.getTime() &&
+        row.transactionVersion === trade.transactionVersion,
+    );
+    if (!agrees) return { ...trade, classificationReason: 'AMBIGUOUS_ECONOMIC_FIELDS' };
+    if (latestBook === undefined || latestBook.receivedAt > trade.receivedAt)
+      return { ...trade, classificationReason: 'QUOTE_TEST_NO_PRIOR_BOOK' };
+    if (latestBook.bestBid >= latestBook.bestAsk || latestBook.midPrice <= 0)
+      return { ...trade, classificationReason: 'QUOTE_TEST_INVALID_BOOK' };
+    const age = trade.receivedAt.getTime() - latestBook.receivedAt.getTime();
+    if (age > maximumBookAgeMs)
+      return {
+        ...trade,
+        classificationReason: 'QUOTE_TEST_STALE_BOOK',
+        matchedBookTimestamp: latestBook.exchangeTimestamp,
+        matchedBookAgeMs: age,
+      };
+    let side: trade_side = 'UNKNOWN';
+    let reason: aggressor_classification_reason = 'QUOTE_TEST_EXACT_MID';
+    if (trade.price >= latestBook.bestAsk) {
+      side = 'BUY';
+      reason = 'QUOTE_TEST_AT_ASK';
+    } else if (trade.price <= latestBook.bestBid) {
+      side = 'SELL';
+      reason = 'QUOTE_TEST_AT_BID';
+    } else if (trade.price > latestBook.midPrice) {
+      side = 'BUY';
+      reason = 'QUOTE_TEST_ABOVE_MID';
+    } else if (trade.price < latestBook.midPrice) {
+      side = 'SELL';
+      reason = 'QUOTE_TEST_BELOW_MID';
+    }
+    return {
+      ...trade,
+      side,
+      classificationReason: reason,
+      classificationSource: side === 'UNKNOWN' ? 'UNKNOWN' : 'ESTIMATED_QUOTE_TEST',
+      classificationConfidence: side === 'UNKNOWN' ? 'NONE' : 'MEDIUM',
+      matchedBookTimestamp: latestBook.exchangeTimestamp,
+      matchedBookAgeMs: age,
+    };
+  });
 }
 
 export function normalizeTradePayload(

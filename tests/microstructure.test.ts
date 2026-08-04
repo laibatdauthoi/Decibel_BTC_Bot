@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BTC_market_metadata } from '../src/decibel_client.js';
 import {
+  estimateWebSocketTradeAggressors,
   normalizeDepthPayload,
   normalizeMarketPricePayload,
   normalizeTradePayload,
@@ -163,6 +164,73 @@ describe('microstructure normalization', () => {
   });
 });
 
+describe('WebSocket quote-test aggressor estimation', () => {
+  function unknownTrade(priceValue: number, receivedAt = 10_000) {
+    return normalizeTradePayload(
+      {
+        trades: [
+          {
+            trade_id: `quote-${priceValue}`,
+            account: 'participant',
+            market: marketAddress,
+            action: 'Trade',
+            size: 1,
+            price: priceValue,
+            transaction_unix_ms: 9_900,
+            transaction_version: 42,
+          },
+        ],
+      },
+      marketAddress,
+      new Date(receivedAt),
+    );
+  }
+
+  const validBook = normalizeDepthPayload(depth(9_900), marketAddress, new Date(9_950));
+
+  it.each([
+    [101, 'BUY', 'QUOTE_TEST_AT_ASK'],
+    [100, 'SELL', 'QUOTE_TEST_AT_BID'],
+    [100.75, 'BUY', 'QUOTE_TEST_ABOVE_MID'],
+    [100.25, 'SELL', 'QUOTE_TEST_BELOW_MID'],
+    [100.5, 'UNKNOWN', 'QUOTE_TEST_EXACT_MID'],
+  ] as const)('classifies price %s as %s using %s', (tradePrice, side, reason) => {
+    expect(
+      estimateWebSocketTradeAggressors(unknownTrade(tradePrice), validBook, 2_000)[0],
+    ).toMatchObject({
+      side,
+      classificationReason: reason,
+      classificationSource: side === 'UNKNOWN' ? 'UNKNOWN' : 'ESTIMATED_QUOTE_TEST',
+      matchedBookAgeMs: 50,
+    });
+  });
+
+  it('rejects future, stale, crossed, and conflicting book matches', () => {
+    const future = { ...validBook, receivedAt: new Date(10_001) };
+    expect(
+      estimateWebSocketTradeAggressors(unknownTrade(101), future, 2_000)[0]?.classificationReason,
+    ).toBe('QUOTE_TEST_NO_PRIOR_BOOK');
+    expect(
+      estimateWebSocketTradeAggressors(unknownTrade(101, 20_000), validBook, 2_000)[0]
+        ?.classificationReason,
+    ).toBe('QUOTE_TEST_STALE_BOOK');
+    const crossed = { ...validBook, bestBid: 102, bestAsk: 101 };
+    expect(
+      estimateWebSocketTradeAggressors(unknownTrade(101), crossed, 2_000)[0]?.classificationReason,
+    ).toBe('QUOTE_TEST_INVALID_BOOK');
+    const rows = unknownTrade(101);
+    const conflict = [
+      { ...rows[0]!, economicTradeId: 'same' },
+      { ...rows[0]!, economicTradeId: 'same', price: 102, eventId: 'other' },
+    ];
+    expect(
+      estimateWebSocketTradeAggressors(conflict, validBook, 2_000).map(
+        (row) => row.classificationReason,
+      ),
+    ).toEqual(['AMBIGUOUS_ECONOMIC_FIELDS', 'AMBIGUOUS_ECONOMIC_FIELDS']);
+  });
+});
+
 describe('microstructure persistence', () => {
   it('uses WAL, migrations, bounded transactions, and replay-safe keys', () => {
     const Repository = new microstructure_repository(':memory:');
@@ -191,7 +259,7 @@ describe('microstructure persistence', () => {
     Repository.close();
   });
 
-  it('marks conflicting economic rows ambiguous and provides no aggregate trade', () => {
+  it('marks conflicting economic rows ambiguous and exposes one unknown-volume trade', () => {
     const Repository = new microstructure_repository(':memory:');
     const base = {
       trade_id: 'conflict',
@@ -211,7 +279,38 @@ describe('microstructure persistence', () => {
     );
     const result = Repository.saveBatch(rows, [], [], [], 10);
     expect(result).toMatchObject({ economicTrades: 1, participantRows: 2, ambiguousTrades: 1 });
-    expect(result.aggregateTrades).toEqual([]);
+    expect(result.aggregateTrades).toHaveLength(1);
+    expect(result.aggregateTrades[0]).toMatchObject({
+      side: 'UNKNOWN',
+      classificationReason: 'AMBIGUOUS_ECONOMIC_FIELDS',
+    });
+    Repository.close();
+  });
+
+  it('upserts an aggregate replay idempotently', () => {
+    const Repository = new microstructure_repository(':memory:');
+    const aggregate = {
+      marketAddress,
+      secondTimestamp: new Date(10_000),
+      buyVolume: 0,
+      sellVolume: 0,
+      unknownVolume: 0,
+      tradeCount: 0,
+      vwap: null,
+      spread: null,
+      depthImbalance: null,
+      orderFlowImbalance: 0,
+      bookAgeMs: null,
+      marketPriceAgeMs: null,
+      markPrice: null,
+      midPrice: null,
+      oraclePrice: null,
+      fundingRate: null,
+      openInterest: null,
+    };
+    Repository.saveBatch([], [], [], [aggregate], 10);
+    Repository.saveBatch([], [], [], [aggregate], 10);
+    expect(Repository.getCounts().aggregates).toBe(1);
     Repository.close();
   });
 });
@@ -267,6 +366,8 @@ describe('microstructure collector', () => {
       tradesStaleAfterMs: 10_000,
       marketPriceStaleAfterMs: 4_000,
       maximumBatchSize: 10,
+      maximumBookAgeMs: 2_000,
+      maximumPriceAgeMs: 5_000,
       heartbeatIntervalMs: 1_000,
       reconnectBaseDelayMs: 100,
       reconnectMaximumDelayMs: 400,
@@ -396,7 +497,7 @@ describe('microstructure collector', () => {
     expect(fake.Repository.getAggregates()).toEqual([
       {
         marketAddress,
-        secondTimestamp: new Date(9_000),
+        secondTimestamp: new Date(10_000),
         buyVolume: 2,
         sellVolume: 1,
         unknownVolume: 0,
@@ -405,6 +506,13 @@ describe('microstructure collector', () => {
         spread: 1,
         depthImbalance: 0,
         orderFlowImbalance: 1 / 3,
+        bookAgeMs: 1_000,
+        marketPriceAgeMs: 1_000,
+        markPrice: 100.5,
+        midPrice: 100.6,
+        oraclePrice: 100.4,
+        fundingRate: 0.00015,
+        openInterest: 50,
       },
     ]);
     expect(fake.Collector.getCounters()).toMatchObject({
@@ -419,6 +527,85 @@ describe('microstructure collector', () => {
       trades: 'healthy',
       marketPrice: 'healthy',
     });
+    fake.Collector.stop();
+    fake.Repository.close();
+  });
+
+  it('persists every completed active second including empty seconds', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const fake = makeCollector();
+    await fake.Collector.start();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(fake.Repository.getAggregates().map((aggregate) => aggregate.secondTimestamp)).toEqual([
+      new Date(10_000),
+      new Date(11_000),
+      new Date(12_000),
+    ]);
+    expect(fake.Repository.getAggregates()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tradeCount: 0,
+          buyVolume: 0,
+          sellVolume: 0,
+          unknownVolume: 0,
+          vwap: null,
+        }),
+      ]),
+    );
+    fake.Collector.stop();
+    fake.Repository.close();
+  });
+
+  it('flushes all completed seconds during graceful shutdown', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const fake = makeCollector();
+    await fake.Collector.start();
+    vi.setSystemTime(12_500);
+    fake.Collector.stop();
+    expect(fake.Repository.getAggregates().map((aggregate) => aggregate.secondTimestamp)).toEqual([
+      new Date(10_000),
+      new Date(11_000),
+    ]);
+    fake.Repository.close();
+  });
+
+  it('marks stale carried features unavailable without losing their ages', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const fake = makeCollector();
+    await fake.Collector.start();
+    fake.handlers.depth?.(depth());
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(
+      fake.Repository.getAggregates().map((aggregate) => ({
+        second: aggregate.secondTimestamp.getTime(),
+        bookAgeMs: aggregate.bookAgeMs,
+        spread: aggregate.spread,
+      })),
+    ).toEqual([
+      { second: 10_000, bookAgeMs: 1_000, spread: 1 },
+      { second: 11_000, bookAgeMs: 2_000, spread: 1 },
+      { second: 12_000, bookAgeMs: 3_000, spread: null },
+    ]);
+    fake.Collector.stop();
+    fake.Repository.close();
+  });
+
+  it('does not create aggregates for a reconnect gap', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const fake = makeCollector();
+    await fake.Collector.start();
+    await vi.advanceTimersByTimeAsync(1_500);
+    fake.getError()?.();
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fake.Repository.getAggregates().map((aggregate) => aggregate.secondTimestamp)).toEqual([
+      new Date(10_000),
+      new Date(12_000),
+    ]);
     fake.Collector.stop();
     fake.Repository.close();
   });
@@ -459,7 +646,7 @@ describe('microstructure collector', () => {
     expect(fake.Repository.getAggregates()).toEqual([
       {
         marketAddress,
-        secondTimestamp: new Date(9_000),
+        secondTimestamp: new Date(10_000),
         buyVolume: 2,
         sellVolume: 0,
         unknownVolume: 0,
@@ -468,8 +655,46 @@ describe('microstructure collector', () => {
         spread: 1,
         depthImbalance: 0,
         orderFlowImbalance: 1,
+        bookAgeMs: 1_000,
+        marketPriceAgeMs: null,
+        markPrice: null,
+        midPrice: null,
+        oraclePrice: null,
+        fundingRate: null,
+        openInterest: null,
       },
     ]);
+    fake.Collector.stop();
+    fake.Repository.close();
+  });
+
+  it('counts one ambiguous economic fill once as unknown volume', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const fake = makeCollector();
+    await fake.Collector.start();
+    const common = {
+      trade_id: 'ambiguous-fill',
+      market: marketAddress,
+      action: 'Trade',
+      size: 1,
+      transaction_unix_ms: 9_900,
+      transaction_version: 88,
+    };
+    fake.handlers.trades?.({
+      trades: [
+        { ...common, account: 'a', price: 100 },
+        { ...common, account: 'b', price: 101 },
+      ],
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(fake.Repository.getAggregates()[0]).toMatchObject({
+      tradeCount: 1,
+      buyVolume: 0,
+      sellVolume: 0,
+      unknownVolume: 1,
+      orderFlowImbalance: 0,
+    });
     fake.Collector.stop();
     fake.Repository.close();
   });

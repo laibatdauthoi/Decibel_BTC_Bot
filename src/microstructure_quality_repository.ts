@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 
 import type {
   aggressor_classification_reason,
+  aggressor_classification_source,
   ingestion_source,
   trade_side,
 } from './microstructure.js';
@@ -9,14 +10,21 @@ import type {
   active_session,
   book_quality_row,
   economic_trade_quality_row,
+  latest_collector_session_input,
   microstructure_quality_input,
   participant_quality_row,
   timestamped_row,
 } from './microstructure_quality.js';
+import { MICROSTRUCTURE_FEATURE_VERSION } from './microstructure_repository.js';
 
 type count_row = { count: number };
 type market_row = { market_address: string };
-type session_row = { session_id: string; started_at_ms: number; stopped_at_ms: number | null };
+type session_row = {
+  session_id: string;
+  started_at_ms: number;
+  stopped_at_ms: number | null;
+  feature_version: string;
+};
 type event_row = { session_id: string; event_type: string; occurred_at_ms: number };
 
 export class microstructure_quality_repository {
@@ -66,6 +74,7 @@ export class microstructure_quality_repository {
         books: [],
         marketPrices: [],
         aggregateTimestampsMs: [],
+        aggregateFeatureAges: [],
         activeSessions: [],
         cumulativeCounts,
         cumulativeDiagnostics,
@@ -81,9 +90,14 @@ export class microstructure_quality_repository {
           ambiguous: number;
           aggressor_side: trade_side;
           classification_reason: aggressor_classification_reason;
+          classification_source: aggressor_classification_source;
+          matched_book_age_ms: number | null;
         }
       >(
-        `SELECT economic_trade_id, exchange_timestamp_ms, ingestion_source, ambiguous, aggressor_side, classification_reason FROM microstructure_economic_trades WHERE market_address=@marketAddress AND exchange_timestamp_ms>=@startTimeMs AND exchange_timestamp_ms<@endTimeMs`,
+        `SELECT economic_trade_id, exchange_timestamp_ms, ingestion_source, ambiguous,
+         aggressor_side, classification_reason, classification_source, matched_book_age_ms
+         FROM microstructure_economic_trades WHERE market_address=@marketAddress
+         AND exchange_timestamp_ms>=@startTimeMs AND exchange_timestamp_ms<@endTimeMs`,
       )
       .all(parameters)
       .map((row): economic_trade_quality_row => ({
@@ -93,6 +107,8 @@ export class microstructure_quality_repository {
         ambiguous: row.ambiguous === 1,
         aggressorSide: row.aggressor_side,
         classificationReason: row.classification_reason,
+        classificationSource: row.classification_source,
+        matchedBookAgeMs: row.matched_book_age_ms,
       }));
     const participantRows = this.database
       .prepare<
@@ -163,6 +179,29 @@ export class microstructure_quality_repository {
       )
       .all(parameters)
       .map((row) => row.second_timestamp_ms);
+    const aggregateFeatureAges = this.database
+      .prepare<
+        typeof parameters,
+        {
+          second_timestamp_ms: number;
+          book_age_ms: number | null;
+          market_price_age_ms: number | null;
+          spread: number | null;
+          mark_price: number | null;
+        }
+      >(
+        `SELECT second_timestamp_ms, book_age_ms, market_price_age_ms, spread, mark_price
+         FROM microstructure_aggregates_1s WHERE market_address=@marketAddress
+         AND second_timestamp_ms>=@startTimeMs AND second_timestamp_ms<@endTimeMs`,
+      )
+      .all(parameters)
+      .map((row) => ({
+        timestampMs: row.second_timestamp_ms,
+        bookAgeMs: row.book_age_ms,
+        marketPriceAgeMs: row.market_price_age_ms,
+        spreadAvailable: row.spread !== null,
+        marketPriceAvailable: row.mark_price !== null,
+      }));
     return {
       startTimeMs,
       endTimeMs,
@@ -172,10 +211,209 @@ export class microstructure_quality_repository {
       books,
       marketPrices,
       aggregateTimestampsMs,
+      aggregateFeatureAges,
       activeSessions: this.loadActiveSessions(marketAddress, startTimeMs, endTimeMs),
+      latestCollectorSession: this.loadLatestCollectorSession(marketAddress, endTimeMs),
       cumulativeCounts,
       cumulativeDiagnostics,
     };
+  }
+
+  private loadLatestCollectorSession(
+    marketAddress: string,
+    currentTimeMs: number,
+  ): latest_collector_session_input | null {
+    const session = this.database
+      .prepare<[string, string], session_row>(
+        `SELECT session_id, started_at_ms, stopped_at_ms, feature_version
+         FROM microstructure_collector_sessions WHERE market_address=? AND feature_version=?
+         ORDER BY started_at_ms DESC LIMIT 1`,
+      )
+      .get(marketAddress, MICROSTRUCTURE_FEATURE_VERSION);
+    if (session === undefined) return null;
+    const endTimeMs = Math.min(session.stopped_at_ms ?? currentTimeMs, currentTimeMs);
+    const parameters = {
+      marketAddress,
+      sessionId: session.session_id,
+      startTimeMs: session.started_at_ms,
+      endTimeMs,
+    };
+    const participantRows = this.database
+      .prepare<
+        typeof parameters,
+        {
+          row_key: string;
+          economic_trade_id: string;
+          exchange_timestamp_ms: number;
+          received_at_ms: number;
+          persisted_at_ms: number;
+          ingestion_source: ingestion_source;
+        }
+      >(
+        `SELECT row_key, economic_trade_id, exchange_timestamp_ms, received_at_ms,
+         persisted_at_ms, ingestion_source FROM microstructure_trade_participants
+         WHERE market_address=@marketAddress AND received_at_ms>=@startTimeMs
+         AND received_at_ms<@endTimeMs`,
+      )
+      .all(parameters)
+      .map((row): participant_quality_row => ({
+        rowKey: row.row_key,
+        economicTradeId: row.economic_trade_id,
+        exchangeTimestampMs: row.exchange_timestamp_ms,
+        receivedAtMs: row.received_at_ms,
+        persistedAtMs: row.persisted_at_ms,
+        ingestionSource: row.ingestion_source,
+      }));
+    const economicIds = [...new Set(participantRows.map((row) => row.economicTradeId))];
+    const economicTrades =
+      economicIds.length === 0
+        ? []
+        : this.database
+            .prepare<
+              [string],
+              {
+                economic_trade_id: string;
+                exchange_timestamp_ms: number;
+                ingestion_source: ingestion_source;
+                ambiguous: number;
+                aggressor_side: trade_side;
+                classification_reason: aggressor_classification_reason;
+                classification_source: aggressor_classification_source;
+                matched_book_age_ms: number | null;
+              }
+            >(
+              `SELECT economic_trade_id, exchange_timestamp_ms, ingestion_source, ambiguous,
+               aggressor_side, classification_reason, classification_source, matched_book_age_ms
+               FROM microstructure_economic_trades WHERE economic_trade_id IN
+               (SELECT value FROM json_each(?))`,
+            )
+            .all(JSON.stringify(economicIds))
+            .map((row): economic_trade_quality_row => ({
+              economicTradeId: row.economic_trade_id,
+              exchangeTimestampMs: row.exchange_timestamp_ms,
+              ingestionSource: row.ingestion_source,
+              ambiguous: row.ambiguous === 1,
+              aggressorSide: row.aggressor_side,
+              classificationReason: row.classification_reason,
+              classificationSource: row.classification_source,
+              matchedBookAgeMs: row.matched_book_age_ms,
+            }));
+    const books = this.loadSessionBooks(parameters);
+    const marketPrices = this.loadSessionPrices(parameters);
+    const aggregateFeatureAges = this.loadSessionAggregates(parameters);
+    const diagnostics = Object.fromEntries(
+      this.database
+        .prepare<[string], { metric: string; stream: string; count: number }>(
+          'SELECT metric, stream, count FROM microstructure_session_diagnostics WHERE session_id=?',
+        )
+        .all(session.session_id)
+        .map((row) => [`${row.metric}${row.stream === '' ? '' : `.${row.stream}`}`, row.count]),
+    );
+    return {
+      sessionId: session.session_id,
+      featureVersion: session.feature_version,
+      startedAtMs: session.started_at_ms,
+      endedAtMs: session.stopped_at_ms,
+      activeSessions: this.loadActiveSessions(
+        marketAddress,
+        session.started_at_ms,
+        endTimeMs,
+      ).filter((segment) => segment.sessionId === session.session_id),
+      economicTrades,
+      participantRows,
+      books,
+      marketPrices,
+      aggregateTimestampsMs: aggregateFeatureAges.map((row) => row.timestampMs),
+      aggregateFeatureAges,
+      diagnostics,
+    };
+  }
+
+  private loadSessionBooks(parameters: {
+    marketAddress: string;
+    startTimeMs: number;
+    endTimeMs: number;
+  }) {
+    return this.database
+      .prepare<
+        typeof parameters,
+        {
+          exchange_timestamp_ms: number;
+          received_at_ms: number;
+          persisted_at_ms: number;
+          spread: number;
+          mid_price: number;
+          best_bid_size: number;
+          best_ask_size: number;
+          depth_imbalance: number;
+        }
+      >(
+        `SELECT exchange_timestamp_ms, received_at_ms, persisted_at_ms, spread, mid_price,
+       best_bid_size, best_ask_size, depth_imbalance FROM order_book_snapshots
+       WHERE market_address=@marketAddress AND received_at_ms>=@startTimeMs AND received_at_ms<@endTimeMs`,
+      )
+      .all(parameters)
+      .map((row): book_quality_row => ({
+        exchangeTimestampMs: row.exchange_timestamp_ms,
+        receivedAtMs: row.received_at_ms,
+        persistedAtMs: row.persisted_at_ms,
+        spread: row.spread,
+        midPrice: row.mid_price,
+        bestBidSize: row.best_bid_size,
+        bestAskSize: row.best_ask_size,
+        depthImbalance: row.depth_imbalance,
+      }));
+  }
+
+  private loadSessionPrices(parameters: {
+    marketAddress: string;
+    startTimeMs: number;
+    endTimeMs: number;
+  }) {
+    return this.database
+      .prepare<
+        typeof parameters,
+        { exchange_timestamp_ms: number; received_at_ms: number; persisted_at_ms: number }
+      >(
+        `SELECT exchange_timestamp_ms, received_at_ms, persisted_at_ms FROM market_price_snapshots
+       WHERE market_address=@marketAddress AND received_at_ms>=@startTimeMs AND received_at_ms<@endTimeMs`,
+      )
+      .all(parameters)
+      .map((row): timestamped_row => ({
+        exchangeTimestampMs: row.exchange_timestamp_ms,
+        receivedAtMs: row.received_at_ms,
+        persistedAtMs: row.persisted_at_ms,
+      }));
+  }
+
+  private loadSessionAggregates(parameters: {
+    marketAddress: string;
+    startTimeMs: number;
+    endTimeMs: number;
+  }) {
+    return this.database
+      .prepare<
+        typeof parameters,
+        {
+          second_timestamp_ms: number;
+          book_age_ms: number | null;
+          market_price_age_ms: number | null;
+          spread: number | null;
+          mark_price: number | null;
+        }
+      >(
+        `SELECT second_timestamp_ms, book_age_ms, market_price_age_ms, spread, mark_price
+       FROM microstructure_aggregates_1s WHERE market_address=@marketAddress
+       AND second_timestamp_ms>=@startTimeMs AND second_timestamp_ms<@endTimeMs`,
+      )
+      .all(parameters)
+      .map((row) => ({
+        timestampMs: row.second_timestamp_ms,
+        bookAgeMs: row.book_age_ms,
+        marketPriceAgeMs: row.market_price_age_ms,
+        spreadAvailable: row.spread !== null,
+        marketPriceAvailable: row.mark_price !== null,
+      }));
   }
 
   private loadActiveSessions(

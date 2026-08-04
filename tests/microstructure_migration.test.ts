@@ -53,23 +53,36 @@ describe('microstructure schema migration', () => {
     });
     expect(
       MigratedDatabase.prepare(
-        'SELECT ingestion_source, classification_reason, persisted_at_ms FROM microstructure_economic_trades',
+        'SELECT ingestion_source, classification_reason, classification_source, classification_confidence, matched_book_timestamp_ms, matched_book_age_ms, persisted_at_ms FROM microstructure_economic_trades',
       ).get(),
     ).toEqual({
       ingestion_source: 'UNKNOWN',
       classification_reason: 'LEGACY_UNKNOWN',
+      classification_source: 'UNKNOWN',
+      classification_confidence: 'NONE',
+      matched_book_timestamp_ms: null,
+      matched_book_age_ms: null,
       persisted_at_ms: 0,
     });
     expect(
       MigratedDatabase.prepare(
         'SELECT MAX(version) AS version FROM microstructure_schema_migrations',
       ).get(),
-    ).toEqual({ version: 4 });
+    ).toEqual({ version: 6 });
     expect(
       MigratedDatabase.prepare(
-        'SELECT started_at_ms, stopped_at_ms, graceful_shutdown_at_ms FROM microstructure_collector_sessions',
+        'SELECT started_at_ms, stopped_at_ms, graceful_shutdown_at_ms, feature_version FROM microstructure_collector_sessions',
       ).get(),
-    ).toEqual({ started_at_ms: 3_000, stopped_at_ms: 6_000, graceful_shutdown_at_ms: 6_000 });
+    ).toEqual({
+      started_at_ms: 3_000,
+      stopped_at_ms: 6_000,
+      graceful_shutdown_at_ms: 6_000,
+      feature_version: 'V5_CONTINUOUS_AGGREGATES',
+    });
+    const featureColumn = MigratedDatabase.prepare(
+      "SELECT dflt_value FROM pragma_table_info('microstructure_collector_sessions') WHERE name='feature_version'",
+    ).get();
+    expect(featureColumn).toEqual({ dflt_value: "'LEGACY_UNKNOWN'" });
     expect(
       MigratedDatabase.prepare(
         "SELECT count FROM microstructure_diagnostics WHERE metric='malformed_messages' AND stream='depth'",

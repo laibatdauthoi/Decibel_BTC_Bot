@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type {
   aggressor_classification_reason,
+  aggressor_classification_source,
   ingestion_source,
   trade_side,
 } from './microstructure.js';
@@ -17,6 +18,8 @@ export const MICROSTRUCTURE_QUALITY_THRESHOLDS = {
   failureAmbiguousRatio: 0.05,
   warningUnknownAggressorRatio: 0.2,
   failureUnknownAggressorRatio: 0.5,
+  warningMissingFeatureRatio: 0.1,
+  failureMissingFeatureRatio: 0.5,
 } as const;
 
 const QualityEnvironmentSchema = z.object({
@@ -56,6 +59,8 @@ export type economic_trade_quality_row = {
   ambiguous: boolean;
   aggressorSide: trade_side;
   classificationReason: aggressor_classification_reason;
+  classificationSource: aggressor_classification_source;
+  matchedBookAgeMs: number | null;
 };
 export type book_quality_row = timestamped_row & {
   spread: number;
@@ -65,6 +70,20 @@ export type book_quality_row = timestamped_row & {
   depthImbalance: number;
 };
 export type active_session = { sessionId: string; startTimeMs: number; endTimeMs: number };
+export type latest_collector_session_input = {
+  sessionId: string;
+  featureVersion: string;
+  startedAtMs: number;
+  endedAtMs: number | null;
+  activeSessions: active_session[];
+  economicTrades: economic_trade_quality_row[];
+  participantRows: participant_quality_row[];
+  books: book_quality_row[];
+  marketPrices: timestamped_row[];
+  aggregateTimestampsMs: number[];
+  aggregateFeatureAges: microstructure_quality_input['aggregateFeatureAges'];
+  diagnostics: Record<string, number> | null;
+};
 export type microstructure_quality_input = {
   startTimeMs: number;
   endTimeMs: number;
@@ -74,6 +93,13 @@ export type microstructure_quality_input = {
   books: book_quality_row[];
   marketPrices: timestamped_row[];
   aggregateTimestampsMs: number[];
+  aggregateFeatureAges: Array<{
+    timestampMs: number;
+    bookAgeMs: number | null;
+    marketPriceAgeMs: number | null;
+    spreadAvailable: boolean;
+    marketPriceAvailable: boolean;
+  }>;
   activeSessions: active_session[];
   cumulativeCounts: {
     economicTrades: number;
@@ -83,6 +109,7 @@ export type microstructure_quality_input = {
     aggregates: number;
   };
   cumulativeDiagnostics: Record<string, number>;
+  latestCollectorSession?: latest_collector_session_input | null;
 };
 
 type percentiles = {
@@ -128,15 +155,16 @@ function countReasons(
   return counts;
 }
 
-export function analyzeMicrostructureQuality(input: microstructure_quality_input) {
+function analyzeQualityWindow(input: microstructure_quality_input, useFullSessionBounds = false) {
   if (input.endTimeMs <= input.startTimeMs) throw new Error('Analysis end must be after start');
   const participants = [...new Map(input.participantRows.map((row) => [row.rowKey, row])).values()];
   const trades = [
     ...new Map(input.economicTrades.map((row) => [row.economicTradeId, row])).values(),
   ];
   const duplicateRawRows = input.participantRows.length - participants.length;
-  const ambiguous = trades.filter((row) => row.ambiguous);
-  const unknown = trades.filter((row) => row.aggressorSide === 'UNKNOWN');
+  const websocketTrades = trades.filter((row) => row.ingestionSource === 'WEBSOCKET');
+  const ambiguous = websocketTrades.filter((row) => row.ambiguous);
+  const unknown = websocketTrades.filter((row) => row.aggressorSide === 'UNKNOWN');
   const websocketParticipants = participants.filter((row) => row.ingestionSource === 'WEBSOCKET');
   const bootstrapParticipants = participants.filter(
     (row) => row.ingestionSource === 'REST_BOOTSTRAP',
@@ -164,11 +192,22 @@ export function analyzeMicrostructureQuality(input: microstructure_quality_input
   const firstObserved = observed[0] ?? null;
   const lastObserved = observed.at(-1) ?? null;
   const activeSeconds = new Set<number>();
-  if (firstObserved !== null && lastObserved !== null) {
+  if (useFullSessionBounds || (firstObserved !== null && lastObserved !== null)) {
     for (const session of input.activeSessions) {
-      const start = Math.ceil(Math.max(session.startTimeMs, firstObserved) / 1_000) * 1_000;
+      const start =
+        Math.ceil(
+          Math.max(session.startTimeMs, useFullSessionBounds ? input.startTimeMs : firstObserved!) /
+            1_000,
+        ) * 1_000;
       const end =
-        Math.ceil(Math.min(session.endTimeMs, lastObserved + 1_000) / 1_000) * 1_000 - 1_000;
+        Math.floor(
+          Math.min(
+            session.endTimeMs,
+            useFullSessionBounds ? input.endTimeMs : lastObserved! + 1_000,
+          ) / 1_000,
+        ) *
+          1_000 -
+        1_000;
       for (let time = start; time <= end; time += 1_000) activeSeconds.add(time);
     }
   }
@@ -232,15 +271,15 @@ export function analyzeMicrostructureQuality(input: microstructure_quality_input
     if (metric.negativeCount > 0) raiseCollection(1, `${dataset}_negative_latency`);
   }
   if (input.marketPrices.length === 0) raiseCollection(1, 'market_price_coverage');
-  const ambiguousRatio = ratio(ambiguous.length, trades.length);
-  const unknownRatio = ratio(unknown.length, trades.length);
+  const ambiguousRatio = ratio(ambiguous.length, websocketTrades.length);
+  const unknownRatio = ratio(unknown.length, websocketTrades.length);
   let directionalSeverity = 0;
   const directionalReasons: string[] = [];
   const raiseDirectional = (level: number, reason: string): void => {
     directionalSeverity = Math.max(directionalSeverity, level);
     directionalReasons.push(reason);
   };
-  if (trades.length === 0) raiseDirectional(2, 'NOT_ENOUGH_DATA');
+  if (websocketTrades.length === 0) raiseDirectional(2, 'NOT_ENOUGH_DATA');
   if (ambiguousRatio > MICROSTRUCTURE_QUALITY_THRESHOLDS.failureAmbiguousRatio)
     raiseDirectional(2, 'ambiguous_trade_ratio');
   else if (ambiguousRatio > MICROSTRUCTURE_QUALITY_THRESHOLDS.warningAmbiguousRatio)
@@ -256,6 +295,28 @@ export function analyzeMicrostructureQuality(input: microstructure_quality_input
       .filter((row) => row.midPrice > 0)
       .map((row) => (row.spread / row.midPrice) * 10_000),
   );
+  const aggregateFeatures = input.aggregateFeatureAges.filter((row) =>
+    activeSeconds.has(row.timestampMs),
+  );
+  const missingBookFeatures = aggregateFeatures.filter((row) => !row.spreadAvailable).length;
+  const missingPriceFeatures = aggregateFeatures.filter((row) => !row.marketPriceAvailable).length;
+  for (const [feature, missingCount] of [
+    ['book', missingBookFeatures],
+    ['market_price', missingPriceFeatures],
+  ] as const) {
+    const missingFeatureRatio = ratio(missingCount, aggregateFeatures.length);
+    if (missingFeatureRatio > MICROSTRUCTURE_QUALITY_THRESHOLDS.failureMissingFeatureRatio)
+      raiseCollection(2, `${feature}_feature_missing_ratio`);
+    else if (missingFeatureRatio > MICROSTRUCTURE_QUALITY_THRESHOLDS.warningMissingFeatureRatio)
+      raiseCollection(1, `${feature}_feature_missing_ratio`);
+  }
+  const directionSources = {
+    EXPLICIT: websocketTrades.filter((row) => row.classificationSource === 'EXPLICIT').length,
+    ESTIMATED_QUOTE_TEST: websocketTrades.filter(
+      (row) => row.classificationSource === 'ESTIMATED_QUOTE_TEST',
+    ).length,
+    UNKNOWN: websocketTrades.filter((row) => row.classificationSource === 'UNKNOWN').length,
+  };
   return {
     status:
       collectionSeverity === 2 || directionalSeverity === 2
@@ -298,6 +359,13 @@ export function analyzeMicrostructureQuality(input: microstructure_quality_input
         gapTimestamps: gaps.slice(0, 20),
         omittedGapRangeCount: Math.max(0, gaps.length - 20),
       },
+      aggregateFeatureCompleteness: {
+        sampleCount: aggregateFeatures.length,
+        staleOrMissingBookCount: missingBookFeatures,
+        staleOrMissingBookRatio: ratio(missingBookFeatures, aggregateFeatures.length),
+        staleOrMissingMarketPriceCount: missingPriceFeatures,
+        staleOrMissingMarketPriceRatio: ratio(missingPriceFeatures, aggregateFeatures.length),
+      },
       realtimeLatencyMs: realtimeLatency,
       persistenceLatencyMs: {
         websocketTrades: persistenceLatency(websocketParticipants),
@@ -329,6 +397,7 @@ export function analyzeMicrostructureQuality(input: microstructure_quality_input
         rawRows: input.participantRows.length,
         participantRows: participants.length,
         economicTrades: trades.length,
+        recentWebSocketEconomicTrades: websocketTrades.length,
         duplicateRawRows,
         duplicateRawRowRatio: ratio(duplicateRawRows, input.participantRows.length),
         ambiguousTrades: ambiguous.length,
@@ -337,12 +406,157 @@ export function analyzeMicrostructureQuality(input: microstructure_quality_input
         unknownAggressors: unknown.length,
         unknownAggressorRatio: unknownRatio,
         unknownReasonBreakdown: countReasons(unknown, () => true),
+        directionSourceBreakdown: directionSources,
+        quoteTestMatchedBookAgeMs: calculatePercentiles(
+          websocketTrades
+            .filter((row) => row.classificationSource === 'ESTIMATED_QUOTE_TEST')
+            .flatMap((row) => (row.matchedBookAgeMs === null ? [] : [row.matchedBookAgeMs])),
+        ),
+        quoteTestFailureReasonBreakdown: countReasons(unknown, (row) =>
+          row.classificationReason.startsWith('QUOTE_TEST_'),
+        ),
         ingestionSources: {
           REST_BOOTSTRAP: bootstrapParticipants.length,
           WEBSOCKET: websocketParticipants.length,
           UNKNOWN: participants.filter((row) => row.ingestionSource === 'UNKNOWN').length,
         },
       },
+    },
+    cumulativeStorage: input.cumulativeCounts,
+    cumulativeDiagnostics: input.cumulativeDiagnostics,
+  };
+}
+
+function inferLatestSession(
+  input: microstructure_quality_input,
+): latest_collector_session_input | null {
+  const latest = [...input.activeSessions].sort(
+    (left, right) => right.startTimeMs - left.startTimeMs,
+  )[0];
+  if (latest === undefined) return null;
+  const inSession = (receivedAtMs: number): boolean =>
+    receivedAtMs >= latest.startTimeMs && receivedAtMs < latest.endTimeMs;
+  const participantRows = input.participantRows.filter((row) => inSession(row.receivedAtMs));
+  const economicIds = new Set(participantRows.map((row) => row.economicTradeId));
+  return {
+    sessionId: latest.sessionId,
+    featureVersion: 'TEST_INFERRED',
+    startedAtMs: latest.startTimeMs,
+    endedAtMs: latest.endTimeMs,
+    activeSessions: input.activeSessions.filter(
+      (session) => session.sessionId === latest.sessionId,
+    ),
+    economicTrades: input.economicTrades.filter((row) => economicIds.has(row.economicTradeId)),
+    participantRows,
+    books: input.books.filter((row) => inSession(row.receivedAtMs)),
+    marketPrices: input.marketPrices.filter((row) => inSession(row.receivedAtMs)),
+    aggregateTimestampsMs: input.aggregateTimestampsMs.filter(
+      (time) => time >= latest.startTimeMs && time < latest.endTimeMs,
+    ),
+    aggregateFeatureAges: input.aggregateFeatureAges.filter(
+      (row) => row.timestampMs >= latest.startTimeMs && row.timestampMs < latest.endTimeMs,
+    ),
+    diagnostics: null,
+  };
+}
+
+export function analyzeMicrostructureQuality(input: microstructure_quality_input) {
+  const historical = analyzeQualityWindow(input);
+  const session = input.latestCollectorSession ?? inferLatestSession(input);
+  if (session === null) {
+    return {
+      status: 'FAIL' as const,
+      collectionQualityStatus: 'FAIL' as const,
+      directionalOrderFlowReadiness: 'FAIL' as const,
+      researchSufficiency: historical.sufficiency,
+      sufficiency: historical.sufficiency,
+      reasons: {
+        collection: ['NO_COMPATIBLE_COLLECTOR_SESSION'],
+        directionalOrderFlow: ['NO_COMPATIBLE_COLLECTOR_SESSION'],
+      },
+      marketAddress: input.marketAddress,
+      analysisStart: historical.analysisStart,
+      analysisEnd: historical.analysisEnd,
+      thresholds: MICROSTRUCTURE_QUALITY_THRESHOLDS,
+      historicalWindow: historical.window,
+      window: historical.window,
+      latestCollectorSession: null,
+      cumulativeStorage: input.cumulativeCounts,
+      cumulativeDiagnostics: input.cumulativeDiagnostics,
+    };
+  }
+  const sessionEndMs = session.endedAtMs ?? input.endTimeMs;
+  const latest = analyzeQualityWindow(
+    {
+      startTimeMs: session.startedAtMs,
+      endTimeMs: sessionEndMs,
+      marketAddress: input.marketAddress,
+      economicTrades: session.economicTrades,
+      participantRows: session.participantRows,
+      books: session.books,
+      marketPrices: session.marketPrices,
+      aggregateTimestampsMs: session.aggregateTimestampsMs,
+      aggregateFeatureAges: session.aggregateFeatureAges,
+      activeSessions: session.activeSessions,
+      cumulativeCounts: input.cumulativeCounts,
+      cumulativeDiagnostics: input.cumulativeDiagnostics,
+    },
+    true,
+  );
+  const tradeQuality = latest.window.tradeQuality;
+  const sourceCounts = tradeQuality.directionSourceBreakdown;
+  const websocketCount = tradeQuality.recentWebSocketEconomicTrades;
+  const sumDiagnostics = (prefix: string): number | null =>
+    session.diagnostics === null
+      ? null
+      : Object.entries(session.diagnostics)
+          .filter(([key]) => key === prefix || key.startsWith(`${prefix}.`))
+          .reduce((sum, [, count]) => sum + count, 0);
+  return {
+    status: latest.status,
+    collectionQualityStatus: latest.collectionQualityStatus,
+    directionalOrderFlowReadiness: latest.directionalOrderFlowReadiness,
+    researchSufficiency: historical.sufficiency,
+    sufficiency: historical.sufficiency,
+    reasons: latest.reasons,
+    marketAddress: input.marketAddress,
+    analysisStart: historical.analysisStart,
+    analysisEnd: historical.analysisEnd,
+    thresholds: MICROSTRUCTURE_QUALITY_THRESHOLDS,
+    historicalWindow: historical.window,
+    window: historical.window,
+    latestCollectorSession: {
+      sessionId: session.sessionId,
+      featureVersion: session.featureVersion,
+      startedAt: new Date(session.startedAtMs).toISOString(),
+      endedAt: session.endedAtMs === null ? null : new Date(session.endedAtMs).toISOString(),
+      durationMs: sessionEndMs - session.startedAtMs,
+      aggregateCompleteness: latest.window.activeSessionContinuity,
+      aggregateFeatureCompleteness: latest.window.aggregateFeatureCompleteness,
+      webSocketEconomicTradeCount: websocketCount,
+      direction: {
+        EXPLICIT: {
+          count: sourceCounts.EXPLICIT,
+          ratio: ratio(sourceCounts.EXPLICIT, websocketCount),
+        },
+        ESTIMATED_QUOTE_TEST: {
+          count: sourceCounts.ESTIMATED_QUOTE_TEST,
+          ratio: ratio(sourceCounts.ESTIMATED_QUOTE_TEST, websocketCount),
+        },
+        UNKNOWN: {
+          count: sourceCounts.UNKNOWN,
+          ratio: ratio(sourceCounts.UNKNOWN, websocketCount),
+        },
+      },
+      unknownReasonBreakdown: tradeQuality.unknownReasonBreakdown,
+      quoteTestFailureReasonBreakdown: tradeQuality.quoteTestFailureReasonBreakdown,
+      quoteTestMatchedBookAgeMs: tradeQuality.quoteTestMatchedBookAgeMs,
+      realtimeLatencyMs: latest.window.realtimeLatencyMs,
+      diagnostics: session.diagnostics,
+      malformedMessageCount: sumDiagnostics('malformed_messages'),
+      timestampRegressionCount: sumDiagnostics('timestamp_regressions'),
+      reconnectCount: sumDiagnostics('reconnects'),
+      diagnosticsAvailability: session.diagnostics === null ? 'NOT_AVAILABLE' : 'AVAILABLE',
     },
     cumulativeStorage: input.cumulativeCounts,
     cumulativeDiagnostics: input.cumulativeDiagnostics,

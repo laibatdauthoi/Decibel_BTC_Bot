@@ -18,6 +18,8 @@ describe('loadConfig', () => {
       microstructureMarketPriceStaleAfterMs: 30_000,
       microstructureBatchSize: 500,
       microstructureBootstrapTradeLimit: 10_000,
+      microstructureMaximumBookAgeMs: 2_000,
+      microstructureMaximumPriceAgeMs: 5_000,
     });
   });
 
@@ -43,6 +45,8 @@ describe('loadConfig', () => {
       microstructureMarketPriceStaleAfterMs: 30_000,
       microstructureBatchSize: 500,
       microstructureBootstrapTradeLimit: 10_000,
+      microstructureMaximumBookAgeMs: 2_000,
+      microstructureMaximumPriceAgeMs: 5_000,
     });
   });
 
@@ -89,6 +93,8 @@ describe('loadConfig', () => {
         MICROSTRUCTURE_MARKET_PRICE_STALE_AFTER_MS: '45000',
         MICROSTRUCTURE_BATCH_SIZE: '1000',
         MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT: '2500',
+        MICROSTRUCTURE_MAX_BOOK_AGE_MS: '1500',
+        MICROSTRUCTURE_MAX_PRICE_AGE_MS: '4000',
       }),
     ).toMatchObject({
       microstructureSampleIntervalMs: 500,
@@ -98,6 +104,8 @@ describe('loadConfig', () => {
       microstructureMarketPriceStaleAfterMs: 45_000,
       microstructureBatchSize: 1_000,
       microstructureBootstrapTradeLimit: 2_500,
+      microstructureMaximumBookAgeMs: 1_500,
+      microstructureMaximumPriceAgeMs: 4_000,
     });
     expect(() => loadConfig({ MICROSTRUCTURE_SAMPLE_INTERVAL_MS: '10' })).toThrow(
       'MICROSTRUCTURE_SAMPLE_INTERVAL_MS',
@@ -116,6 +124,9 @@ describe('loadConfig', () => {
     );
     expect(() => loadConfig({ MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT: '10001' })).toThrow(
       'MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT',
+    );
+    expect(() => loadConfig({ MICROSTRUCTURE_MAX_BOOK_AGE_MS: '-1' })).toThrow(
+      'MICROSTRUCTURE_MAX_BOOK_AGE_MS',
     );
   });
 

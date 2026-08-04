@@ -33,6 +33,8 @@ function createInput(
         ambiguous: false,
         aggressorSide: 'BUY',
         classificationReason: 'EXPLICIT_IS_TAKER',
+        classificationSource: 'EXPLICIT',
+        matchedBookAgeMs: null,
       },
     ],
     participantRows: [
@@ -52,6 +54,13 @@ function createInput(
       persistedAtMs,
     })),
     aggregateTimestampsMs: Array.from({ length: 10 }, (_, index) => START + index * 1_000),
+    aggregateFeatureAges: Array.from({ length: 10 }, (_, index) => ({
+      timestampMs: START + index * 1_000,
+      bookAgeMs: 100,
+      marketPriceAgeMs: 100,
+      spreadAvailable: true,
+      marketPriceAvailable: true,
+    })),
     activeSessions: [{ sessionId: 'session', startTimeMs: START, endTimeMs: START + 10_000 }],
     cumulativeCounts: {
       economicTrades: 100,
@@ -162,7 +171,7 @@ describe('microstructure quality analysis', () => {
 
   it('preserves negative latency as a clock-skew diagnostic', () => {
     const books = createInput().books.map((row, index) =>
-      index === 0 ? { ...row, receivedAtMs: row.exchangeTimestampMs - 25 } : row,
+      index === 1 ? { ...row, receivedAtMs: row.exchangeTimestampMs - 25 } : row,
     );
     const report = analyzeMicrostructureQuality(createInput({ books }));
     expect(report.window.realtimeLatencyMs.bookSnapshots).toMatchObject({
@@ -185,6 +194,8 @@ describe('microstructure quality analysis', () => {
             ambiguous: true,
             aggressorSide: 'UNKNOWN',
             classificationReason: 'AMBIGUOUS_ECONOMIC_FIELDS',
+            classificationSource: 'UNKNOWN',
+            matchedBookAgeMs: null,
           },
         ],
       }),
@@ -218,6 +229,8 @@ describe('microstructure quality analysis', () => {
             ambiguous: false,
             aggressorSide: 'UNKNOWN',
             classificationReason: 'NO_EXPLICIT_AGGRESSOR_SEMANTICS',
+            classificationSource: 'UNKNOWN',
+            matchedBookAgeMs: null,
           },
         ],
       }),
@@ -229,9 +242,112 @@ describe('microstructure quality analysis', () => {
     });
   });
 
+  it('assesses directional readiness from recent WebSocket trades only', () => {
+    const web = createInput().economicTrades[0]!;
+    const rest = {
+      ...web,
+      economicTradeId: 'rest-unknown',
+      ingestionSource: 'REST_BOOTSTRAP' as const,
+      aggressorSide: 'UNKNOWN' as const,
+      classificationReason: 'NO_EXPLICIT_AGGRESSOR_SEMANTICS' as const,
+      classificationSource: 'UNKNOWN' as const,
+    };
+    const report = analyzeMicrostructureQuality(createInput({ economicTrades: [web, rest] }));
+    expect(report.directionalOrderFlowReadiness).toBe('PASS');
+    expect(report.window.tradeQuality).toMatchObject({
+      recentWebSocketEconomicTrades: 1,
+      unknownAggressorRatio: 0,
+      directionSourceBreakdown: { EXPLICIT: 1, ESTIMATED_QUOTE_TEST: 0, UNKNOWN: 0 },
+    });
+  });
+
+  it('reports aggregate book and market-price feature completeness', () => {
+    const aggregateFeatureAges = createInput().aggregateFeatureAges.map((row, index) =>
+      index === 0 ? { ...row, spreadAvailable: false, marketPriceAvailable: false } : row,
+    );
+    const report = analyzeMicrostructureQuality(createInput({ aggregateFeatureAges }));
+    expect(report.window.aggregateFeatureCompleteness).toEqual({
+      sampleCount: 10,
+      staleOrMissingBookCount: 1,
+      staleOrMissingBookRatio: 0.1,
+      staleOrMissingMarketPriceCount: 1,
+      staleOrMissingMarketPriceRatio: 0.1,
+    });
+  });
+
   it('keeps cumulative diagnostics separate from the selected window', () => {
     const report = analyzeMicrostructureQuality(createInput());
     expect(report.cumulativeDiagnostics).toEqual({ malformed_messages: 2, reconnects: 1 });
     expect(report.cumulativeStorage.economicTrades).toBe(100);
+  });
+
+  it('prevents legacy sessions from contaminating latest-session validation', () => {
+    const clean = createInput();
+    const legacyBook = {
+      ...clean.books[0]!,
+      exchangeTimestampMs: START - 50_000,
+      receivedAtMs: START - 60_000,
+    };
+    const legacyTrade = {
+      ...clean.economicTrades[0]!,
+      economicTradeId: 'legacy-unknown',
+      ingestionSource: 'UNKNOWN' as const,
+      aggressorSide: 'UNKNOWN' as const,
+      classificationSource: 'UNKNOWN' as const,
+      classificationReason: 'LEGACY_UNKNOWN' as const,
+    };
+    const report = analyzeMicrostructureQuality(
+      createInput({
+        startTimeMs: START - 100_000,
+        economicTrades: [legacyTrade, ...clean.economicTrades],
+        books: [legacyBook, ...clean.books],
+        activeSessions: [
+          { sessionId: 'legacy', startTimeMs: START - 100_000, endTimeMs: START - 50_000 },
+          ...clean.activeSessions,
+        ],
+        latestCollectorSession: {
+          sessionId: 'current-v5',
+          featureVersion: 'V5_CONTINUOUS_AGGREGATES',
+          startedAtMs: START,
+          endedAtMs: START + 10_000,
+          activeSessions: [
+            { sessionId: 'current-v5', startTimeMs: START, endTimeMs: START + 10_000 },
+          ],
+          economicTrades: clean.economicTrades,
+          participantRows: clean.participantRows,
+          books: clean.books,
+          marketPrices: clean.marketPrices,
+          aggregateTimestampsMs: clean.aggregateTimestampsMs,
+          aggregateFeatureAges: clean.aggregateFeatureAges,
+          diagnostics: {
+            'malformed_messages.depth': 1,
+            'timestamp_regressions.trades': 2,
+            reconnects: 3,
+          },
+        },
+      }),
+    );
+    expect(report).toMatchObject({
+      collectionQualityStatus: 'PASS',
+      directionalOrderFlowReadiness: 'PASS',
+      latestCollectorSession: {
+        sessionId: 'current-v5',
+        durationMs: 10_000,
+        aggregateCompleteness: { expectedCount: 10, actualCount: 10, missingCount: 0 },
+        webSocketEconomicTradeCount: 1,
+        direction: {
+          EXPLICIT: { count: 1, ratio: 1 },
+          ESTIMATED_QUOTE_TEST: { count: 0, ratio: 0 },
+          UNKNOWN: { count: 0, ratio: 0 },
+        },
+        diagnostics: {
+          'malformed_messages.depth': 1,
+          'timestamp_regressions.trades': 2,
+          reconnects: 3,
+        },
+      },
+    });
+    expect(report.historicalWindow.datasets.trades.count).toBe(2);
+    expect(report.latestCollectorSession?.realtimeLatencyMs.bookSnapshots.negativeCount).toBe(0);
   });
 });

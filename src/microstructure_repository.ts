@@ -10,6 +10,8 @@ import type {
   order_book_snapshot,
 } from './microstructure.js';
 
+export const MICROSTRUCTURE_FEATURE_VERSION = 'V5_CONTINUOUS_AGGREGATES';
+
 const migrations = [
   {
     version: 1,
@@ -97,6 +99,37 @@ const migrations = [
       ) WITHOUT ROWID;
     `,
   },
+  {
+    version: 5,
+    sql: `
+      ALTER TABLE microstructure_economic_trades ADD COLUMN classification_source TEXT NOT NULL DEFAULT 'UNKNOWN';
+      ALTER TABLE microstructure_economic_trades ADD COLUMN classification_confidence TEXT NOT NULL DEFAULT 'NONE';
+      ALTER TABLE microstructure_economic_trades ADD COLUMN matched_book_timestamp_ms INTEGER;
+      ALTER TABLE microstructure_economic_trades ADD COLUMN matched_book_age_ms INTEGER;
+      ALTER TABLE microstructure_trade_participants ADD COLUMN classification_source TEXT NOT NULL DEFAULT 'UNKNOWN';
+      ALTER TABLE microstructure_trade_participants ADD COLUMN classification_confidence TEXT NOT NULL DEFAULT 'NONE';
+      ALTER TABLE microstructure_trade_participants ADD COLUMN matched_book_timestamp_ms INTEGER;
+      ALTER TABLE microstructure_trade_participants ADD COLUMN matched_book_age_ms INTEGER;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN book_age_ms INTEGER;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN market_price_age_ms INTEGER;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN mark_price REAL;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN mid_price REAL;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN oracle_price REAL;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN funding_rate REAL;
+      ALTER TABLE microstructure_aggregates_1s ADD COLUMN open_interest REAL;
+    `,
+  },
+  {
+    version: 6,
+    sql: `
+      ALTER TABLE microstructure_collector_sessions ADD COLUMN feature_version TEXT NOT NULL DEFAULT 'LEGACY_UNKNOWN';
+      CREATE TABLE microstructure_session_diagnostics (
+        session_id TEXT NOT NULL, metric TEXT NOT NULL, stream TEXT NOT NULL DEFAULT '',
+        count INTEGER NOT NULL, PRIMARY KEY(session_id, metric, stream),
+        FOREIGN KEY(session_id) REFERENCES microstructure_collector_sessions(session_id)
+      ) WITHOUT ROWID;
+    `,
+  },
 ] as const;
 
 export type persistence_counters = {
@@ -124,10 +157,15 @@ type economic_trade_row = {
   flow_counted: number;
   ingestion_source: normalized_trade['ingestionSource'];
   classification_reason: normalized_trade['classificationReason'];
+  classification_source: normalized_trade['classificationSource'];
+  classification_confidence: normalized_trade['classificationConfidence'];
+  matched_book_timestamp_ms: number | null;
+  matched_book_age_ms: number | null;
 };
 
 export class microstructure_repository {
   private readonly database: Database.Database;
+  private currentSessionId: string | undefined;
 
   constructor(databasePath: string) {
     if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
@@ -154,11 +192,15 @@ export class microstructure_repository {
       `INSERT INTO microstructure_economic_trades
        (economic_trade_id, market_address, price, size, exchange_timestamp_ms,
         transaction_version, aggressor_side, ambiguous, flow_counted, ingestion_source,
-        classification_reason, persisted_at_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        classification_reason, persisted_at_ms, classification_source,
+        classification_confidence, matched_book_timestamp_ms,
+        matched_book_age_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const updateEconomicTrade = this.database.prepare(
-      `UPDATE microstructure_economic_trades SET aggressor_side = ?, ambiguous = ?, classification_reason = ?
+      `UPDATE microstructure_economic_trades SET aggressor_side = ?, ambiguous = ?, classification_reason = ?,
+       classification_source = ?, classification_confidence = ?, matched_book_timestamp_ms = ?,
+       matched_book_age_ms = ?
        WHERE economic_trade_id = ?`,
     );
     const markFlowCounted = this.database.prepare(
@@ -168,8 +210,9 @@ export class microstructure_repository {
       `INSERT OR IGNORE INTO microstructure_trade_participants
        (row_key, economic_trade_id, market_address, participant_account, order_id, action,
         aggressor_side, price, size, exchange_timestamp_ms, transaction_version, received_at_ms,
-        ingestion_source, classification_reason, persisted_at_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ingestion_source, classification_reason, persisted_at_ms, classification_source,
+        classification_confidence, matched_book_timestamp_ms, matched_book_age_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertBook = this.database.prepare(
       `INSERT OR IGNORE INTO order_book_snapshots
@@ -187,13 +230,18 @@ export class microstructure_repository {
       `INSERT INTO microstructure_aggregates_1s (
          market_address, second_timestamp_ms, buy_volume, sell_volume, trade_count,
          vwap, spread, depth_imbalance, order_flow_imbalance, unknown_volume
-         , persisted_at_ms
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         , persisted_at_ms, book_age_ms, market_price_age_ms, mark_price, mid_price,
+         oracle_price, funding_rate, open_interest
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(market_address, second_timestamp_ms) DO UPDATE SET
        buy_volume=excluded.buy_volume, sell_volume=excluded.sell_volume,
        trade_count=excluded.trade_count, vwap=excluded.vwap, spread=excluded.spread,
        depth_imbalance=excluded.depth_imbalance, order_flow_imbalance=excluded.order_flow_imbalance,
-       unknown_volume=excluded.unknown_volume, persisted_at_ms=excluded.persisted_at_ms`,
+       unknown_volume=excluded.unknown_volume, persisted_at_ms=excluded.persisted_at_ms,
+       book_age_ms=excluded.book_age_ms, market_price_age_ms=excluded.market_price_age_ms,
+       mark_price=excluded.mark_price, mid_price=excluded.mid_price,
+       oracle_price=excluded.oracle_price, funding_rate=excluded.funding_rate,
+       open_interest=excluded.open_interest`,
     );
     return this.database.transaction(() => {
       let savedTrades = 0;
@@ -262,12 +310,42 @@ export class microstructure_repository {
             first.ingestionSource,
             classificationReason,
             persistedAtMs,
+            finalAmbiguous
+              ? 'UNKNOWN'
+              : (rows.find((row) => row.side === aggressorSide)?.classificationSource ?? 'UNKNOWN'),
+            finalAmbiguous
+              ? 'NONE'
+              : (rows.find((row) => row.side === aggressorSide)?.classificationConfidence ??
+                  'NONE'),
+            finalAmbiguous
+              ? null
+              : (rows.find((row) => row.side === aggressorSide)?.matchedBookTimestamp?.getTime() ??
+                  null),
+            finalAmbiguous
+              ? null
+              : (rows.find((row) => row.side === aggressorSide)?.matchedBookAgeMs ?? null),
           );
         else
           updateEconomicTrade.run(
             aggressorSide,
             finalAmbiguous ? 1 : 0,
             classificationReason,
+            aggressorSide === 'UNKNOWN'
+              ? 'UNKNOWN'
+              : (rows.find((row) => row.side === aggressorSide)?.classificationSource ??
+                  existing?.classification_source ??
+                  'UNKNOWN'),
+            aggressorSide === 'UNKNOWN'
+              ? 'NONE'
+              : (rows.find((row) => row.side === aggressorSide)?.classificationConfidence ??
+                  existing?.classification_confidence ??
+                  'NONE'),
+            rows.find((row) => row.side === aggressorSide)?.matchedBookTimestamp?.getTime() ??
+              existing?.matched_book_timestamp_ms ??
+              null,
+            rows.find((row) => row.side === aggressorSide)?.matchedBookAgeMs ??
+              existing?.matched_book_age_ms ??
+              null,
             economicTradeId,
           );
         if (finalAmbiguous) {
@@ -291,10 +369,22 @@ export class microstructure_repository {
             trade.ingestionSource,
             trade.classificationReason,
             persistedAtMs,
+            trade.classificationSource,
+            trade.classificationConfidence,
+            trade.matchedBookTimestamp?.getTime() ?? null,
+            trade.matchedBookAgeMs,
           ).changes;
-        if (!finalAmbiguous && (existing?.flow_counted ?? 0) === 0) {
+        if ((existing?.flow_counted ?? 0) === 0) {
           markFlowCounted.run(economicTradeId);
-          aggregateTrades.push({ ...first, side: aggressorSide });
+          aggregateTrades.push({
+            ...first,
+            side: finalAmbiguous ? 'UNKNOWN' : aggressorSide,
+            classificationSource: finalAmbiguous ? 'UNKNOWN' : first.classificationSource,
+            classificationConfidence: finalAmbiguous ? 'NONE' : first.classificationConfidence,
+            classificationReason: finalAmbiguous
+              ? classificationReason
+              : first.classificationReason,
+          });
         }
       }
       for (const book of books)
@@ -337,6 +427,13 @@ export class microstructure_repository {
           aggregate.orderFlowImbalance,
           aggregate.unknownVolume,
           persistedAtMs,
+          aggregate.bookAgeMs,
+          aggregate.marketPriceAgeMs,
+          aggregate.markPrice,
+          aggregate.midPrice,
+          aggregate.oraclePrice,
+          aggregate.fundingRate,
+          aggregate.openInterest,
         ).changes;
       return {
         trades: savedTrades,
@@ -380,6 +477,13 @@ export class microstructure_repository {
       spread: number | null;
       depth_imbalance: number | null;
       order_flow_imbalance: number;
+      book_age_ms: number | null;
+      market_price_age_ms: number | null;
+      mark_price: number | null;
+      mid_price: number | null;
+      oracle_price: number | null;
+      funding_rate: number | null;
+      open_interest: number | null;
     };
     return this.database
       .prepare<[], aggregate_row>(
@@ -397,6 +501,13 @@ export class microstructure_repository {
         spread: row.spread,
         depthImbalance: row.depth_imbalance,
         orderFlowImbalance: row.order_flow_imbalance,
+        bookAgeMs: row.book_age_ms,
+        marketPriceAgeMs: row.market_price_age_ms,
+        markPrice: row.mark_price,
+        midPrice: row.mid_price,
+        oraclePrice: row.oracle_price,
+        fundingRate: row.funding_rate,
+        openInterest: row.open_interest,
       }));
   }
 
@@ -407,8 +518,13 @@ export class microstructure_repository {
   startCollectorSession(marketAddress: string, startedAtMs = Date.now()): string {
     const sessionId = randomUUID();
     this.database
-      .prepare('INSERT INTO microstructure_collector_sessions VALUES (?, ?, ?, NULL, NULL)')
-      .run(sessionId, marketAddress, startedAtMs);
+      .prepare(
+        `INSERT INTO microstructure_collector_sessions
+         (session_id, market_address, started_at_ms, stopped_at_ms,
+          graceful_shutdown_at_ms, feature_version) VALUES (?, ?, ?, NULL, NULL, ?)`,
+      )
+      .run(sessionId, marketAddress, startedAtMs, MICROSTRUCTURE_FEATURE_VERSION);
+    this.currentSessionId = sessionId;
     this.recordSessionEvent(sessionId, 'START', startedAtMs);
     return sessionId;
   }
@@ -440,6 +556,13 @@ export class microstructure_repository {
       ON CONFLICT(metric, stream) DO UPDATE SET count=count+excluded.count`,
       )
       .run(metric, stream, amount);
+    if (this.currentSessionId !== undefined)
+      this.database
+        .prepare(
+          `INSERT INTO microstructure_session_diagnostics VALUES (?, ?, ?, ?)
+           ON CONFLICT(session_id, metric, stream) DO UPDATE SET count=count+excluded.count`,
+        )
+        .run(this.currentSessionId, metric, stream, amount);
   }
 
   close(): void {
