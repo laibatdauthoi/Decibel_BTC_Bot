@@ -30,6 +30,32 @@ const SDKPriceSchema = z.object({
   transaction_unix_ms: z.number().int().nonnegative(),
 });
 
+const SDKCandlestickSchema = z
+  .object({
+    T: z.number().int().safe().nonnegative(),
+    c: z.number().positive().finite(),
+    h: z.number().positive().finite(),
+    i: z.literal('1h'),
+    l: z.number().positive().finite(),
+    o: z.number().positive().finite(),
+    t: z.number().int().safe().nonnegative(),
+    v: z.number().nonnegative().finite(),
+  })
+  .superRefine((candle, context) => {
+    if (candle.T <= candle.t) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Close time must follow open time',
+      });
+    }
+    if (candle.h < Math.max(candle.o, candle.c, candle.l)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'High price is inconsistent' });
+    }
+    if (candle.l > Math.min(candle.o, candle.c, candle.h)) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Low price is inconsistent' });
+    }
+  });
+
 type sdk_market = z.infer<typeof SDKMarketSchema>;
 export type USD_per_BTC = number;
 export type BTC_amount = number;
@@ -57,9 +83,34 @@ export type BTC_market_price = {
   observedAt: Date;
 };
 
+export type BTC_hourly_candlestick = {
+  timestamp: Date;
+  open: USD_per_BTC;
+  high: USD_per_BTC;
+  low: USD_per_BTC;
+  close: USD_per_BTC;
+  volume: BTC_amount;
+};
+
+export type BTC_candlestick_history = {
+  symbol: 'BTC/USD';
+  exchangeSymbol: string;
+  marketAddress: string;
+  interval: '1h';
+  candles: BTC_hourly_candlestick[];
+};
+
 export interface decibel_market_reader {
   markets: { getAll(): Promise<unknown> };
   marketPrices: { getByName(args: { marketName: string }): Promise<unknown> };
+  candlesticks: {
+    getByName(args: {
+      marketName: string;
+      interval: '1h';
+      startTime: number;
+      endTime: number;
+    }): Promise<unknown>;
+  };
 }
 
 export type reader_factory = (
@@ -119,6 +170,58 @@ export class decibel_client {
       midPrice: price.mid_px,
       oraclePrice: price.oracle_px,
       observedAt: new Date(price.transaction_unix_ms),
+    };
+  }
+
+  async getBTCHourlyCandlesticks(
+    startTime: Date,
+    endTime: Date,
+    now: Date = new Date(),
+  ): Promise<BTC_candlestick_history> {
+    const startUnixMs = startTime.getTime();
+    const endUnixMs = endTime.getTime();
+    const nowUnixMs = now.getTime();
+    if (![startUnixMs, endUnixMs, nowUnixMs].every(Number.isSafeInteger)) {
+      throw new Error('Candlestick time range must contain valid dates');
+    }
+    if (startUnixMs >= endUnixMs) {
+      throw new Error('Candlestick start time must precede end time');
+    }
+
+    // Resolving metadata first binds the request and response to Decibel's concrete BTC market.
+    const market = await this.getBTCMarketMetadata();
+    const candles = z.array(SDKCandlestickSchema).parse(
+      await this.reader.candlesticks.getByName({
+        marketName: market.exchangeSymbol,
+        interval: '1h',
+        startTime: startUnixMs,
+        endTime: endUnixMs,
+      }),
+    );
+    const timestamps = new Set<number>();
+    for (const candle of candles) {
+      if (timestamps.has(candle.t)) {
+        throw new Error(`Decibel returned duplicate BTC candle timestamp: ${candle.t}`);
+      }
+      timestamps.add(candle.t);
+    }
+
+    return {
+      symbol: 'BTC/USD',
+      exchangeSymbol: market.exchangeSymbol,
+      marketAddress: market.marketAddress,
+      interval: '1h',
+      candles: candles
+        .filter((candle) => candle.T <= nowUnixMs)
+        .sort((left, right) => left.t - right.t)
+        .map((candle) => ({
+          timestamp: new Date(candle.t),
+          open: candle.o,
+          high: candle.h,
+          low: candle.l,
+          close: candle.c,
+          volume: candle.v,
+        })),
     };
   }
 

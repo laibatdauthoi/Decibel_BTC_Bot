@@ -41,6 +41,7 @@ function makeReader(): decibel_market_reader {
         },
       ]),
     },
+    candlesticks: { getByName: vi.fn().mockResolvedValue([]) },
   };
 }
 
@@ -135,5 +136,124 @@ describe('decibel_client', () => {
     );
     await client.getBTCMarketMetadata();
     await expect(client.getBTCPrice()).rejects.toThrow();
+  });
+
+  it('normalizes and chronologically orders hourly candles for the concrete BTC market', async () => {
+    const reader = makeReader();
+    const getCandles = vi.fn().mockResolvedValue([
+      {
+        t: 7_200_000,
+        T: 10_799_999,
+        i: '1h',
+        o: 62_000,
+        h: 63_000,
+        l: 61_500,
+        c: 62_500,
+        v: 12.5,
+      },
+      {
+        t: 3_600_000,
+        T: 7_199_999,
+        i: '1h',
+        o: 60_000,
+        h: 62_000,
+        l: 59_500,
+        c: 61_900,
+        v: 10.25,
+      },
+    ]);
+    reader.candlesticks.getByName = getCandles;
+    const client = new decibel_client(
+      { network: 'mainnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+
+    await expect(
+      client.getBTCHourlyCandlesticks(
+        new Date(3_600_000),
+        new Date(10_800_000),
+        new Date(20_000_000),
+      ),
+    ).resolves.toEqual({
+      symbol: 'BTC/USD',
+      exchangeSymbol: 'BTC-USD',
+      marketAddress: '0xbtc',
+      interval: '1h',
+      candles: [
+        {
+          timestamp: new Date(3_600_000),
+          open: 60_000,
+          high: 62_000,
+          low: 59_500,
+          close: 61_900,
+          volume: 10.25,
+        },
+        {
+          timestamp: new Date(7_200_000),
+          open: 62_000,
+          high: 63_000,
+          low: 61_500,
+          close: 62_500,
+          volume: 12.5,
+        },
+      ],
+    });
+    expect(getCandles).toHaveBeenCalledWith({
+      marketName: 'BTC-USD',
+      interval: '1h',
+      startTime: 3_600_000,
+      endTime: 10_800_000,
+    });
+  });
+
+  it('excludes the currently unfinished hourly candle', async () => {
+    const reader = makeReader();
+    reader.candlesticks.getByName = vi.fn().mockResolvedValue([
+      { t: 0, T: 3_599_999, i: '1h', o: 1, h: 2, l: 1, c: 2, v: 3 },
+      { t: 3_600_000, T: 7_199_999, i: '1h', o: 2, h: 3, l: 2, c: 3, v: 4 },
+    ]);
+    const client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+
+    const history = await client.getBTCHourlyCandlesticks(
+      new Date(0),
+      new Date(7_200_000),
+      new Date(5_000_000),
+    );
+
+    expect(history.candles.map((candle) => candle.timestamp)).toEqual([new Date(0)]);
+  });
+
+  it('rejects duplicate timestamps', async () => {
+    const reader = makeReader();
+    reader.candlesticks.getByName = vi.fn().mockResolvedValue([
+      { t: 0, T: 3_599_999, i: '1h', o: 1, h: 2, l: 1, c: 2, v: 3 },
+      { t: 0, T: 3_599_999, i: '1h', o: 2, h: 3, l: 2, c: 3, v: 4 },
+    ]);
+    const client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+
+    await expect(
+      client.getBTCHourlyCandlesticks(new Date(0), new Date(7_200_000), new Date(10_000_000)),
+    ).rejects.toThrow('duplicate BTC candle timestamp: 0');
+  });
+
+  it('rejects malformed candle values and intervals', async () => {
+    const reader = makeReader();
+    reader.candlesticks.getByName = vi
+      .fn()
+      .mockResolvedValue([{ t: 0, T: 3_599_999, i: '5m', o: 2, h: 1, l: 3, c: 2, v: -1 }]);
+    const client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+
+    await expect(
+      client.getBTCHourlyCandlesticks(new Date(0), new Date(7_200_000), new Date(10_000_000)),
+    ).rejects.toThrow();
   });
 });
