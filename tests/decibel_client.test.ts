@@ -226,6 +226,43 @@ describe('decibel_client', () => {
     expect(history.candles.map((candle) => candle.timestamp)).toEqual([new Date(0)]);
   });
 
+  it('keeps completed 5-minute candles on exact UTC boundaries and excludes the open candle', async () => {
+    const reader = makeReader();
+    reader.candlesticks.getByName = vi.fn().mockResolvedValue([
+      { t: 0, T: 299_999, i: '5m', o: 1, h: 2, l: 1, c: 2, v: 3 },
+      { t: 300_000, T: 599_999, i: '5m', o: 2, h: 3, l: 2, c: 3, v: 4 },
+    ]);
+    const client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+
+    const history = await client.getBTCCandlesticks(
+      '5m',
+      new Date(0),
+      new Date(600_000),
+      new Date(450_000),
+    );
+
+    expect(history.interval).toBe('5m');
+    expect(history.candles.map((candle) => candle.timestamp.getTime())).toEqual([0]);
+  });
+
+  it('rejects a misaligned 5-minute candle timestamp', async () => {
+    const reader = makeReader();
+    reader.candlesticks.getByName = vi
+      .fn()
+      .mockResolvedValue([{ t: 1, T: 300_000, i: '5m', o: 1, h: 2, l: 1, c: 2, v: 3 }]);
+    const client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+
+    await expect(
+      client.getBTCCandlesticks('5m', new Date(0), new Date(600_000), new Date(1_000_000)),
+    ).rejects.toThrow('misaligned 5m candle');
+  });
+
   it('rejects duplicate timestamps', async () => {
     const reader = makeReader();
     reader.candlesticks.getByName = vi.fn().mockResolvedValue([

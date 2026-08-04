@@ -7,6 +7,12 @@ import {
 } from '@decibeltrade/sdk';
 import { z } from 'zod';
 
+import {
+  CandleIntervalSchema,
+  alignTimestamp,
+  getNextTimestamp,
+  type candle_interval,
+} from './candle_interval.js';
 import type { application_config } from './config.js';
 
 const SDKMarketSchema = z.object({
@@ -35,7 +41,7 @@ const SDKCandlestickSchema = z
     T: z.number().int().safe().nonnegative(),
     c: z.number().positive().finite(),
     h: z.number().positive().finite(),
-    i: z.literal('1h'),
+    i: CandleIntervalSchema,
     l: z.number().positive().finite(),
     o: z.number().positive().finite(),
     t: z.number().int().safe().nonnegative(),
@@ -83,7 +89,7 @@ export type BTC_market_price = {
   observedAt: Date;
 };
 
-export type BTC_hourly_candlestick = {
+export type BTC_candlestick = {
   timestamp: Date;
   open: USD_per_BTC;
   high: USD_per_BTC;
@@ -96,9 +102,11 @@ export type BTC_candlestick_history = {
   symbol: 'BTC/USD';
   exchangeSymbol: string;
   marketAddress: string;
-  interval: '1h';
-  candles: BTC_hourly_candlestick[];
+  interval: candle_interval;
+  candles: BTC_candlestick[];
 };
+
+export type BTC_hourly_candlestick = BTC_candlestick;
 
 export interface decibel_market_reader {
   markets: { getAll(): Promise<unknown> };
@@ -106,7 +114,7 @@ export interface decibel_market_reader {
   candlesticks: {
     getByName(args: {
       marketName: string;
-      interval: '1h';
+      interval: candle_interval;
       startTime: number;
       endTime: number;
     }): Promise<unknown>;
@@ -133,7 +141,10 @@ export class decibel_client {
   private readonly reader: decibel_market_reader;
   private exchangeSymbol: string | undefined;
 
-  constructor(config: application_config, createReader: reader_factory = defaultReaderFactory) {
+  constructor(
+    config: Pick<application_config, 'network' | 'nodeApiKey' | 'marketSymbol'>,
+    createReader: reader_factory = defaultReaderFactory,
+  ) {
     const networkConfig = config.network === 'mainnet' ? MAINNET_CONFIG : TESTNET_CONFIG;
     const options = config.nodeApiKey === undefined ? {} : { nodeApiKey: config.nodeApiKey };
     this.reader = createReader(networkConfig, options);
@@ -178,6 +189,15 @@ export class decibel_client {
     endTime: Date,
     now: Date = new Date(),
   ): Promise<BTC_candlestick_history> {
+    return this.getBTCCandlesticks('1h', startTime, endTime, now);
+  }
+
+  async getBTCCandlesticks(
+    interval: candle_interval,
+    startTime: Date,
+    endTime: Date,
+    now: Date = new Date(),
+  ): Promise<BTC_candlestick_history> {
     const startUnixMs = startTime.getTime();
     const endUnixMs = endTime.getTime();
     const nowUnixMs = now.getTime();
@@ -193,13 +213,19 @@ export class decibel_client {
     const candles = z.array(SDKCandlestickSchema).parse(
       await this.reader.candlesticks.getByName({
         marketName: market.exchangeSymbol,
-        interval: '1h',
+        interval,
         startTime: startUnixMs,
         endTime: endUnixMs,
       }),
     );
     const timestamps = new Set<number>();
     for (const candle of candles) {
+      if (candle.i !== interval) {
+        throw new Error(`Decibel returned an unexpected candle interval: ${candle.i}`);
+      }
+      if (candle.t !== alignTimestamp(candle.t, interval)) {
+        throw new Error(`Decibel returned a misaligned ${interval} candle: ${candle.t}`);
+      }
       if (timestamps.has(candle.t)) {
         throw new Error(`Decibel returned duplicate BTC candle timestamp: ${candle.t}`);
       }
@@ -210,9 +236,9 @@ export class decibel_client {
       symbol: 'BTC/USD',
       exchangeSymbol: market.exchangeSymbol,
       marketAddress: market.marketAddress,
-      interval: '1h',
+      interval,
       candles: candles
-        .filter((candle) => candle.T <= nowUnixMs)
+        .filter((candle) => getNextTimestamp(candle.t, interval) <= nowUnixMs)
         .sort((left, right) => left.t - right.t)
         .map((candle) => ({
           timestamp: new Date(candle.t),

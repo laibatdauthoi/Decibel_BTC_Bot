@@ -4,7 +4,11 @@ import { loadConfig } from '../src/config.js';
 
 describe('loadConfig', () => {
   it('defaults to testnet and BTC/USD without requiring credentials', () => {
-    expect(loadConfig({})).toEqual({ network: 'testnet', marketSymbol: 'BTC/USD' });
+    expect(loadConfig({})).toEqual({
+      network: 'testnet',
+      marketSymbol: 'BTC/USD',
+      candleInterval: '5m',
+    });
   });
 
   it('loads mainnet and an optional node API key', () => {
@@ -18,7 +22,15 @@ describe('loadConfig', () => {
       network: 'mainnet',
       nodeApiKey: 'example-not-a-real-key',
       marketSymbol: 'BTC/USD',
+      candleInterval: '5m',
     });
+  });
+
+  it('accepts Decibel intervals and rejects unsupported values', () => {
+    expect(loadConfig({ CANDLE_INTERVAL: '15m' }).candleInterval).toBe('15m');
+    expect(() => loadConfig({ CANDLE_INTERVAL: '10m' })).toThrow(
+      'Invalid environment configuration: CANDLE_INTERVAL',
+    );
   });
 
   it('rejects unsupported networks and markets without exposing values', () => {

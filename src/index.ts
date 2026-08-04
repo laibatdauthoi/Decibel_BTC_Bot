@@ -1,10 +1,12 @@
 import 'dotenv/config';
 
+import { resolve } from 'node:path';
+
+import { syncBTCCandlesticks } from './candlestick_pipeline.js';
+import { candlestick_repository } from './candlestick_repository.js';
 import { createBTCCandlestickSummary } from './candlestick_summary.js';
 import { loadConfig } from './config.js';
 import { decibel_client } from './decibel_client.js';
-
-const CANDLE_LOOKBACK_MS = 24 * 60 * 60 * 1_000;
 
 async function startApplication(): Promise<void> {
   const config = loadConfig();
@@ -12,15 +14,32 @@ async function startApplication(): Promise<void> {
   const market = await DecibelClient.getBTCMarketMetadata();
   const price = await DecibelClient.getBTCPrice();
   const now = new Date();
-  const candleHistory = await DecibelClient.getBTCHourlyCandlesticks(
-    new Date(now.getTime() - CANDLE_LOOKBACK_MS),
-    now,
-    now,
+  const CandlestickRepository = new candlestick_repository(
+    resolve('data', 'btc_usd_candlesticks.sqlite'),
   );
-  const candles = createBTCCandlestickSummary(candleHistory);
+  try {
+    const persistence = await syncBTCCandlesticks(
+      DecibelClient,
+      CandlestickRepository,
+      config.candleInterval,
+      now,
+    );
+    const candleHistory = {
+      symbol: 'BTC/USD' as const,
+      exchangeSymbol: market.exchangeSymbol,
+      marketAddress: market.marketAddress,
+      interval: config.candleInterval,
+      candles: CandlestickRepository.getCandlesticks(market.marketAddress, config.candleInterval),
+    };
+    const candles = createBTCCandlestickSummary(candleHistory);
 
-  // Only public market data is emitted. Configuration and credentials are never logged.
-  console.log(JSON.stringify({ network: config.network, market, price, candles }, null, 2));
+    // Only public market data is emitted. Configuration and credentials are never logged.
+    console.log(
+      JSON.stringify({ network: config.network, market, price, candles, persistence }, null, 2),
+    );
+  } finally {
+    CandlestickRepository.close();
+  }
 }
 
 startApplication().catch(() => {
