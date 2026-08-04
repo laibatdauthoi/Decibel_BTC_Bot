@@ -104,6 +104,16 @@ The research-only scanner evaluates every completed BTC/USD `5m` candle for shor
 
 Environment variables prefixed with `OPPORTUNITY_` configure each pattern's range, movement, retest, volatility, volume, and fixed minimum research-score thresholds. The per-type minimum scores default to `85`; they are static quality gates, not adaptive daily quotas. Same-candle/same-direction overlaps collapse to the highest-scoring candidate. The report includes candidates by UTC day, average candidates per active day, type/direction/regime distributions, score percentiles, and only the latest five candidate details. Threshold defaults express general pattern definitions and are not optimized to force a requested daily count. The scanner does not submit orders or connect candidates to live execution.
 
+## Opportunity outcome analysis
+
+```powershell
+npm run analyze:outcomes
+```
+
+This offline command evaluates every historical research candidate that has a complete twelve-bar forward window. Its hypothetical entry is the next completed `5m` candle open; direction-adjusted returns use the closes after 1, 3, 6, and 12 bars. Twelve-bar high/low paths provide MFE and MAE. Candidates near the dataset end without enough future candles are counted as excluded rather than evaluated with future or incomplete data.
+
+Reports compare gross/zero-cost returns with maker and taker-plus-slippage estimates. Defaults use Decibel tier-0 maker `0.00011` and taker `0.00034` rates; `OUTCOME_MAKER_FEE_RATE`, `OUTCOME_TAKER_FEE_RATE`, and `OUTCOME_SLIPPAGE_RATE` are configurable decimal rates. Costs are estimated as round-trip fees, with adverse slippage on both taker legs. Results are grouped by candidate type, direction, point-in-time regime, score band, and holding horizon. The report includes sample count, hit rate, average/median return, expectancy, MFE, MAE, overlapping clusters, and fixed 5/10/15-minute cooldown variants. It does not select, optimize, trade, or submit orders.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
