@@ -12,6 +12,7 @@
     "verify:timeframes": "tsx src/verify_timeframes.ts",
     "verify:market-structure": "tsx src/verify_market_structure.ts",
     "verify:breakout-setups": "tsx src/verify_breakout_setups.ts",
+    "analyze:opportunities": "tsx src/analyze_opportunities.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

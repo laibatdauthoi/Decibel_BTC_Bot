@@ -94,6 +94,16 @@ The deterministic detector consumes only completed in-memory `15m` aggregates an
 
 Each setup exposes `breakoutCandleTime` as the interval start and `confirmedAtTime` as exactly 15 minutes later. A setup is never returned before `confirmedAtTime`, so a `22:00` breakout candle remains unavailable throughout `22:00–22:15`. The command prints the total count and latest three confirmed setups without executing or persisting anything.
 
+## Opportunity analysis
+
+```powershell
+npm run analyze:opportunities
+```
+
+The research-only scanner evaluates every completed BTC/USD `5m` candle for short-range breakouts, trend pullback continuations, confirmed hourly swing-level retests/rejections, and volatility expansions. Completed `15m` momentum and confirmed `1h` market structure are sliced at each five-minute close, so future higher-timeframe candles cannot enter the score. `TREND_UP`, `TREND_DOWN`, `RANGE`, and `UNKNOWN` contribute deterministic score points but never hard-reject a pattern. Each candidate includes its five-minute interval start as `detectedAtTime`, its close as `availableAtTime`, direction, type, 0–100 score, regime, volatility/volume ratios, and reasons.
+
+Environment variables prefixed with `OPPORTUNITY_` configure each pattern's range, movement, retest, volatility, volume, and fixed minimum research-score thresholds. The per-type minimum scores default to `85`; they are static quality gates, not adaptive daily quotas. Same-candle/same-direction overlaps collapse to the highest-scoring candidate. The report includes candidates by UTC day, average candidates per active day, type/direction/regime distributions, score percentiles, and only the latest five candidate details. Threshold defaults express general pattern definitions and are not optimized to force a requested daily count. The scanner does not submit orders or connect candidates to live execution.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
