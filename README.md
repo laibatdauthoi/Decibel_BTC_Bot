@@ -153,6 +153,20 @@ This offline command evaluates every historical research candidate that has a co
 
 Reports compare gross/zero-cost returns with maker and taker-plus-slippage estimates. Defaults use Decibel tier-0 maker `0.00011` and taker `0.00034` rates; `OUTCOME_MAKER_FEE_RATE`, `OUTCOME_TAKER_FEE_RATE`, and `OUTCOME_SLIPPAGE_RATE` are configurable decimal rates. Costs are estimated as round-trip fees, with adverse slippage on both taker legs. Results are grouped by candidate type, direction, point-in-time regime, score band, and holding horizon. The report includes sample count, hit rate, average/median return, expectancy, MFE, MAE, overlapping clusters, and fixed 5/10/15-minute cooldown variants. It does not select, optimize, trade, or submit orders.
 
+## Point-in-time research dataset
+
+```powershell
+npm run build:research-dataset
+```
+
+This offline command regenerates the existing deterministic 5-minute opportunity candidates and joins each candidate at its `availableAtTime` with v5-compatible microstructure observations only. One-second aggregates are eligible only after their second-close boundary; books and WebSocket trade classifications must have local receipt timestamps at or before the decision. Legacy sessions, reconnect gaps, future observations, REST bootstrap direction, and unfinished candles are excluded.
+
+Trailing 15, 60, and 300-second feature windows report aggregate and stale-feature coverage, spread, imbalance, depth, directional and unknown volume, trade intensity, VWAP, OFI, microprice deviation, feature ages, and explicit/estimated/unknown direction counts. Missing observations remain null; only genuine zero-trade quantities are zero. Each window is independently `VALID` or `INVALID` using fixed coverage and feature-availability gates.
+
+Research-only outcomes use completed five-minute candles after the decision and report 5/15/30/60-minute returns, direction-adjusted returns, and 60-minute favorable/adverse excursions with all reference, target, and excursion timestamps and prices. They are not fills or simulated orders. Missing future candles produce null outcomes.
+
+Derived rows are stored in `data/btc_usd_research.sqlite` under feature version `BTC_5M_MICROSTRUCTURE_V1`, keyed by market, stable candidate identity, and feature version. Rebuilds deterministically update changed rows and skip identical rows. A concise summary is logged and formatted JSON is written to ignored `data/microstructure_research_report.json`. Fewer than 100 valid outcome-complete samples is reported as `NOT_ENOUGH_DATA`; no thresholds or strategy parameters are optimized.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
