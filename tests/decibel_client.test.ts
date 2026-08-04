@@ -1,7 +1,11 @@
 import type { DecibelConfig } from '@decibeltrade/sdk';
 import { describe, expect, it, vi } from 'vitest';
 
-import { decibel_client, type decibel_market_reader } from '../src/decibel_client.js';
+import {
+  decibel_client,
+  type decibel_market_reader,
+  type reader_factory,
+} from '../src/decibel_client.js';
 
 const { MAINNET_CONFIG, TESTNET_CONFIG } = vi.hoisted(() => ({
   MAINNET_CONFIG: { network: 'mainnet-sdk-config' } as unknown as DecibelConfig,
@@ -41,7 +45,10 @@ function makeReader(): decibel_market_reader {
         },
       ]),
     },
-    candlesticks: { getByName: vi.fn().mockResolvedValue([]) },
+    candlesticks: {
+      getByName: vi.fn().mockResolvedValue([]),
+      subscribeByName: vi.fn(() => vi.fn()),
+    },
   };
 }
 
@@ -50,20 +57,20 @@ describe('decibel_client', () => {
     ['testnet' as const, TESTNET_CONFIG],
     ['mainnet' as const, MAINNET_CONFIG],
   ])('selects the %s SDK configuration', (network, expectedConfig) => {
-    const factory = vi.fn(() => makeReader());
+    const factory = vi.fn<reader_factory>(() => makeReader());
     new decibel_client({ network, marketSymbol: 'BTC/USD' }, factory);
-    expect(factory).toHaveBeenCalledWith(expectedConfig, {});
+    expect(factory.mock.calls[0]?.[0]).toBe(expectedConfig);
+    expect(typeof factory.mock.calls[0]?.[1].onWsError).toBe('function');
   });
 
   it('passes the API key only to the SDK factory', () => {
-    const factory = vi.fn(() => makeReader());
+    const factory = vi.fn<reader_factory>(() => makeReader());
     new decibel_client(
       { network: 'testnet', nodeApiKey: 'example-not-a-real-key', marketSymbol: 'BTC/USD' },
       factory,
     );
-    expect(factory).toHaveBeenCalledWith(TESTNET_CONFIG, {
-      nodeApiKey: 'example-not-a-real-key',
-    });
+    expect(factory.mock.calls[0]?.[0]).toBe(TESTNET_CONFIG);
+    expect(factory.mock.calls[0]?.[1].nodeApiKey).toBe('example-not-a-real-key');
   });
 
   it('normalizes BTC/USD perpetual metadata and current prices', async () => {

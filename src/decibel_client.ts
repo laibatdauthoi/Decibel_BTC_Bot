@@ -118,12 +118,18 @@ export interface decibel_market_reader {
       startTime: number;
       endTime: number;
     }): Promise<unknown>;
+    subscribeByName(
+      marketName: string,
+      interval: candle_interval,
+      onData: (message: unknown) => void,
+    ): () => void;
   };
+  deps?: { ws: { close(): void } };
 }
 
 export type reader_factory = (
   config: DecibelConfig,
-  options: { nodeApiKey?: string },
+  options: { nodeApiKey?: string; onWsError?: (error: unknown) => void },
 ) => decibel_market_reader;
 
 const defaultReaderFactory: reader_factory = (config, options) =>
@@ -139,6 +145,7 @@ function normalizeChainUnits(value: number, decimals: number): number {
 
 export class decibel_client {
   private readonly reader: decibel_market_reader;
+  private readonly webSocketErrorHandlers = new Set<() => void>();
   private exchangeSymbol: string | undefined;
 
   constructor(
@@ -146,7 +153,14 @@ export class decibel_client {
     createReader: reader_factory = defaultReaderFactory,
   ) {
     const networkConfig = config.network === 'mainnet' ? MAINNET_CONFIG : TESTNET_CONFIG;
-    const options = config.nodeApiKey === undefined ? {} : { nodeApiKey: config.nodeApiKey };
+    const options = {
+      ...(config.nodeApiKey === undefined ? {} : { nodeApiKey: config.nodeApiKey }),
+      onWsError: () => {
+        for (const handler of this.webSocketErrorHandlers) {
+          handler();
+        }
+      },
+    };
     this.reader = createReader(networkConfig, options);
   }
 
@@ -241,14 +255,32 @@ export class decibel_client {
         .filter((candle) => getNextTimestamp(candle.t, interval) <= nowUnixMs)
         .sort((left, right) => left.t - right.t)
         .map((candle) => ({
-          timestamp: new Date(candle.t),
-          open: candle.o,
-          high: candle.h,
-          low: candle.l,
-          close: candle.c,
-          volume: candle.v,
+          ...this.normalizeCandlestick(candle),
         })),
     };
+  }
+
+  subscribeBTCCandlesticks(
+    exchangeSymbol: string,
+    interval: candle_interval,
+    onCandle: (candle: BTC_candlestick) => void,
+  ): () => void {
+    return this.reader.candlesticks.subscribeByName(exchangeSymbol, interval, (message) => {
+      const parsed = z.object({ candle: SDKCandlestickSchema }).parse(message).candle;
+      if (parsed.i !== interval || parsed.t !== alignTimestamp(parsed.t, interval)) {
+        throw new Error('Decibel returned an invalid WebSocket candle');
+      }
+      onCandle(this.normalizeCandlestick(parsed));
+    });
+  }
+
+  onWebSocketError(handler: () => void): () => void {
+    this.webSocketErrorHandlers.add(handler);
+    return () => this.webSocketErrorHandlers.delete(handler);
+  }
+
+  closeWebSocket(): void {
+    this.reader.deps?.ws.close();
   }
 
   private normalizeMarket(market: sdk_market): BTC_market_metadata {
@@ -264,6 +296,17 @@ export class decibel_client {
       maximumLeverage: market.max_leverage,
       maximumOpenInterest: market.max_open_interest,
       mode: market.mode,
+    };
+  }
+
+  private normalizeCandlestick(candle: z.infer<typeof SDKCandlestickSchema>): BTC_candlestick {
+    return {
+      timestamp: new Date(candle.t),
+      open: candle.o,
+      high: candle.h,
+      low: candle.l,
+      close: candle.c,
+      volume: candle.v,
     };
   }
 }

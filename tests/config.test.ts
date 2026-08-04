@@ -8,6 +8,9 @@ describe('loadConfig', () => {
       network: 'testnet',
       marketSymbol: 'BTC/USD',
       candleInterval: '5m',
+      candleHistoryDays: 90,
+      liveTradingEnabled: false,
+      logFormat: 'pretty',
     });
   });
 
@@ -23,7 +26,36 @@ describe('loadConfig', () => {
       nodeApiKey: 'example-not-a-real-key',
       marketSymbol: 'BTC/USD',
       candleInterval: '5m',
+      candleHistoryDays: 90,
+      liveTradingEnabled: false,
+      logFormat: 'pretty',
     });
+  });
+
+  it('defaults to pretty logs and validates JSON logging', () => {
+    expect(loadConfig({}).logFormat).toBe('pretty');
+    expect(loadConfig({ LOG_FORMAT: 'json' }).logFormat).toBe('json');
+    expect(() => loadConfig({ LOG_FORMAT: 'text' })).toThrow(
+      'Invalid environment configuration: LOG_FORMAT',
+    );
+  });
+
+  it('keeps live trading disabled by default and validates explicit boolean values', () => {
+    expect(loadConfig({}).liveTradingEnabled).toBe(false);
+    expect(loadConfig({ LIVE_TRADING_ENABLED: 'true' }).liveTradingEnabled).toBe(true);
+    expect(() => loadConfig({ LIVE_TRADING_ENABLED: 'yes' })).toThrow(
+      'Invalid environment configuration: LIVE_TRADING_ENABLED',
+    );
+  });
+
+  it('validates the historical backfill day range', () => {
+    expect(loadConfig({ CANDLE_HISTORY_DAYS: '365' }).candleHistoryDays).toBe(365);
+    expect(() => loadConfig({ CANDLE_HISTORY_DAYS: '0' })).toThrow(
+      'Invalid environment configuration: CANDLE_HISTORY_DAYS',
+    );
+    expect(() => loadConfig({ CANDLE_HISTORY_DAYS: '366' })).toThrow(
+      'Invalid environment configuration: CANDLE_HISTORY_DAYS',
+    );
   });
 
   it('accepts Decibel intervals and rejects unsupported values', () => {

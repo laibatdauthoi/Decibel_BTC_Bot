@@ -17,6 +17,9 @@ Configuration:
 - `DECIBEL_NODE_API_KEY`: optional node API key. It is passed directly to the SDK and is never logged.
 - `MARKET_SYMBOL`: optional and restricted to `BTC/USD`.
 - `CANDLE_INTERVAL`: a Decibel-supported interval, defaulting to `5m` for the trading strategy. Supported values are `1m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `8h`, `12h`, `1d`, `3d`, `1w`, and `1mo`.
+- `CANDLE_HISTORY_DAYS`: dedicated five-minute backfill depth from 1 through 365 days; defaults to `90`.
+- `LIVE_TRADING_ENABLED`: explicit informational trading authorization flag, defaulting to `false`. The current application has no order execution and setting this flag does not submit or enable orders.
+- `LOG_FORMAT`: `pretty` (default for local development) or `json`. JSON mode emits newline-delimited structured Pino records for log aggregation.
 
 No wallet address, account, or private key is needed. Do not add private keys to `.env`.
 
@@ -26,9 +29,23 @@ No wallet address, account, or private key is needed. Do not add private keys to
 npm start
 ```
 
-The command fetches public BTC/USD perpetual metadata, current mark/mid/oracle prices, and a 24-hour candlestick backfill using the configured interval. The default strategy uses completed five-minute candles. Requests are split into bounded, non-overlapping time pages. On later runs, synchronization resumes after the latest stored candle; if an earlier gap exists in the backfill window, it resumes from the first gap instead. Completed candles are transactionally upserted into `data/btc_usd_candlesticks.sqlite`.
+`npm start` runs a continuous BTC/USD five-minute market-data service. It performs one 24-hour REST catch-up, resolves the concrete BTC perpetual market, and then subscribes through the Decibel SDK to `market_candlestick:<market-address>:5m`. The active candle remains in memory and is persisted only after an event for a newer interval arrives, so completion does not depend solely on the local clock.
 
-Startup output reports accurate `inserted`, `updated`, `unchanged`, and `total` counts. It also reports the number and bounds of missing intervals, plus a verification summary containing `candleCount`, `firstCandleTime`, `lastCandleTime`, and only the latest three completed candles. It does not print or store the API key, credentials, or full fetched history.
+The service runs REST reconciliation every 15 minutes to repair missed intervals. Heartbeat checks mark data stale when WebSocket updates stop, and socket errors or stale data trigger reconnects with exponential delays capped at 60 seconds. `strategyEvaluationAllowed` reports whether candle data is healthy enough for deterministic strategy evaluation; it is false during startup, stale periods, and reconnects. `liveTradingEnabled` is reported separately and defaults to false. These statuses do not create an execution path, and this project still cannot submit orders. Replayed events after reconnect are safely upserted and do not duplicate candles.
+
+`SIGINT` and `SIGTERM` unsubscribe and close the WebSocket, stop heartbeat/reconciliation/reconnect timers, and close SQLite cleanly. Logs contain concise health and catch-up metadata only; API keys and credentials are never emitted.
+
+Pretty logging presents concise multiline records for startup, health transitions, completed-candle persistence, stale data, reconnect scheduling, reconciliation errors, and graceful shutdown. JSON mode preserves the same events as structured fields. Neither mode prints credentials or repeatedly dumps the 90-day history; candle logs contain only the completed candle timestamp and persistence counts.
+
+## Historical backfill
+
+```powershell
+npm run backfill
+```
+
+The dedicated command always backfills BTC/USD five-minute candles from `CANDLE_HISTORY_DAYS` ago through the latest completed UTC bucket. It extends backward when recent candles already exist, starts at the earliest missing timestamp after interruption, and requests bounded non-overlapping pages. Identical stored candles are skipped. HTTP `429` and temporary `5xx` responses use at most three retries with exponential backoff; authentication, authorization, and response-validation failures are not retried.
+
+Progress is emitted as compact public-data-only JSON per completed page and retry, followed by final inserted, updated, unchanged, total, and missing-interval counts. `npm run backfill` remains a separate one-time command and is never launched by the continuous service.
 
 The reusable `decibel_client` exposes:
 

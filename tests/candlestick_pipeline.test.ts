@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import {
   syncBTCCandlesticks,
@@ -150,6 +151,33 @@ describe('syncBTCCandlesticks', () => {
     expect(result).toMatchObject({ inserted: 2, updated: 0, unchanged: 0, total: 4 });
   });
 
+  it('extends backward when recent candles already exist', async () => {
+    CandlestickRepository.saveCandlesticks(makeHistory([600_000, 900_000]));
+    const { client, getBTCCandlesticks } = makeClient();
+
+    const result = await syncBTCCandlesticks(
+      client,
+      CandlestickRepository,
+      '5m',
+      new Date(1_200_000),
+      1_200_000,
+    );
+
+    expect(getBTCCandlesticks).toHaveBeenCalledWith(
+      '5m',
+      new Date(0),
+      new Date(1_200_000),
+      new Date(1_200_000),
+    );
+    expect(result).toMatchObject({
+      inserted: 2,
+      updated: 0,
+      unchanged: 2,
+      total: 4,
+      missingIntervalCount: 0,
+    });
+  });
+
   it('fills an earlier gap and accurately counts refetched unchanged candles', async () => {
     CandlestickRepository.saveCandlesticks(makeHistory([0, 600_000]));
     const { client, getBTCCandlesticks } = makeClient();
@@ -214,5 +242,77 @@ describe('syncBTCCandlesticks', () => {
 
     expect(second.getBTCCandlesticks).not.toHaveBeenCalled();
     expect(result).toMatchObject({ inserted: 0, updated: 0, unchanged: 0, total: 4 });
+  });
+
+  it.each([429, 503])('retries retryable HTTP status %i with bounded backoff', async (status) => {
+    const { client } = makeClient();
+    const getCandles = vi
+      .fn<candlestick_history_client['getBTCCandlesticks']>()
+      .mockRejectedValueOnce({ status })
+      .mockRejectedValueOnce({ response: { status } })
+      .mockResolvedValue(makeHistory([0]));
+    client.getBTCCandlesticks = getCandles;
+    const sleep = vi.fn<(milliseconds: number) => Promise<void>>().mockResolvedValue(undefined);
+    const onRetry = vi.fn();
+
+    const result = await syncBTCCandlesticks(
+      client,
+      CandlestickRepository,
+      '5m',
+      new Date(300_000),
+      300_000,
+      500,
+      { maxRetries: 2, retryDelayMs: 10, sleep, onRetry },
+    );
+
+    expect(result.inserted).toBe(1);
+    expect(getCandles).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenNthCalledWith(1, 10);
+    expect(sleep).toHaveBeenNthCalledWith(2, 20);
+    expect(onRetry).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['authentication', { status: 401 }],
+    ['authorization', { response: { status: 403 } }],
+    ['HTTP validation', { status: 400 }],
+    ['validation', new z.ZodError([])],
+  ])('does not retry %s errors', async (_label, failure) => {
+    const { client } = makeClient();
+    const getCandles = vi
+      .fn<candlestick_history_client['getBTCCandlesticks']>()
+      .mockRejectedValue(failure);
+    client.getBTCCandlesticks = getCandles;
+    const sleep = vi.fn<(milliseconds: number) => Promise<void>>().mockResolvedValue(undefined);
+
+    await expect(
+      syncBTCCandlesticks(client, CandlestickRepository, '5m', new Date(300_000), 300_000, 500, {
+        maxRetries: 3,
+        retryDelayMs: 10,
+        sleep,
+      }),
+    ).rejects.toBe(failure);
+    expect(getCandles).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('stops retrying after the configured retry bound', async () => {
+    const { client } = makeClient();
+    const failure = { status: 503 };
+    const getCandles = vi
+      .fn<candlestick_history_client['getBTCCandlesticks']>()
+      .mockRejectedValue(failure);
+    client.getBTCCandlesticks = getCandles;
+    const sleep = vi.fn<(milliseconds: number) => Promise<void>>().mockResolvedValue(undefined);
+
+    await expect(
+      syncBTCCandlesticks(client, CandlestickRepository, '5m', new Date(300_000), 300_000, 500, {
+        maxRetries: 2,
+        retryDelayMs: 10,
+        sleep,
+      }),
+    ).rejects.toBe(failure);
+    expect(getCandles).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
   });
 });
