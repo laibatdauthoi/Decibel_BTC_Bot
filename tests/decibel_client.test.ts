@@ -4,12 +4,19 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   decibel_client,
   type decibel_market_reader,
+  type HTTP_fetch,
   type reader_factory,
 } from '../src/decibel_client.js';
 
 const { MAINNET_CONFIG, TESTNET_CONFIG } = vi.hoisted(() => ({
-  MAINNET_CONFIG: { network: 'mainnet-sdk-config' } as unknown as DecibelConfig,
-  TESTNET_CONFIG: { network: 'testnet-sdk-config' } as unknown as DecibelConfig,
+  MAINNET_CONFIG: {
+    network: 'mainnet-sdk-config',
+    tradingHttpUrl: 'https://mainnet.example',
+  } as unknown as DecibelConfig,
+  TESTNET_CONFIG: {
+    network: 'testnet-sdk-config',
+    tradingHttpUrl: 'https://testnet.example',
+  } as unknown as DecibelConfig,
 }));
 
 vi.mock('@decibeltrade/sdk', () => ({
@@ -44,7 +51,10 @@ function makeReader(): decibel_market_reader {
           transaction_unix_ms: 1_700_000_000_000,
         },
       ]),
+      subscribeByName: vi.fn(() => vi.fn()),
     },
+    marketDepth: { subscribeByName: vi.fn(() => vi.fn()) },
+    marketTrades: { subscribeByName: vi.fn(() => vi.fn()) },
     candlesticks: {
       getByName: vi.fn().mockResolvedValue([]),
       subscribeByName: vi.fn(() => vi.fn()),
@@ -53,6 +63,46 @@ function makeReader(): decibel_market_reader {
 }
 
 describe('decibel_client', () => {
+  it('fetches bounded REST trade pages by concrete market address without exposing the key', async () => {
+    const fetchHTTP = vi.fn<HTTP_fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], total_count: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const Client = new decibel_client(
+      { network: 'mainnet', nodeApiKey: 'example-not-a-real-key', marketSymbol: 'BTC/USD' },
+      () => makeReader(),
+      fetchHTTP,
+    );
+    await Client.getBTCRecentTradesPage('0xbtc', 200, 400);
+    const [requestURL, requestInit] = fetchHTTP.mock.calls[0] ?? [];
+    expect(requestURL).toBe(
+      'https://mainnet.example/api/v1/trades?market=0xbtc&limit=200&offset=400',
+    );
+    expect((requestInit as RequestInit).headers).toEqual(
+      new Headers({ Authorization: 'Bearer example-not-a-real-key' }),
+    );
+    await expect(Client.getBTCRecentTradesPage('0xbtc', 201, 0)).rejects.toThrow(
+      'between 1 and 200',
+    );
+  });
+
+  it('subscribes to read-only BTC depth, trades, and market-price SDK readers', () => {
+    const reader = makeReader();
+    const Client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+    const handler = vi.fn();
+    Client.subscribeBTCDepth('BTC-USD', handler);
+    Client.subscribeBTCTrades('BTC-USD', handler);
+    Client.subscribeBTCMarketPrice('BTC-USD', handler);
+    expect(reader.marketDepth.subscribeByName).toHaveBeenCalledWith('BTC-USD', 1, handler);
+    expect(reader.marketTrades.subscribeByName).toHaveBeenCalledWith('BTC-USD', handler);
+    expect(reader.marketPrices.subscribeByName).toHaveBeenCalledWith('BTC-USD', handler);
+  });
+
   it.each([
     ['testnet' as const, TESTNET_CONFIG],
     ['mainnet' as const, MAINNET_CONFIG],

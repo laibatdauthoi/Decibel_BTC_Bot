@@ -110,7 +110,6 @@ export type BTC_hourly_candlestick = BTC_candlestick;
 
 export interface decibel_market_reader {
   markets: { getAll(): Promise<unknown> };
-  marketPrices: { getByName(args: { marketName: string }): Promise<unknown> };
   candlesticks: {
     getByName(args: {
       marketName: string;
@@ -119,10 +118,26 @@ export interface decibel_market_reader {
       endTime: number;
     }): Promise<unknown>;
     subscribeByName(
+      this: void,
       marketName: string,
       interval: candle_interval,
       onData: (message: unknown) => void,
     ): () => void;
+  };
+  marketDepth: {
+    subscribeByName(
+      this: void,
+      marketName: string,
+      aggregationSize: 1,
+      onData: (message: unknown) => void,
+    ): () => void;
+  };
+  marketTrades: {
+    subscribeByName(this: void, marketName: string, onData: (message: unknown) => void): () => void;
+  };
+  marketPrices: {
+    getByName(args: { marketName: string }): Promise<unknown>;
+    subscribeByName(this: void, marketName: string, onData: (message: unknown) => void): () => void;
   };
   deps?: { ws: { close(): void } };
 }
@@ -131,6 +146,8 @@ export type reader_factory = (
   config: DecibelConfig,
   options: { nodeApiKey?: string; onWsError?: (error: unknown) => void },
 ) => decibel_market_reader;
+
+export type HTTP_fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 const defaultReaderFactory: reader_factory = (config, options) =>
   new DecibelReadDex(config, options);
@@ -146,13 +163,18 @@ function normalizeChainUnits(value: number, decimals: number): number {
 export class decibel_client {
   private readonly reader: decibel_market_reader;
   private readonly webSocketErrorHandlers = new Set<() => void>();
+  private readonly tradingHTTPURL: string;
+  private readonly nodeApiKey: string | undefined;
   private exchangeSymbol: string | undefined;
 
   constructor(
     config: Pick<application_config, 'network' | 'nodeApiKey' | 'marketSymbol'>,
     createReader: reader_factory = defaultReaderFactory,
+    private readonly fetchHTTP: HTTP_fetch = fetch,
   ) {
     const networkConfig = config.network === 'mainnet' ? MAINNET_CONFIG : TESTNET_CONFIG;
+    this.tradingHTTPURL = networkConfig.tradingHttpUrl;
+    this.nodeApiKey = config.nodeApiKey;
     const options = {
       ...(config.nodeApiKey === undefined ? {} : { nodeApiKey: config.nodeApiKey }),
       onWsError: () => {
@@ -162,6 +184,30 @@ export class decibel_client {
       },
     };
     this.reader = createReader(networkConfig, options);
+  }
+
+  async getBTCRecentTradesPage(
+    marketAddress: string,
+    limit: number,
+    offset: number,
+  ): Promise<unknown> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+      throw new Error('Decibel trade page limit must be between 1 and 200');
+    if (!Number.isInteger(offset) || offset < 0 || offset > 10_000)
+      throw new Error('Decibel trade page offset must be between 0 and 10000');
+    const query = new URLSearchParams({
+      market: marketAddress,
+      limit: String(limit),
+      offset: String(offset),
+    });
+    const headers = new Headers();
+    if (this.nodeApiKey !== undefined) headers.set('Authorization', `Bearer ${this.nodeApiKey}`);
+    const response = await this.fetchHTTP(
+      `${this.tradingHTTPURL}/api/v1/trades?${query.toString()}`,
+      { headers },
+    );
+    if (!response.ok) throw new Error(`Decibel recent trades request failed (${response.status})`);
+    return response.json() as Promise<unknown>;
   }
 
   async getBTCMarketMetadata(): Promise<BTC_market_metadata> {
@@ -272,6 +318,18 @@ export class decibel_client {
       }
       onCandle(this.normalizeCandlestick(parsed));
     });
+  }
+
+  subscribeBTCDepth(exchangeSymbol: string, onData: (message: unknown) => void): () => void {
+    return this.reader.marketDepth.subscribeByName(exchangeSymbol, 1, onData);
+  }
+
+  subscribeBTCTrades(exchangeSymbol: string, onData: (message: unknown) => void): () => void {
+    return this.reader.marketTrades.subscribeByName(exchangeSymbol, onData);
+  }
+
+  subscribeBTCMarketPrice(exchangeSymbol: string, onData: (message: unknown) => void): () => void {
+    return this.reader.marketPrices.subscribeByName(exchangeSymbol, onData);
   }
 
   onWebSocketError(handler: () => void): () => void {

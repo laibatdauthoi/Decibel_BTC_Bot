@@ -20,6 +20,13 @@ Configuration:
 - `CANDLE_HISTORY_DAYS`: dedicated five-minute backfill depth from 1 through 365 days; defaults to `90`.
 - `LIVE_TRADING_ENABLED`: explicit informational trading authorization flag, defaulting to `false`. The current application has no order execution and setting this flag does not submit or enable orders.
 - `LOG_FORMAT`: `pretty` (default for local development) or `json`. JSON mode emits newline-delimited structured Pino records for log aggregation.
+- `MICROSTRUCTURE_SAMPLE_INTERVAL_MS`: changed-book sampling period, default `250` ms.
+- `MICROSTRUCTURE_STARTUP_GRACE_MS`: grace after each subscription before silence can be stale; default `15000` ms.
+- `MICROSTRUCTURE_DEPTH_STALE_AFTER_MS`: maximum depth silence after grace; default `10000` ms.
+- `MICROSTRUCTURE_TRADES_STALE_AFTER_MS`: quiet-market trade threshold; default `120000` ms.
+- `MICROSTRUCTURE_MARKET_PRICE_STALE_AFTER_MS`: maximum market-price silence after grace; default `30000` ms.
+- `MICROSTRUCTURE_BATCH_SIZE`: maximum rows in one SQLite transaction, default `500`.
+- `MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT`: recent REST trades loaded before WebSocket subscription, from `0` through `10000`; defaults to `10000`.
 - `EMA_FAST_PERIOD`, `EMA_SLOW_PERIOD`, and `EMA_TREND_PERIOD`: EMA backtest periods, defaulting to `9`, `21`, and `50`. They must be positive integers satisfying fast < slow < trend.
 - `EMA_MAXIMUM_HOLDING_BARS`: maximum open-position lifetime in completed five-minute bars, defaulting to `48`.
 - `BACKTEST_VERBOSE`: print each simulated trade when `true`; defaults to `false`.
@@ -39,6 +46,22 @@ The service runs REST reconciliation every 15 minutes to repair missed intervals
 `SIGINT` and `SIGTERM` unsubscribe and close the WebSocket, stop heartbeat/reconciliation/reconnect timers, and close SQLite cleanly. Logs contain concise health and catch-up metadata only; API keys and credentials are never emitted.
 
 Pretty logging presents concise multiline records for startup, health transitions, completed-candle persistence, stale data, reconnect scheduling, reconciliation errors, and graceful shutdown. JSON mode preserves the same events as structured fields. Neither mode prints credentials or repeatedly dumps the 90-day history; candle logs contain only the completed candle timestamp and persistence counts.
+
+## Microstructure collection
+
+```powershell
+npm run collect:microstructure
+```
+
+This separate, read-only service supports mainnet and testnet, resolves Decibel's concrete BTC perpetual address, and subscribes through `DecibelReadDex` to `depth:<market-address>:1`, `trades:<market-address>`, and `market_price:<market-address>`. It validates every message and records both the exchange timestamp and local `receivedAt` time. It never imports a wallet, private key, account, trading module, or order API.
+
+Before opening those realtime subscriptions, the collector bootstraps up to `MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT` recent perpetual trade rows from REST. Decibel's 200-row page maximum is enforced, with bounded offsets through the 10,000-row target. Every page is validated and committed before the next request, so an interrupted startup resumes safely. Set the limit to `0` only when explicitly disabling bootstrap.
+
+Decibel can return multiple participant rows with the same `trade_id`. The collector preserves each unique raw participant row under a SHA-256 row key derived only from stable exchange fields, while retaining `trade_id` as the economic-fill identifier. Exact row replays are skipped, including pagination overlap. Participant rows grouped under one `trade_id` must agree on market, price, size, exchange timestamp, and transaction version. Conflicting groups are stored as ambiguous and excluded from flow aggregates instead of stopping collection. Volume and trade count are applied once per non-ambiguous economic trade. Buy/sell flow is recorded only when an explicit taker/liquidity-role field determines aggressor direction; participant `action` alone remains `UNKNOWN` and is excluded from directional metrics. REST and WebSocket rows use the same normalizer and persistence path. Bootstrap logs report `rawRows`, `economicTrades`, `duplicateRows`, `participantRows`, `ambiguousTrades`, and oldest/newest timestamps without accounts or raw payloads.
+
+Normalized trades retain side, price, and size. Order-book snapshots contain best bid/ask, spread, mid-price, size-weighted microprice, top-level sizes, and top-five depth imbalance. Identical books are suppressed and changed books are sampled every 250 ms by default. Price snapshots contain mark, mid, oracle, decimal funding rate, and open interest. One-second records contain buy/sell/unknown-direction volume, economic trade count, VWAP, spread, depth imbalance, and directional order-flow imbalance.
+
+Data is stored in `data/btc_usd_microstructure.sqlite` with WAL, versioned migrations, replay-safe primary keys, and bounded transactions. Replayed trades, books, and price events do not create duplicate rows. Crossed or inconsistent books, malformed data, market mismatches, and timestamp regressions are rejected and counted. Depth, trade, and market-price health are tracked separately. A newly subscribed stream remains `waiting` until its first event, and startup grace prevents immediate stale decisions. Depth and price use their own thresholds. Trades use a much longer quiet-market threshold and remain waiting/healthy while other stream traffic proves WebSocket liveness. Genuine depth/price staleness or a socket heartbeat/error callback reconnects all address-bound subscriptions with exponential backoff capped at 60 seconds. Health is logged only on transitions. `SIGINT` and `SIGTERM` stop timers, unsubscribe, close the socket, flush completed aggregates, and close SQLite. Logs contain only public market identity, stream health, and concise persistence/error counters.
 
 ## Historical backfill
 

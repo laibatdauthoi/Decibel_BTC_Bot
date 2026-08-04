@@ -11,6 +11,13 @@ describe('loadConfig', () => {
       candleHistoryDays: 90,
       liveTradingEnabled: false,
       logFormat: 'pretty',
+      microstructureSampleIntervalMs: 250,
+      microstructureStartupGraceMs: 15_000,
+      microstructureDepthStaleAfterMs: 10_000,
+      microstructureTradesStaleAfterMs: 120_000,
+      microstructureMarketPriceStaleAfterMs: 30_000,
+      microstructureBatchSize: 500,
+      microstructureBootstrapTradeLimit: 10_000,
     });
   });
 
@@ -29,6 +36,13 @@ describe('loadConfig', () => {
       candleHistoryDays: 90,
       liveTradingEnabled: false,
       logFormat: 'pretty',
+      microstructureSampleIntervalMs: 250,
+      microstructureStartupGraceMs: 15_000,
+      microstructureDepthStaleAfterMs: 10_000,
+      microstructureTradesStaleAfterMs: 120_000,
+      microstructureMarketPriceStaleAfterMs: 30_000,
+      microstructureBatchSize: 500,
+      microstructureBootstrapTradeLimit: 10_000,
     });
   });
 
@@ -62,6 +76,46 @@ describe('loadConfig', () => {
     expect(loadConfig({ CANDLE_INTERVAL: '15m' }).candleInterval).toBe('15m');
     expect(() => loadConfig({ CANDLE_INTERVAL: '10m' })).toThrow(
       'Invalid environment configuration: CANDLE_INTERVAL',
+    );
+  });
+
+  it('validates microstructure sampling, staleness, and batch bounds', () => {
+    expect(
+      loadConfig({
+        MICROSTRUCTURE_SAMPLE_INTERVAL_MS: '500',
+        MICROSTRUCTURE_STARTUP_GRACE_MS: '30000',
+        MICROSTRUCTURE_DEPTH_STALE_AFTER_MS: '20000',
+        MICROSTRUCTURE_TRADES_STALE_AFTER_MS: '180000',
+        MICROSTRUCTURE_MARKET_PRICE_STALE_AFTER_MS: '45000',
+        MICROSTRUCTURE_BATCH_SIZE: '1000',
+        MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT: '2500',
+      }),
+    ).toMatchObject({
+      microstructureSampleIntervalMs: 500,
+      microstructureStartupGraceMs: 30_000,
+      microstructureDepthStaleAfterMs: 20_000,
+      microstructureTradesStaleAfterMs: 180_000,
+      microstructureMarketPriceStaleAfterMs: 45_000,
+      microstructureBatchSize: 1_000,
+      microstructureBootstrapTradeLimit: 2_500,
+    });
+    expect(() => loadConfig({ MICROSTRUCTURE_SAMPLE_INTERVAL_MS: '10' })).toThrow(
+      'MICROSTRUCTURE_SAMPLE_INTERVAL_MS',
+    );
+    expect(() => loadConfig({ MICROSTRUCTURE_TRADES_STALE_AFTER_MS: '9999' })).toThrow(
+      'MICROSTRUCTURE_TRADES_STALE_AFTER_MS',
+    );
+    expect(() =>
+      loadConfig({
+        MICROSTRUCTURE_DEPTH_STALE_AFTER_MS: '20000',
+        MICROSTRUCTURE_TRADES_STALE_AFTER_MS: '20000',
+      }),
+    ).toThrow('MICROSTRUCTURE_TRADES_STALE_AFTER_MS');
+    expect(() => loadConfig({ MICROSTRUCTURE_BATCH_SIZE: '0' })).toThrow(
+      'MICROSTRUCTURE_BATCH_SIZE',
+    );
+    expect(() => loadConfig({ MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT: '10001' })).toThrow(
+      'MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT',
     );
   });
 

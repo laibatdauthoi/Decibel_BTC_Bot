@@ -13,15 +13,59 @@ const booleanEnvironmentValue = z
   .default('false')
   .transform((value) => value === 'true');
 
-const EnvironmentSchema = z.object({
-  DECIBEL_NETWORK: z.enum(['mainnet', 'testnet']).default('testnet'),
-  DECIBEL_NODE_API_KEY: optionalSecret,
-  MARKET_SYMBOL: z.literal('BTC/USD').default('BTC/USD'),
-  CANDLE_INTERVAL: CandleIntervalSchema.default('5m'),
-  CANDLE_HISTORY_DAYS: z.coerce.number().int().min(1).max(365).default(90),
-  LIVE_TRADING_ENABLED: booleanEnvironmentValue,
-  LOG_FORMAT: z.enum(['pretty', 'json']).default('pretty'),
-});
+const EnvironmentSchema = z
+  .object({
+    DECIBEL_NETWORK: z.enum(['mainnet', 'testnet']).default('testnet'),
+    DECIBEL_NODE_API_KEY: optionalSecret,
+    MARKET_SYMBOL: z.literal('BTC/USD').default('BTC/USD'),
+    CANDLE_INTERVAL: CandleIntervalSchema.default('5m'),
+    CANDLE_HISTORY_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+    LIVE_TRADING_ENABLED: booleanEnvironmentValue,
+    LOG_FORMAT: z.enum(['pretty', 'json']).default('pretty'),
+    MICROSTRUCTURE_SAMPLE_INTERVAL_MS: z.coerce.number().int().min(50).max(5_000).default(250),
+    MICROSTRUCTURE_STARTUP_GRACE_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(300_000)
+      .default(15_000),
+    MICROSTRUCTURE_DEPTH_STALE_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(300_000)
+      .default(10_000),
+    MICROSTRUCTURE_TRADES_STALE_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .min(10_000)
+      .max(900_000)
+      .default(120_000),
+    MICROSTRUCTURE_MARKET_PRICE_STALE_AFTER_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(300_000)
+      .default(30_000),
+    MICROSTRUCTURE_BATCH_SIZE: z.coerce.number().int().min(1).max(5_000).default(500),
+    MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(10_000)
+      .default(10_000),
+  })
+  .superRefine((environment, context) => {
+    if (
+      environment.MICROSTRUCTURE_TRADES_STALE_AFTER_MS <=
+      environment.MICROSTRUCTURE_DEPTH_STALE_AFTER_MS
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MICROSTRUCTURE_TRADES_STALE_AFTER_MS'],
+        message: 'Trade staleness must exceed depth staleness',
+      });
+  });
 
 export type application_config = {
   network: 'mainnet' | 'testnet';
@@ -31,6 +75,13 @@ export type application_config = {
   candleHistoryDays: number;
   liveTradingEnabled: boolean;
   logFormat: log_format;
+  microstructureSampleIntervalMs: number;
+  microstructureStartupGraceMs: number;
+  microstructureDepthStaleAfterMs: number;
+  microstructureTradesStaleAfterMs: number;
+  microstructureMarketPriceStaleAfterMs: number;
+  microstructureBatchSize: number;
+  microstructureBootstrapTradeLimit: number;
 };
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): application_config {
@@ -51,5 +102,12 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): applic
     candleHistoryDays: parsed.data.CANDLE_HISTORY_DAYS,
     liveTradingEnabled: parsed.data.LIVE_TRADING_ENABLED,
     logFormat: parsed.data.LOG_FORMAT,
+    microstructureSampleIntervalMs: parsed.data.MICROSTRUCTURE_SAMPLE_INTERVAL_MS,
+    microstructureStartupGraceMs: parsed.data.MICROSTRUCTURE_STARTUP_GRACE_MS,
+    microstructureDepthStaleAfterMs: parsed.data.MICROSTRUCTURE_DEPTH_STALE_AFTER_MS,
+    microstructureTradesStaleAfterMs: parsed.data.MICROSTRUCTURE_TRADES_STALE_AFTER_MS,
+    microstructureMarketPriceStaleAfterMs: parsed.data.MICROSTRUCTURE_MARKET_PRICE_STALE_AFTER_MS,
+    microstructureBatchSize: parsed.data.MICROSTRUCTURE_BATCH_SIZE,
+    microstructureBootstrapTradeLimit: parsed.data.MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT,
   };
 }
