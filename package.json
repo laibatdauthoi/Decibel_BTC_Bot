@@ -10,6 +10,7 @@
     "backfill": "tsx src/backfill.ts",
     "backtest": "tsx src/backtest.ts",
     "verify:timeframes": "tsx src/verify_timeframes.ts",
+    "verify:market-structure": "tsx src/verify_market_structure.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

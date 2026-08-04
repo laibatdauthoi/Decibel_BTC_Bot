@@ -76,6 +76,14 @@ npm run verify:timeframes
 
 This read-only command loads completed BTC/USD `5m` candles from the shared SQLite database and deterministically aggregates fully covered UTC buckets into `15m` and `1h` candles. It validates source alignment, chronological order, continuity, uniqueness, and OHLCV data. Leading or trailing boundary fragments and candles unfinished at the verification cutoff are not aggregated. The command does not persist derived timeframes; it prints only each timeframe's count, first/last timestamps, and latest completed candle.
 
+## Market-structure verification
+
+```powershell
+npm run verify:market-structure
+```
+
+The deterministic detector consumes only completed in-memory `1h` aggregates. `SWING_LEFT_BARS` and `SWING_RIGHT_BARS` configure strict pivot windows and both default to `2`. Equal highs or lows are not pivots. Each swing records its original `pivotTime` and the close boundary `confirmedAtTime` of its final right-side bar, so it cannot appear early. Two rising confirmed swing highs and lows produce `TREND_UP`; two falling highs and lows produce `TREND_DOWN`; mixed structure produces `RANGE`; insufficient swings produce `UNKNOWN`. The command prints the current regime and latest two confirmed highs and lows without persisting anything or using EMA data.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.
