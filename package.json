@@ -20,6 +20,7 @@
     "build:research-dataset": "tsx src/build_research_dataset.ts",
     "simulate:maker-execution": "tsx src/simulate_maker_execution.ts",
     "analyze:research-edge": "tsx src/analyze_research_edge.ts",
+    "verify:risk-engine": "tsx src/verify_risk_engine.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

@@ -2,6 +2,12 @@
 
 A strict TypeScript foundation for reading the Decibel BTC/USD perpetual market. The current client is deliberately read-only: it imports only `DecibelReadDex`, does not load private keys, and cannot submit or cancel orders.
 
+## Offline risk engine
+
+`npm run verify:risk-engine` verifies the deterministic BTC/USD perpetual risk policy against a USD 30 reference account. Every approved intent retains exactly 40x leverage; allocated margin and quantity vary with stop distance, fees, collateral, and risk limits. USD 1,200 is only the theoretical maximum notional for USD 30 equity before those constraints.
+
+The engine is validation, sizing, persistence, and audit code only. It cannot trade and contains no wallet, signing, order-submission, modification, or cancellation integration. The USD 10,000 daily volume target is monitoring-only and never overrides risk. Liquidation and exchange margin-mode calculations remain unavailable pending verified Decibel semantics. See [the risk policy](docs/risk_policy.md).
+
 ## Setup
 
 Requires Node.js and npm. Install the pinned dependencies and copy the example environment file:
