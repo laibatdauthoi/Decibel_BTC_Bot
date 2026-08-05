@@ -55,6 +55,7 @@ export type candle_service_options = {
   synchronize?: () => Promise<candlestick_pipeline_result>;
   onStatus?: (health: candle_service_health) => void;
   logger?: Pick<Logger, 'info' | 'warn' | 'error'>;
+  onFatal?: (error: Error) => void;
 };
 
 export class candlestick_service {
@@ -67,7 +68,11 @@ export class candlestick_service {
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private reconnectAttempt = 0;
+  private reconnectCount = 0;
   private lastMessageAt = 0;
+  private lastReceivedAt: number | null = null;
+  private latestCompletedCandleAt: number | null = null;
+  private realtimeStarted = false;
   private reconciliationRunning = false;
   private readonly synchronize: () => Promise<candlestick_pipeline_result>;
 
@@ -82,9 +87,17 @@ export class candlestick_service {
   }
 
   async start(): Promise<candlestick_pipeline_result> {
+    const catchUp = await this.startCatchUp();
+    this.startRealtime();
+    return catchUp;
+  }
+
+  async startCatchUp(): Promise<candlestick_pipeline_result> {
     this.setHealth('starting');
     this.market = await this.client.getBTCMarketMetadata();
     const catchUp = await this.synchronize();
+    this.latestCompletedCandleAt =
+      this.repository.getLatestTimestamp(this.market.marketAddress, '5m')?.getTime() ?? null;
     this.options.logger?.info(
       {
         event: 'rest_catch_up',
@@ -96,6 +109,13 @@ export class candlestick_service {
       },
       'REST catch-up completed',
     );
+    return catchUp;
+  }
+
+  startRealtime(): void {
+    if (this.realtimeStarted) return;
+    if (this.market === undefined) throw new Error('Candle REST catch-up must complete first');
+    this.realtimeStarted = true;
     this.unsubscribeError = this.client.onWebSocketError(() => this.handleDisconnect());
     this.subscribe();
     this.lastMessageAt = Date.now();
@@ -106,7 +126,6 @@ export class candlestick_service {
     this.heartbeatTimer = setInterval(() => {
       this.checkHeartbeat();
     }, this.options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS);
-    return catchUp;
   }
 
   stop(): void {
@@ -118,12 +137,27 @@ export class candlestick_service {
     if (this.heartbeatTimer !== undefined) clearInterval(this.heartbeatTimer);
     if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer);
     this.client.closeWebSocket();
+    this.realtimeStarted = false;
     this.options.logger?.info({ event: 'websocket_shutdown' }, 'WebSocket shutdown completed');
     this.setHealth('stopped');
   }
 
   getHealth(): candle_service_health {
     return this.health;
+  }
+
+  getOperationalStatus(): {
+    health: candle_service_health;
+    lastReceivedAt: number | null;
+    reconnectCount: number;
+    latestCompletedCandleAt: number | null;
+  } {
+    return {
+      health: this.health,
+      lastReceivedAt: this.lastReceivedAt,
+      reconnectCount: this.reconnectCount,
+      latestCompletedCandleAt: this.latestCompletedCandleAt,
+    };
   }
 
   isStrategyEvaluationAllowed(): boolean {
@@ -143,6 +177,7 @@ export class candlestick_service {
 
   private handleCandle(candle: BTC_candlestick): void {
     this.lastMessageAt = Date.now();
+    this.lastReceivedAt = this.lastMessageAt;
     this.reconnectAttempt = 0;
     const current = this.currentCandle;
     if (current === undefined || candle.timestamp.getTime() === current.timestamp.getTime()) {
@@ -155,6 +190,7 @@ export class candlestick_service {
     }
 
     this.persistCompletedCandle(current);
+    this.latestCompletedCandleAt = current.timestamp.getTime();
     const expectedTimestamp = getNextTimestamp(current.timestamp.getTime(), '5m');
     this.currentCandle = candle;
     if (candle.timestamp.getTime() !== expectedTimestamp) {
@@ -167,13 +203,20 @@ export class candlestick_service {
 
   private persistCompletedCandle(candle: BTC_candlestick): void {
     if (this.market === undefined) return;
-    const result = this.repository.saveCandlesticks({
-      symbol: 'BTC/USD',
-      exchangeSymbol: this.market.exchangeSymbol,
-      marketAddress: this.market.marketAddress,
-      interval: '5m',
-      candles: [candle],
-    });
+    let result: candlestick_write_result;
+    try {
+      result = this.repository.saveCandlesticks({
+        symbol: 'BTC/USD',
+        exchangeSymbol: this.market.exchangeSymbol,
+        marketAddress: this.market.marketAddress,
+        interval: '5m',
+        candles: [candle],
+      });
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error('Candlestick persistence failed');
+      this.options.onFatal?.(failure);
+      throw failure;
+    }
     this.options.logger?.info(
       {
         event: 'candle_persisted',
@@ -232,6 +275,7 @@ export class candlestick_service {
     const maxDelay = this.options.reconnectMaxDelayMs ?? RECONNECT_MAX_DELAY_MS;
     const reconnectDelay = Math.min(baseDelay * 2 ** this.reconnectAttempt, maxDelay);
     this.reconnectAttempt += 1;
+    this.reconnectCount += 1;
     this.options.logger?.warn(
       {
         event: 'websocket_reconnect_scheduled',

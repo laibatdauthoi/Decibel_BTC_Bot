@@ -17,7 +17,11 @@ type event_row = { event_type: string; occurred_at_ms: number };
 export class research_source_repository {
   private readonly database: Database.Database;
   constructor(databasePath: string) {
-    this.database = new Database(databasePath, { readonly: true, fileMustExist: true });
+    this.database = new Database(databasePath, {
+      readonly: true,
+      fileMustExist: true,
+      timeout: 5_000,
+    });
   }
 
   loadSource(marketAddress: string, endTimeMs: number): research_source {
@@ -162,6 +166,22 @@ export class research_source_repository {
       )
       .all()
       .map((row) => row.market_address);
+  }
+  readSnapshot<T>(reader: () => T): T {
+    try {
+      this.database.exec('BEGIN DEFERRED');
+      const value = reader();
+      this.database.exec('COMMIT');
+      return value;
+    } catch (error) {
+      if (this.database.inTransaction) this.database.exec('ROLLBACK');
+      if (error instanceof Error && 'code' in error && error.code === 'SQLITE_BUSY')
+        throw new Error(
+          'Microstructure database remained busy for 5000ms; retry after the collector transaction completes',
+          { cause: error },
+        );
+      throw error;
+    }
   }
   close(): void {
     this.database.close();

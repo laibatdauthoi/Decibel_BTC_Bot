@@ -20,6 +20,44 @@ afterEach(() => {
 });
 
 describe('backtest persistence integration', () => {
+  it('holds a stable WAL snapshot while a concurrent writer advances the newest bucket', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'decibel-snapshot-'));
+    temporaryDirectories.push(projectRoot);
+    const databasePath = resolveCandlestickDatabasePath(projectRoot);
+    const marketAddress = '0xmainnet-btc-market';
+    const Writer = new candlestick_repository(databasePath);
+    const save = (timestamps: readonly number[]): void => {
+      Writer.saveCandlesticks({
+        symbol: 'BTC/USD',
+        exchangeSymbol: 'BTC-USD',
+        marketAddress,
+        interval: '5m',
+        candles: timestamps.map((timestamp) => ({
+          timestamp: new Date(timestamp),
+          open: 100,
+          high: 101,
+          low: 99,
+          close: 100,
+          volume: 1,
+        })),
+      });
+    };
+    save([0, 300_000]);
+    const Reader = new candlestick_repository(databasePath);
+    const cutoffTimeMs = 900_000;
+    const snapshot = readMainnetBTCBacktestDataset(Reader, 'mainnet', cutoffTimeMs, () => {
+      save([600_000, 900_000]);
+    });
+    expect(snapshot.candles.map((candle) => candle.timestamp.getTime())).toEqual([0, 300_000]);
+    const nextSnapshot = readMainnetBTCBacktestDataset(Reader, 'mainnet', cutoffTimeMs);
+    expect(nextSnapshot.candles.map((candle) => candle.timestamp.getTime())).toEqual([
+      0, 300_000, 600_000,
+    ]);
+    expect(readMainnetBTCBacktestDataset(Reader, 'mainnet', cutoffTimeMs)).toEqual(nextSnapshot);
+    Reader.close();
+    Writer.close();
+  });
+
   it('reads candles written by persistence from the shared configured database', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'decibel-backtest-'));
     temporaryDirectories.push(projectRoot);

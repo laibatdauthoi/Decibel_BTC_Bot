@@ -68,6 +68,12 @@ describe('timeframe aggregation', () => {
     ).toThrow('misaligned');
   });
 
+  it('reports exact internal gap diagnostics', () => {
+    expect(() => buildBTCTimeframes([makeCandle(0), makeCandle(2)], new Date(900_000))).toThrow(
+      'previousTimestamp=1970-01-01T00:00:00.000Z, nextTimestamp=1970-01-01T00:10:00.000Z, expectedTimestamp=1970-01-01T00:05:00.000Z, missingIntervalCount=1',
+    );
+  });
+
   it('rejects incomplete and non-aligned aggregate groups', () => {
     expect(() => aggregateCompletedCandles([makeCandle(0), makeCandle(1)], '15m')).toThrow(
       'Incomplete 15m',

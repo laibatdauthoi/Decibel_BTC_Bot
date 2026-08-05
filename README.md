@@ -27,6 +27,7 @@ Configuration:
 - `MICROSTRUCTURE_MARKET_PRICE_STALE_AFTER_MS`: maximum market-price silence after grace; default `30000` ms.
 - `MICROSTRUCTURE_BATCH_SIZE`: maximum rows in one SQLite transaction, default `500`.
 - `MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT`: recent REST trades loaded before WebSocket subscription, from `0` through `10000`; defaults to `10000`.
+- `DATA_RUNTIME_SHUTDOWN_TIMEOUT_MS`: bounded unified-runtime shutdown timeout, default `10000` ms.
 - `EMA_FAST_PERIOD`, `EMA_SLOW_PERIOD`, and `EMA_TREND_PERIOD`: EMA backtest periods, defaulting to `9`, `21`, and `50`. They must be positive integers satisfying fast < slow < trend.
 - `EMA_MAXIMUM_HOLDING_BARS`: maximum open-position lifetime in completed five-minute bars, defaulting to `48`.
 - `BACKTEST_VERBOSE`: print each simulated trade when `true`; defaults to `false`.
@@ -46,6 +47,20 @@ The service runs REST reconciliation every 15 minutes to repair missed intervals
 `SIGINT` and `SIGTERM` unsubscribe and close the WebSocket, stop heartbeat/reconciliation/reconnect timers, and close SQLite cleanly. Logs contain concise health and catch-up metadata only; API keys and credentials are never emitted.
 
 Pretty logging presents concise multiline records for startup, health transitions, completed-candle persistence, stale data, reconnect scheduling, reconciliation errors, and graceful shutdown. JSON mode preserves the same events as structured fields. Neither mode prints credentials or repeatedly dumps the 90-day history; candle logs contain only the completed candle timestamp and persistence counts.
+
+## Unified data collection
+
+```powershell
+npm run collect:data
+```
+
+This is the recommended long-running development and eventual VPS entry point. It composes the existing candle service and microstructure collector inside one Node.js process; it does not launch nested npm or shell processes. Configuration is validated before either database is opened. Both SQLite databases are then migrated safely, candle REST catch-up completes, microstructure REST trade bootstrap completes, and only then are the candle, depth, trade, and market-price WebSocket subscriptions opened. The standalone `npm start` and `npm run collect:microstructure` commands remain available and use the same service modules.
+
+The unified runtime reports candle, depth, trade, market-price, and one-second aggregate-persistence health separately, plus a transition-only `STARTING`, `HEALTHY`, `DEGRADED`, `FAILED`, `STOPPING`, or `STOPPED` status. Health includes last receipt times, reconnect/malformed/regression counters, the latest completed candle, and latest aggregate second. `SIGINT` and `SIGTERM` have one idempotent bounded shutdown path that stops new work, unsubscribes sockets, flushes completed data, closes the collector session and databases, and releases the writer locks.
+
+Before starting `collect:data`, stop any running standalone candle or microstructure collector. All three writer commands participate in OS-held per-database locks, which are released automatically when a process terminates and therefore do not depend on deleting stale lock files. A conflict fails with the database path and an actionable stop-the-other-collector message. Offline research and quality commands use read-only/WAL access and may run while `collect:data` is active; research dataset building and maker simulation are never triggered by realtime events.
+
+For a VPS, run one supervised `npm run collect:data` process with automatic restart and graceful `SIGTERM`, persistent `data/` storage, a protected environment file, and `LOG_FORMAT=json` for log collection. Do not run the standalone writer commands alongside it.
 
 ## Microstructure collection
 
@@ -160,6 +175,8 @@ npm run build:research-dataset
 ```
 
 This offline command regenerates the existing deterministic 5-minute opportunity candidates and joins each candidate at its `availableAtTime` with v5-compatible microstructure observations only. One-second aggregates are eligible only after their second-close boundary; books and WebSocket trade classifications must have local receipt timestamps at or before the decision. Legacy sessions, reconnect gaps, future observations, REST bootstrap direction, and unfinished candles are excluded.
+
+The builder captures one fixed research cutoff before reading. Candle bounds and rows are read in one WAL-compatible SQLite snapshot, and all related microstructure session, event, aggregate, book, and trade reads use a separate consistent snapshot constrained by the same cutoff. Concurrent newest-candle commits therefore appear wholly in the current build or the next build, never partially. Only candles completed by the cutoff are eligible. Genuine internal five-minute gaps still fail with previous, next, expected, and missing-count diagnostics; the builder does not retry or hide them.
 
 Trailing 15, 60, and 300-second feature windows report aggregate and stale-feature coverage, spread, imbalance, depth, directional and unknown volume, trade intensity, VWAP, OFI, microprice deviation, feature ages, and explicit/estimated/unknown direction counts. Missing observations remain null; only genuine zero-trade quantities are zero. Each window is independently `VALID` or `INVALID` using fixed coverage and feature-availability gates.
 

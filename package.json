@@ -15,6 +15,7 @@
     "analyze:opportunities": "tsx src/analyze_opportunities.ts",
     "analyze:outcomes": "tsx src/analyze_outcomes.ts",
     "collect:microstructure": "tsx src/collect_microstructure.ts",
+    "collect:data": "tsx src/collect_data.ts",
     "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build:research-dataset": "tsx src/build_research_dataset.ts",
     "simulate:maker-execution": "tsx src/simulate_maker_execution.ts",

@@ -35,27 +35,33 @@ async function run(): Promise<void> {
   const DatasetRepository = new research_dataset_repository(resolveResearchDatabasePath());
   const DecibelClient = new decibel_client(config);
   try {
-    const dataset = readMainnetBTCBacktestDataset(CandleRepository, config.network);
+    const researchCutoffTimeMs = Date.now();
+    const dataset = readMainnetBTCBacktestDataset(
+      CandleRepository,
+      config.network,
+      researchCutoffTimeMs,
+    );
     const normalizedMarket = await DecibelClient.getBTCMarketMetadata();
     if (normalizedMarket.marketAddress !== dataset.marketAddress)
       throw new Error(
         `Normalized BTC/USD market address ${normalizedMarket.marketAddress} does not match stored candle market ${dataset.marketAddress}`,
       );
     const candidates = scanBTCOpportunities(
-      buildBTCTimeframes(dataset.candles),
+      buildBTCTimeframes(dataset.candles, new Date(researchCutoffTimeMs)),
       loadOpportunityScannerConfig(),
       loadMarketStructureConfig(),
     );
-    const now = Date.now();
-    if (!SourceRepository.getMarketAddresses().includes(dataset.marketAddress))
-      throw new Error(
-        `No microstructure data matches normalized BTC/USD market ${dataset.marketAddress}`,
-      );
-    const source = SourceRepository.loadSource(dataset.marketAddress, now);
+    const source = SourceRepository.readSnapshot(() => {
+      if (!SourceRepository.getMarketAddresses().includes(dataset.marketAddress))
+        throw new Error(
+          `No microstructure data matches normalized BTC/USD market ${dataset.marketAddress}`,
+        );
+      return SourceRepository.loadSource(dataset.marketAddress, researchCutoffTimeMs);
+    });
     if (source.marketAddress !== dataset.marketAddress)
       throw new Error('Microstructure source market does not match the BTC/USD research market');
-    const metadata = createResearchMarketMetadata(normalizedMarket, new Date(now));
-    const samples = buildResearchSamples(candidates, dataset.candles, source, now);
+    const metadata = createResearchMarketMetadata(normalizedMarket, new Date(researchCutoffTimeMs));
+    const samples = buildResearchSamples(candidates, dataset.candles, source, researchCutoffTimeMs);
     if (samples.some((sample) => sample.marketAddress !== metadata.marketAddress))
       throw new Error('Research candidate market does not match the normalized BTC/USD metadata');
     const metadataPersistence = DatasetRepository.saveMarketMetadata(metadata);
@@ -87,6 +93,7 @@ async function run(): Promise<void> {
     const report = {
       status: validOutcomeCompleteCount < 100 ? 'NOT_ENOUGH_DATA' : 'READY',
       featureVersion: samples[0]?.featureVersion ?? null,
+      researchCutoffTime: new Date(researchCutoffTimeMs).toISOString(),
       totalCandidateCount: samples.length,
       candidatesOverlappingMicrostructureData: overlap,
       validByWindow,

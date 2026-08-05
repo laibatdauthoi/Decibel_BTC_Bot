@@ -56,6 +56,12 @@ const EnvironmentSchema = z
       .default(10_000),
     MICROSTRUCTURE_MAX_BOOK_AGE_MS: z.coerce.number().int().min(0).max(60_000).default(2_000),
     MICROSTRUCTURE_MAX_PRICE_AGE_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
+    DATA_RUNTIME_SHUTDOWN_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(120_000)
+      .default(10_000),
   })
   .superRefine((environment, context) => {
     if (
@@ -86,6 +92,7 @@ export type application_config = {
   microstructureBootstrapTradeLimit: number;
   microstructureMaximumBookAgeMs: number;
   microstructureMaximumPriceAgeMs: number;
+  dataRuntimeShutdownTimeoutMs: number;
 };
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): application_config {
@@ -115,5 +122,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): applic
     microstructureBootstrapTradeLimit: parsed.data.MICROSTRUCTURE_BOOTSTRAP_TRADE_LIMIT,
     microstructureMaximumBookAgeMs: parsed.data.MICROSTRUCTURE_MAX_BOOK_AGE_MS,
     microstructureMaximumPriceAgeMs: parsed.data.MICROSTRUCTURE_MAX_PRICE_AGE_MS,
+    dataRuntimeShutdownTimeoutMs: parsed.data.DATA_RUNTIME_SHUTDOWN_TIMEOUT_MS,
   };
 }

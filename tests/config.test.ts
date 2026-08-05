@@ -20,6 +20,7 @@ describe('loadConfig', () => {
       microstructureBootstrapTradeLimit: 10_000,
       microstructureMaximumBookAgeMs: 2_000,
       microstructureMaximumPriceAgeMs: 5_000,
+      dataRuntimeShutdownTimeoutMs: 10_000,
     });
   });
 
@@ -47,6 +48,7 @@ describe('loadConfig', () => {
       microstructureBootstrapTradeLimit: 10_000,
       microstructureMaximumBookAgeMs: 2_000,
       microstructureMaximumPriceAgeMs: 5_000,
+      dataRuntimeShutdownTimeoutMs: 10_000,
     });
   });
 
@@ -136,6 +138,15 @@ describe('loadConfig', () => {
     );
     expect(() => loadConfig({ MARKET_SYMBOL: 'ETH/USD' })).toThrow(
       'Invalid environment configuration: MARKET_SYMBOL',
+    );
+  });
+
+  it('validates the unified runtime shutdown timeout before startup', () => {
+    expect(
+      loadConfig({ DATA_RUNTIME_SHUTDOWN_TIMEOUT_MS: '15000' }).dataRuntimeShutdownTimeoutMs,
+    ).toBe(15_000);
+    expect(() => loadConfig({ DATA_RUNTIME_SHUTDOWN_TIMEOUT_MS: '999' })).toThrow(
+      'DATA_RUNTIME_SHUTDOWN_TIMEOUT_MS',
     );
   });
 });

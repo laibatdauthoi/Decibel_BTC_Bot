@@ -3,7 +3,12 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 
-import { alignTimestamp, getNextTimestamp, type candle_interval } from './candle_interval.js';
+import {
+  alignTimestamp,
+  getIntervalMilliseconds,
+  getNextTimestamp,
+  type candle_interval,
+} from './candle_interval.js';
 import type { BTC_candlestick_history, BTC_hourly_candlestick } from './decibel_client.js';
 
 const StoredCandleSchema = z.object({
@@ -63,7 +68,7 @@ export class candlestick_repository {
     if (databasePath !== ':memory:') {
       mkdirSync(dirname(databasePath), { recursive: true });
     }
-    this.database = new Database(databasePath);
+    this.database = new Database(databasePath, { timeout: 5_000 });
     this.database.pragma('journal_mode = WAL');
     this.database.pragma('foreign_keys = ON');
     this.applyMigrations();
@@ -144,15 +149,21 @@ export class candlestick_repository {
     };
   }
 
-  getCandlesticks(marketAddress: string, interval: candle_interval): BTC_hourly_candlestick[] {
+  getCandlesticks(
+    marketAddress: string,
+    interval: candle_interval,
+    completedAtOrBeforeMs = Number.MAX_SAFE_INTEGER,
+  ): BTC_hourly_candlestick[] {
+    const intervalMilliseconds = getIntervalMilliseconds(interval);
     const rows = this.database
-      .prepare<[string, string], stored_candle_row>(
+      .prepare<[string, string, number], stored_candle_row>(
         `SELECT timestamp_ms, open, high, low, close, volume
          FROM candlesticks
          WHERE market_address = ? AND interval = ?
+           AND timestamp_ms <= ?
          ORDER BY timestamp_ms ASC`,
       )
-      .all(marketAddress, interval);
+      .all(marketAddress, interval, completedAtOrBeforeMs - intervalMilliseconds);
 
     return rows.map((row) => ({
       timestamp: new Date(row.timestamp_ms),
@@ -200,7 +211,30 @@ export class candlestick_repository {
       .map((row) => row.market_address);
   }
 
-  getCandleGroupCounts(): candlestick_group_count[] {
+  getCandleGroupCounts(
+    intervalFilter?: candle_interval,
+    completedAtOrBeforeMs = Number.MAX_SAFE_INTEGER,
+  ): candlestick_group_count[] {
+    if (intervalFilter !== undefined) {
+      const intervalMilliseconds = getIntervalMilliseconds(intervalFilter);
+      return this.database
+        .prepare<
+          [string, number],
+          { market_address: string; interval: string; candle_count: number }
+        >(
+          `SELECT market_address, interval, COUNT(*) AS candle_count
+           FROM candlesticks
+           WHERE interval=? AND timestamp_ms <= ?
+           GROUP BY market_address, interval ORDER BY market_address, interval`,
+        )
+        .all(intervalFilter, completedAtOrBeforeMs - intervalMilliseconds)
+        .map((row) => ({
+          marketAddress: row.market_address,
+          interval: row.interval,
+          candleCount: row.candle_count,
+        }))
+        .filter((row) => row.candleCount > 0);
+    }
     return this.database
       .prepare<[], { market_address: string; interval: string; candle_count: number }>(
         `SELECT market_address, interval, COUNT(*) AS candle_count
@@ -214,6 +248,23 @@ export class candlestick_repository {
         interval: row.interval,
         candleCount: row.candle_count,
       }));
+  }
+
+  readSnapshot<T>(reader: () => T): T {
+    try {
+      this.database.exec('BEGIN DEFERRED');
+      const value = reader();
+      this.database.exec('COMMIT');
+      return value;
+    } catch (error) {
+      if (this.database.inTransaction) this.database.exec('ROLLBACK');
+      if (error instanceof Error && 'code' in error && error.code === 'SQLITE_BUSY')
+        throw new Error(
+          'Candlestick database remained busy for 5000ms; stop the conflicting writer or retry after its transaction completes',
+          { cause: error },
+        );
+      throw error;
+    }
   }
 
   findMissingTimestamps(

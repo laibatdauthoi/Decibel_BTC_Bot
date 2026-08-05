@@ -41,7 +41,14 @@ function validateFiveMinuteCandles(candles: readonly BTC_candlestick[]): void {
     const difference = timestamp - previous.timestamp.getTime();
     if (difference === 0) throw new Error('BTC/USD 5m candles contain duplicate timestamps');
     if (difference < 0) throw new Error('BTC/USD 5m candles are unordered');
-    if (difference !== FIVE_MINUTES_MS) throw new Error('BTC/USD 5m candles contain a gap');
+    if (difference !== FIVE_MINUTES_MS) {
+      const previousTimestamp = previous.timestamp.getTime();
+      const expectedTimestamp = previousTimestamp + FIVE_MINUTES_MS;
+      const missingIntervalCount = Math.max(0, difference / FIVE_MINUTES_MS - 1);
+      throw new Error(
+        `BTC/USD 5m candles contain a gap: previousTimestamp=${new Date(previousTimestamp).toISOString()}, nextTimestamp=${new Date(timestamp).toISOString()}, expectedTimestamp=${new Date(expectedTimestamp).toISOString()}, missingIntervalCount=${missingIntervalCount}`,
+      );
+    }
   }
 }
 

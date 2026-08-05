@@ -66,7 +66,10 @@ export type microstructure_collector_options = {
   maximumBookAgeMs: number;
   maximumPriceAgeMs: number;
   logger?: Pick<Logger, 'info' | 'warn' | 'error'>;
+  onFatal?: (error: Error) => void;
 };
+
+class microstructure_persistence_error extends Error {}
 
 type aggregate_accumulator = {
   buyVolume: number;
@@ -121,10 +124,15 @@ export class microstructure_collector {
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private reconnectAttempt = 0;
+  private reconnectCount = 0;
   private subscriptionStartedAt = 0;
   private lastWebSocketActivityAt = 0;
   private lastLoggedPersistenceTotal = 0;
   private stopped = false;
+  private bootstrapCompleted = false;
+  private realtimeStarted = false;
+  private latestAggregateSecond: number | null = null;
+  private persistenceFailed = false;
   private sessionId: string | undefined;
 
   constructor(
@@ -134,6 +142,12 @@ export class microstructure_collector {
   ) {}
 
   async start(): Promise<trade_bootstrap_result> {
+    const bootstrap = await this.startBootstrap();
+    this.startRealtime();
+    return bootstrap;
+  }
+
+  async startBootstrap(): Promise<trade_bootstrap_result> {
     this.market = await this.client.getBTCMarketMetadata();
     const bootstrap = await bootstrapRecentBTCTrades(
       this.client,
@@ -161,6 +175,15 @@ export class microstructure_collector {
       },
       'Recent BTC trade bootstrap completed',
     );
+    this.bootstrapCompleted = true;
+    return bootstrap;
+  }
+
+  startRealtime(): void {
+    if (this.realtimeStarted) return;
+    if (!this.bootstrapCompleted || this.market === undefined)
+      throw new Error('Microstructure REST bootstrap must complete first');
+    this.realtimeStarted = true;
     this.unsubscribeError = this.client.onWebSocketError(() => this.reconnect('heartbeat_failure'));
     this.sessionId = this.repository.startCollectorSession?.(this.market.marketAddress);
     this.beginSubscriptionWindow();
@@ -184,13 +207,18 @@ export class microstructure_collector {
       },
       'BTC/USD microstructure collector started',
     );
-    return bootstrap;
   }
 
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
-    this.flushCompletedAggregates();
+    let persistenceFailure: Error | undefined;
+    try {
+      this.flushCompletedAggregates();
+    } catch (error) {
+      persistenceFailure =
+        error instanceof Error ? error : new Error('Microstructure aggregate flush failed');
+    }
     this.aggregateSegmentActive = false;
     this.clearSubscriptions();
     this.unsubscribeError?.();
@@ -199,6 +227,7 @@ export class microstructure_collector {
     if (this.heartbeatTimer !== undefined) clearInterval(this.heartbeatTimer);
     if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer);
     this.client.closeWebSocket();
+    this.realtimeStarted = false;
     if (this.sessionId !== undefined)
       this.repository.recordSessionEvent?.(this.sessionId, 'GRACEFUL_SHUTDOWN');
     for (const stream of Object.keys(this.health) as stream_name[])
@@ -207,6 +236,7 @@ export class microstructure_collector {
       { event: 'microstructure_stopped', health: this.health, counters: this.counters },
       'Microstructure collector stopped cleanly',
     );
+    if (persistenceFailure !== undefined) throw persistenceFailure;
   }
 
   getHealth(): Readonly<Record<stream_name, stream_health>> {
@@ -215,6 +245,30 @@ export class microstructure_collector {
 
   getCounters(): Readonly<typeof this.counters> {
     return { ...this.counters };
+  }
+
+  getOperationalStatus(): {
+    health: Readonly<Record<stream_name, stream_health>>;
+    lastReceivedAt: Readonly<Record<stream_name, number | null>>;
+    reconnectCount: number;
+    malformedCount: number;
+    timestampRegressionCount: number;
+    latestAggregateSecond: number | null;
+    persistenceHealth: 'waiting' | 'healthy' | 'failed';
+  } {
+    return {
+      health: { ...this.health },
+      lastReceivedAt: { ...this.lastReceivedAt },
+      reconnectCount: this.reconnectCount,
+      malformedCount: this.counters.malformed,
+      timestampRegressionCount: this.counters.regressions,
+      latestAggregateSecond: this.latestAggregateSecond,
+      persistenceHealth: this.persistenceFailed
+        ? 'failed'
+        : this.latestAggregateSecond === null
+          ? 'waiting'
+          : 'healthy',
+    };
   }
 
   private subscribe(): void {
@@ -273,7 +327,7 @@ export class microstructure_collector {
       this.validateTimestamp('trades', new Date(maximumTimestamp));
       for (let offset = 0; offset < trades.length; offset += this.options.maximumBatchSize) {
         const batch = trades.slice(offset, offset + this.options.maximumBatchSize);
-        const result = this.repository.saveBatch(batch, [], [], [], this.options.maximumBatchSize);
+        const result = this.saveBatch(batch, [], [], []);
         this.addPersistence(result);
         for (const trade of result.aggregateTrades) this.addTradeToAggregate(trade);
       }
@@ -285,9 +339,7 @@ export class microstructure_collector {
       const price = normalizeMarketPricePayload(message, this.requireMarketAddress(), new Date());
       this.validateTimestamp('marketPrice', price.exchangeTimestamp);
       this.priceObservations.push(price);
-      this.addPersistence(
-        this.repository.saveBatch([], [], [price], [], this.options.maximumBatchSize),
-      );
+      this.addPersistence(this.saveBatch([], [], [price], []));
     });
   }
 
@@ -300,6 +352,7 @@ export class microstructure_collector {
       this.setStreamHealth(stream, 'healthy');
       this.reconnectAttempt = 0;
     } catch (error) {
+      if (error instanceof microstructure_persistence_error) return;
       this.counters.malformed += 1;
       this.repository.incrementDiagnostic?.('malformed_messages', stream);
       const safeError =
@@ -339,9 +392,7 @@ export class microstructure_collector {
     ].join(':');
     if (fingerprint === this.lastBookFingerprint) return;
     this.lastBookFingerprint = fingerprint;
-    this.addPersistence(
-      this.repository.saveBatch([], [book], [], [], this.options.maximumBatchSize),
-    );
+    this.addPersistence(this.saveBatch([], [book], [], []));
   }
 
   private addTradeToAggregate(trade: normalized_trade): void {
@@ -398,9 +449,9 @@ export class microstructure_collector {
     }
     for (let offset = 0; offset < aggregates.length; offset += this.options.maximumBatchSize) {
       const batch = aggregates.slice(offset, offset + this.options.maximumBatchSize);
-      this.addPersistence(
-        this.repository.saveBatch([], [], [], batch, this.options.maximumBatchSize),
-      );
+      this.addPersistence(this.saveBatch([], [], [], batch));
+      const latest = batch.at(-1)?.secondTimestamp.getTime();
+      if (latest !== undefined) this.latestAggregateSecond = latest;
     }
     this.bookObservations = this.retainRelevantObservations(this.bookObservations, cutoff);
     this.priceObservations = this.retainRelevantObservations(this.priceObservations, cutoff);
@@ -472,6 +523,7 @@ export class microstructure_collector {
       this.options.reconnectMaximumDelayMs ?? 60_000,
     );
     this.reconnectAttempt += 1;
+    this.reconnectCount += 1;
     this.options.logger?.warn(
       { event: 'microstructure_reconnect', reason, attempt: this.reconnectAttempt, delayMs: delay },
       'Microstructure WebSocket reconnect scheduled',
@@ -567,6 +619,30 @@ export class microstructure_collector {
         { event: 'microstructure_persistence', counters: this.counters },
         'Microstructure persistence checkpoint',
       );
+    }
+  }
+
+  private saveBatch(
+    trades: readonly normalized_trade[],
+    books: readonly order_book_snapshot[],
+    prices: readonly market_price_snapshot[],
+    aggregates: readonly microstructure_aggregate[],
+  ): persistence_counters {
+    try {
+      return this.repository.saveBatch(
+        trades,
+        books,
+        prices,
+        aggregates,
+        this.options.maximumBatchSize,
+      );
+    } catch (error) {
+      this.persistenceFailed = true;
+      const failure = new microstructure_persistence_error(
+        error instanceof Error ? error.message : 'Microstructure persistence failed',
+      );
+      this.options.onFatal?.(failure);
+      throw failure;
     }
   }
 }

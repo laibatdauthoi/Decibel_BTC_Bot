@@ -5,6 +5,7 @@ import { candlestick_service } from './candlestick_service.js';
 import { loadConfig } from './config.js';
 import { decibel_client } from './decibel_client.js';
 import { resolveCandlestickDatabasePath } from './database_path.js';
+import { database_runtime_lock } from './data_runtime_lock.js';
 import { createLogger } from './logger.js';
 
 let ApplicationLogger = createLogger('pretty');
@@ -13,21 +14,30 @@ async function startApplication(): Promise<void> {
   const config = loadConfig();
   ApplicationLogger = createLogger(config.logFormat);
   const DecibelClient = new decibel_client(config);
-  const CandlestickRepository = new candlestick_repository(resolveCandlestickDatabasePath());
+  const databasePath = resolveCandlestickDatabasePath();
+  const RuntimeLock = await database_runtime_lock.acquire([databasePath]);
+  let CandlestickRepository: candlestick_repository;
+  try {
+    CandlestickRepository = new candlestick_repository(databasePath);
+  } catch (error) {
+    await RuntimeLock.release();
+    throw error;
+  }
   const CandleService = new candlestick_service(DecibelClient, CandlestickRepository, {
     logger: ApplicationLogger,
   });
   let stopped = false;
-  const stopApplication = (signal: 'SIGINT' | 'SIGTERM'): void => {
+  const stopApplication = async (signal: 'SIGINT' | 'SIGTERM'): Promise<void> => {
     if (stopped) return;
     stopped = true;
     CandleService.stop();
     CandlestickRepository.close();
+    await RuntimeLock.release();
     ApplicationLogger.info({ event: 'candle_service_stopped', signal }, 'Service stopped cleanly');
   };
 
-  process.once('SIGINT', () => stopApplication('SIGINT'));
-  process.once('SIGTERM', () => stopApplication('SIGTERM'));
+  process.once('SIGINT', () => void stopApplication('SIGINT'));
+  process.once('SIGTERM', () => void stopApplication('SIGTERM'));
   try {
     const catchUp = await CandleService.start();
     ApplicationLogger.info(
@@ -51,6 +61,7 @@ async function startApplication(): Promise<void> {
       stopped = true;
       CandleService.stop();
       CandlestickRepository.close();
+      await RuntimeLock.release();
     }
     throw error;
   }
