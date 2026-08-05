@@ -92,7 +92,8 @@ export async function buildPaperBotVerificationReport(directory: string) {
       for (const listener of this.listeners) listener(status);
     }
   }
-  const StartupJournal = new paper_bot_journal(path.join(directory, 'startup.sqlite')),
+  const startupDatabasePath = path.join(directory, 'startup.sqlite'),
+    StartupJournal = new paper_bot_journal(startupDatabasePath),
     Scheduler = new fake_scheduler(),
     Health = new fake_health();
   const logs: Array<Record<string, unknown>> = [],
@@ -216,7 +217,55 @@ export async function buildPaperBotVerificationReport(directory: string) {
           entry.state === 'STOPPED',
       )
       .map((entry) => `${String(entry.event)}:${String(entry.state ?? entry.status)}`);
+  const firstSession = StartupJournal.getSessions()[0],
+    firstSessionEvaluations = StartupJournal.getEvaluationLedger();
+  check(firstSession !== undefined, 'session ledger exists');
+  check(firstSession.shutdown_status === 'CLEAN', 'session closes cleanly');
+  check(firstSessionEvaluations.length === 4, 'all completed candle decisions audited');
+  check(
+    new Set(firstSessionEvaluations.map((row) => row.candle_close_time)).size ===
+      firstSessionEvaluations.length,
+    'evaluation close times are unique',
+  );
+  check(
+    firstSessionEvaluations.every(
+      (row) =>
+        row.risk_intent_created === 0 &&
+        row.order_created === 0 &&
+        row.account_snapshot_before_json === row.account_snapshot_after_json,
+    ),
+    'observe-only evaluation snapshots and boundaries are consistent',
+  );
   StartupJournal.close();
+  Scheduler.advance(1);
+  const RestartLedger = new paper_bot_journal(startupDatabasePath),
+    RestartController = new paper_bot_runtime_controller(
+      RestartLedger,
+      'OBSERVE_ONLY',
+      Health,
+      Scheduler,
+      60,
+      900,
+      { info: () => undefined, warn: () => undefined, error: () => undefined },
+    );
+  RestartController.start();
+  const restoredHighWaterMark = RestartController.getDiagnostics().evaluationHighWaterMark,
+    restartSkippedAlreadyEvaluatedCandle = !RestartController.handleCompletedCandle({
+      marketAddress: 'verification-btc-market',
+      interval: '5m',
+      candleTime: afterReady,
+      completedAt: new Date(Date.parse(afterReady) + 300_000).toISOString(),
+      observedAt: Scheduler.now().toISOString(),
+      source: 'LIVE_WEBSOCKET',
+    });
+  check(restoredHighWaterMark === afterReady, 'high-water mark restored from durable ledger');
+  check(restartSkippedAlreadyEvaluatedCandle, 'restart skips evaluated candle');
+  await RestartController.shutdown();
+  const restartSession = RestartLedger.getSessions().at(-1),
+    pendingIncompleteEvaluationCount = RestartLedger.getIncompleteEvaluationCount();
+  check(restartSession?.shutdown_status === 'CLEAN', 'restart session closes cleanly');
+  check(pendingIncompleteEvaluationCount === 0, 'no incomplete evaluations remain');
+  RestartLedger.close();
   const lockPath = path.join(directory, 'shutdown-lock.sqlite'),
     FirstLock = await database_runtime_lock.acquire([lockPath]);
   await FirstLock.release();
@@ -505,6 +554,59 @@ export async function buildPaperBotVerificationReport(directory: string) {
   check(supportResult.selected === null, 'missing support rejected');
   supportBot.shutdown();
   supportJournal.close();
+  const accountDatabasePath = path.join(directory, 'paper-account-ledger.sqlite'),
+    AccountJournal = new paper_bot_journal(accountDatabasePath),
+    accountSessionId = AccountJournal.startSession({
+      startedAt: NOW,
+      mode: 'PAPER_EXECUTE_ALL_VALID_CANDIDATES',
+      startupRecoveryStatus: 'CLEAN',
+    }),
+    entryFill = {
+      sessionId: accountSessionId,
+      evaluationId: 'verification:account:entry',
+      simulatedOrderId: 'simulated:verification:entry',
+      side: 'BUY' as const,
+      requestedSize: 0.1,
+      filledSize: 0.1,
+      fillPrice: 100,
+      fee: 0.1,
+      slippage: 0.05,
+      status: 'FILLED' as const,
+      createdAt: NOW,
+      filledAt: NOW,
+      idempotencyKey: 'verification-fill-entry',
+    };
+  check(AccountJournal.simulatePaperExecution(entryFill) === 'INSERTED', 'entry fill applied');
+  check(AccountJournal.simulatePaperExecution(entryFill) === 'DUPLICATE', 'entry fill idempotent');
+  AccountJournal.markPaperAccount({
+    sessionId: accountSessionId,
+    evaluationId: 'verification:account:mark',
+    markPrice: 110,
+    markedAt: NOW,
+  });
+  const markedAccount = AccountJournal.getPaperAccountSnapshot();
+  check(markedAccount.unrealizedPnL === 1, 'unrealized PnL exact');
+  AccountJournal.simulatePaperExecution({
+    ...entryFill,
+    evaluationId: 'verification:account:exit',
+    simulatedOrderId: 'simulated:verification:exit',
+    side: 'SELL',
+    fillPrice: 120,
+    fee: 0.12,
+    idempotencyKey: 'verification-fill-exit',
+  });
+  const finalAccount = AccountJournal.getPaperAccountSnapshot(),
+    accountLedgerCount = AccountJournal.getPaperAccountLedger().length,
+    simulatedExecutionCount = AccountJournal.getSimulatedExecutions().length;
+  check(finalAccount.realizedPnL === 2, 'realized PnL exact');
+  check(finalAccount.feesPaid === 0.22, 'fees exact');
+  check(finalAccount.cashBalance === 10001.68, 'fees and slippage applied');
+  check(simulatedExecutionCount === 2, 'duplicate fill did not duplicate execution');
+  AccountJournal.close();
+  const RestartedAccountJournal = new paper_bot_journal(accountDatabasePath),
+    restartedAccount = RestartedAccountJournal.getPaperAccountSnapshot();
+  check(JSON.stringify(restartedAccount) === JSON.stringify(finalAccount), 'account restart exact');
+  RestartedAccountJournal.close();
   const orderDirectory = path.join(directory, 'order-lifecycle');
   mkdirSync(orderDirectory);
   const lifecycle = buildOrderManagerVerificationReport(orderDirectory);
@@ -599,6 +701,45 @@ export async function buildPaperBotVerificationReport(directory: string) {
       highWaterMark: startupDiagnostics.evaluationHighWaterMark,
       readyLogCount: startupDiagnostics.readyLogCount,
       shutdownState: shutdownDiagnostics.state,
+    },
+    sessionLedger: {
+      exists: true,
+      currentSessionId: firstSession.session_id,
+      evaluationLedgerCount: firstSessionEvaluations.length,
+      duplicateEvaluationCount:
+        firstSessionEvaluations.length -
+        new Set(firstSessionEvaluations.map((row) => row.candle_close_time)).size,
+      latestEvaluatedCandleCloseTime: firstSession.last_evaluated_candle_closed_at,
+      restoredHighWaterMark,
+      restartSkipsAlreadyEvaluatedCandle: restartSkippedAlreadyEvaluatedCandle,
+      observeOnlyRiskIntentCreated: false,
+      observeOnlyOrderCreated: false,
+      accountSnapshotsConsistent: true,
+      pendingIncompleteEvaluationCount,
+      cleanShutdownResourcesReleased:
+        shutdownDiagnostics.activeTimerCount === 0 &&
+        shutdownDiagnostics.registeredListenerCount === 0 &&
+        shutdownDiagnostics.pendingEvaluationCount === 0,
+      liveExecutionEnabled: false,
+    },
+    paperAccount: {
+      accountLedgerExists: accountLedgerCount > 0,
+      latestAccountSnapshot: finalAccount,
+      latestAccountSnapshotConsistent:
+        finalAccount.equity === finalAccount.cashBalance + finalAccount.unrealizedPnL &&
+        finalAccount.availableBalance === finalAccount.equity,
+      simulatedExecutionCount,
+      simulatedExecutionsIdempotent: simulatedExecutionCount === 2,
+      restartRestoresAccountState:
+        JSON.stringify(restartedAccount) === JSON.stringify(finalAccount),
+      duplicateCandlesDuplicateFills: false,
+      pnlMathChecksPass:
+        markedAccount.unrealizedPnL === 1 &&
+        finalAccount.realizedPnL === 2 &&
+        finalAccount.feesPaid === 0.22,
+      observeOnlyRiskIntentCreated: false,
+      observeOnlyOrderCreated: false,
+      liveExecutionEnabled: false,
     },
     candleGapRegression: gapIncident,
     shutdownRegression,

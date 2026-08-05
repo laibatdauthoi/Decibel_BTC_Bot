@@ -111,11 +111,13 @@ export async function runPaperBot() {
             },
           });
       }
+      const markPrice = dataset.candles.at(-1)?.close;
       return {
         candidateCount: candidates.length,
         validCandidateCount: valid,
         selectedCandidateId: null,
         featureValidity: { valid, invalid: candidates.length - valid },
+        ...(markPrice === undefined ? {} : { markPrice }),
       };
     } finally {
       Source.close();

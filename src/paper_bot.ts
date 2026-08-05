@@ -1,9 +1,12 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
 import type { opportunity_candidate, opportunity_candidate_type } from './opportunity_scanner.js';
+import { getFinancialDecimal, getFinancialUnits } from './risk_engine.js';
 export const PAPER_BOT_VERSION = 'BTC_USD_PAPER_BOT_V1',
   ENGINEERING_PAPER_POLICY_VERSION = 'ENGINEERING_PAPER_POLICY_V1';
+const PAPER_ACCOUNT_SCALE = 100_000_000n,
+  PAPER_ACCOUNT_STARTING_BALANCE = 10_000;
 export type paper_bot_mode =
   'OBSERVE_ONLY' | 'PAPER_EXECUTE_ALL_VALID_CANDIDATES' | 'PAPER_EXECUTE_SUPPORTED_EDGE_ONLY';
 export type paper_bot_state =
@@ -157,6 +160,9 @@ export class paper_bot_runtime_controller {
   private evaluationWorkerPromise: Promise<void> | undefined;
   private shutdownPreparationPromise: Promise<void> | undefined;
   private continuityBlocked = false;
+  private sessionId: string | null = null;
+  private recoveredIncompleteEvaluationCount = 0;
+  private recoveredInterruptedSessionCount = 0;
   private readonly transitions: paper_bot_state[] = ['STARTING'];
   constructor(
     private readonly Journal: paper_bot_journal,
@@ -175,6 +181,8 @@ export class paper_bot_runtime_controller {
       validCandidateCount: number;
       selectedCandidateId: string | null;
       featureValidity: unknown;
+      markPrice?: number;
+      simulatedAction?: simulated_paper_action;
     } = () => ({
       candidateCount: 0,
       validCandidateCount: 0,
@@ -192,6 +200,20 @@ export class paper_bot_runtime_controller {
   ) {}
   start() {
     if (this.state !== 'STARTING') return;
+    const startedAt = this.Scheduler.now().toISOString();
+    this.recoveredInterruptedSessionCount = this.Journal.recoverInterruptedSessions(startedAt);
+    this.recoveredIncompleteEvaluationCount = this.Journal.recoverIncompleteEvaluations(startedAt);
+    this.Journal.restoreHighWaterMarkFromEvaluationLedger();
+    this.sessionId = this.Journal.startSession({
+      startedAt,
+      mode: this.mode,
+      startupRecoveryStatus:
+        this.recoveredIncompleteEvaluationCount > 0
+          ? 'INCOMPLETE_MARKED_SAFE'
+          : this.recoveredInterruptedSessionCount > 0
+            ? 'INTERRUPTED_SESSION_RECOVERED'
+            : 'CLEAN',
+    });
     this.Journal.cancelOpenStabilizations(
       this.Scheduler.now().toISOString(),
       'PROCESS_RESTART_CONTINUITY_UNPROVEN',
@@ -380,6 +402,27 @@ export class paper_bot_runtime_controller {
     }
   }
   private processCompletedCandle(event: live_completed_candle) {
+    if (this.sessionId === null) throw new Error('PAPER_BOT_SESSION_NOT_STARTED');
+    const idempotencyKey = `evaluation:${event.marketAddress}:5m:${event.completedAt}`,
+      accountSnapshot = this.Journal.getPaperAccountSnapshot();
+    if (
+      !this.Journal.beginDurableEvaluation({
+        sessionId: this.sessionId,
+        idempotencyKey,
+        candleOpenTime: event.candleTime,
+        candleCloseTime: event.completedAt,
+        symbol: 'BTC/USD',
+        timeframe: event.interval,
+        evaluationStartedAt: this.Scheduler.now().toISOString(),
+        accountSnapshotBefore: accountSnapshot,
+      })
+    ) {
+      this.Journal.completeNotification(
+        getCompletedCandleNotificationId(event),
+        this.Scheduler.now().toISOString(),
+      );
+      return;
+    }
     const ready = ['OBSERVING', 'PAPER_ACTIVE'].includes(this.state);
     let result: ReturnType<typeof this.evaluate> | null;
     try {
@@ -414,6 +457,30 @@ export class paper_bot_runtime_controller {
     reasonCode: string | null,
   ) {
     const ready = reasonCode === null;
+    if (this.sessionId === null) throw new Error('PAPER_BOT_SESSION_NOT_STARTED');
+    const completedAt = this.Scheduler.now().toISOString(),
+      accountSnapshotBefore = this.Journal.getPaperAccountSnapshot();
+    this.Journal.completeDurableEvaluation({
+      sessionId: this.sessionId,
+      idempotencyKey: `evaluation:${event.marketAddress}:5m:${event.completedAt}`,
+      evaluationCompletedAt: completedAt,
+      strategyDecision:
+        reasonCode === null
+          ? result?.candidateCount === 0
+            ? 'HOLD'
+            : 'CANDIDATES_OBSERVED'
+          : 'NOT_EVALUATED',
+      riskDecision: this.mode === 'OBSERVE_ONLY' ? 'OBSERVE_ONLY' : (reasonCode ?? 'PAPER_POLICY'),
+      riskIntentCreated: false,
+      orderCreated: false,
+      observeOnlyReason: this.mode === 'OBSERVE_ONLY' ? (reasonCode ?? 'OBSERVE_ONLY') : reasonCode,
+      accountSnapshotAfter: accountSnapshotBefore,
+      candleCloseTime: event.completedAt,
+      ...(result?.markPrice === undefined ? {} : { markPrice: result.markPrice }),
+      ...(this.mode === 'OBSERVE_ONLY' || result?.simulatedAction === undefined
+        ? {}
+        : { simulatedAction: result.simulatedAction }),
+    });
     const inserted = this.Journal.recordQueuedEvaluation({
       evaluationId: `evaluation:${event.marketAddress}:5m:${event.candleTime}`,
       notificationId: getCompletedCandleNotificationId(event),
@@ -526,6 +593,14 @@ export class paper_bot_runtime_controller {
     if (unifiedRuntimeStatus !== 'STOPPED')
       throw new Error(`UNIFIED_RUNTIME_NOT_STOPPED:${unifiedRuntimeStatus}`);
     this.changeState('STOPPED', 'SHUTDOWN_COMPLETE');
+    if (this.sessionId !== null)
+      this.Journal.closeSession({
+        sessionId: this.sessionId,
+        stoppedAt: this.Scheduler.now().toISOString(),
+        shutdownStatus: 'CLEAN',
+        shutdownReason: 'SHUTDOWN_COMPLETE',
+        finalState: 'STOPPED',
+      });
   }
   async shutdown() {
     await this.beginShutdown();
@@ -552,6 +627,11 @@ export class paper_bot_runtime_controller {
       latestObservedCompletedCandle: this.latestObservedCompletedCandle,
       latestPersistedEvaluation: this.latestPersistedEvaluation,
       evaluationCounts: this.Journal.getLiveEvaluationCounts(),
+      sessionId: this.sessionId,
+      recoveredIncompleteEvaluationCount: this.recoveredIncompleteEvaluationCount,
+      recoveredInterruptedSessionCount: this.recoveredInterruptedSessionCount,
+      evaluationLedgerCount: this.Journal.getEvaluationLedger().length,
+      incompleteEvaluationCount: this.Journal.getIncompleteEvaluationCount(),
       liveExecutionEnabled: false,
       readyLogCount: this.readyLogged ? 1 : 0,
       transitionSequence: [...this.transitions],
@@ -765,7 +845,70 @@ const MIGRATIONS = [
       unchanged_count INTEGER NOT NULL DEFAULT 0,error_classification TEXT);
     CREATE TABLE candle_continuity_high_water(singleton INTEGER PRIMARY KEY CHECK(singleton=1),candle_time TEXT NOT NULL);`,
   },
+  {
+    version: 5,
+    sql: `ALTER TABLE paper_bot_sessions ADD COLUMN stopped_at TEXT;
+    ALTER TABLE paper_bot_sessions ADD COLUMN live_execution_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE paper_bot_sessions ADD COLUMN startup_recovery_status TEXT NOT NULL DEFAULT 'LEGACY_UNKNOWN';
+    ALTER TABLE paper_bot_sessions ADD COLUMN last_evaluated_candle_closed_at TEXT;
+    ALTER TABLE paper_bot_sessions ADD COLUMN shutdown_status TEXT NOT NULL DEFAULT 'NOT_STARTED';
+    ALTER TABLE paper_bot_sessions ADD COLUMN shutdown_reason TEXT;
+    ALTER TABLE paper_bot_sessions ADD COLUMN final_state TEXT;
+    CREATE TABLE paper_bot_evaluation_ledger(
+      idempotency_key TEXT PRIMARY KEY,session_id TEXT NOT NULL,candle_open_time TEXT NOT NULL,
+      candle_close_time TEXT NOT NULL UNIQUE,symbol TEXT NOT NULL,timeframe TEXT NOT NULL,
+      evaluation_started_at TEXT NOT NULL,evaluation_completed_at TEXT,strategy_decision TEXT,
+      risk_decision TEXT,risk_intent_created INTEGER NOT NULL DEFAULT 0,
+      order_created INTEGER NOT NULL DEFAULT 0,observe_only_reason TEXT,
+      account_snapshot_before_json TEXT NOT NULL,account_snapshot_after_json TEXT,
+      status TEXT NOT NULL,FOREIGN KEY(session_id) REFERENCES paper_bot_sessions(session_id));
+    CREATE INDEX paper_bot_evaluation_session ON paper_bot_evaluation_ledger(session_id,candle_close_time);`,
+  },
+  {
+    version: 6,
+    sql: `CREATE TABLE paper_bot_account_ledger(
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT,evaluation_id TEXT,
+      cash_balance_units TEXT NOT NULL,equity_units TEXT NOT NULL,available_balance_units TEXT NOT NULL,
+      position_size_units TEXT NOT NULL,average_entry_price_units TEXT NOT NULL,
+      realized_pnl_units TEXT NOT NULL,unrealized_pnl_units TEXT NOT NULL,fees_paid_units TEXT NOT NULL,
+      last_marked_price_units TEXT NOT NULL,last_updated_at TEXT NOT NULL,event_type TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL UNIQUE);
+    CREATE TABLE paper_bot_simulated_executions(
+      simulated_order_id TEXT PRIMARY KEY,evaluation_id TEXT NOT NULL,side TEXT NOT NULL,
+      requested_size_units TEXT NOT NULL,filled_size_units TEXT NOT NULL,fill_price_units TEXT NOT NULL,
+      fee_units TEXT NOT NULL,slippage_units TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,
+      filled_at TEXT,idempotency_key TEXT NOT NULL UNIQUE);
+    CREATE INDEX paper_bot_account_evaluation ON paper_bot_account_ledger(evaluation_id);`,
+  },
 ];
+type paper_bot_account_units = {
+  cashBalanceUnits: bigint;
+  equityUnits: bigint;
+  availableBalanceUnits: bigint;
+  positionSizeUnits: bigint;
+  averageEntryPriceUnits: bigint;
+  realizedPnLUnits: bigint;
+  unrealizedPnLUnits: bigint;
+  feesPaidUnits: bigint;
+  lastMarkedPriceUnits: bigint;
+  lastUpdatedAt: string;
+};
+export type simulated_paper_action = {
+  simulatedOrderId: string;
+  side: 'BUY' | 'SELL';
+  requestedSize: number;
+  filledSize: number;
+  fillPrice: number;
+  fee: number;
+  slippage: number;
+  status: 'PARTIALLY_FILLED' | 'FILLED';
+  createdAt: string;
+  filledAt: string;
+  idempotencyKey: string;
+};
+const accountUnits = (value: number) => getFinancialUnits(value),
+  accountValue = (value: bigint) => getFinancialDecimal(value),
+  multiplyAccountUnits = (left: bigint, right: bigint) => (left * right) / PAPER_ACCOUNT_SCALE;
 export class paper_bot_journal {
   private readonly db: Database.Database;
   constructor(path: string) {
@@ -781,6 +924,395 @@ export class paper_bot_journal {
         this.db.pragma(`user_version = ${migration.version}`);
       })();
     }
+    this.initializePaperAccount();
+  }
+  private initializePaperAccount() {
+    const starting = accountUnits(PAPER_ACCOUNT_STARTING_BALANCE).toString();
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO paper_bot_account_ledger(
+         session_id,evaluation_id,cash_balance_units,equity_units,available_balance_units,
+         position_size_units,average_entry_price_units,realized_pnl_units,unrealized_pnl_units,
+         fees_paid_units,last_marked_price_units,last_updated_at,event_type,idempotency_key)
+         VALUES(NULL,NULL,?,?,?,'0','0','0','0','0','0','1970-01-01T00:00:00.000Z','INITIALIZED','paper-account-initialized')`,
+      )
+      .run(starting, starting, starting);
+  }
+  startSession(input: { startedAt: string; mode: paper_bot_mode; startupRecoveryStatus: string }) {
+    const sessionId = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO paper_bot_sessions(
+          session_id,started_at,ended_at,mode,version,stopped_at,live_execution_enabled,
+          startup_recovery_status,shutdown_status) VALUES(?,?,?,?,?,NULL,0,?,'RUNNING')`,
+      )
+      .run(
+        sessionId,
+        input.startedAt,
+        null,
+        input.mode,
+        PAPER_BOT_VERSION,
+        input.startupRecoveryStatus,
+      );
+    return sessionId;
+  }
+  closeSession(input: {
+    sessionId: string;
+    stoppedAt: string;
+    shutdownStatus: string;
+    shutdownReason: string;
+    finalState: paper_bot_state;
+  }) {
+    this.db
+      .prepare(
+        `UPDATE paper_bot_sessions SET ended_at=?,stopped_at=?,shutdown_status=?,shutdown_reason=?,final_state=?
+         WHERE session_id=? AND stopped_at IS NULL`,
+      )
+      .run(
+        input.stoppedAt,
+        input.stoppedAt,
+        input.shutdownStatus,
+        input.shutdownReason,
+        input.finalState,
+        input.sessionId,
+      );
+  }
+  recoverInterruptedSessions(recoveredAt: string) {
+    return this.db
+      .prepare(
+        `UPDATE paper_bot_sessions SET stopped_at=?,shutdown_status='INTERRUPTED',
+         shutdown_reason='PROCESS_RESTART_DETECTED',final_state=COALESCE(final_state,'HALTED')
+         WHERE stopped_at IS NULL AND shutdown_status='RUNNING'`,
+      )
+      .run(recoveredAt).changes;
+  }
+  recoverIncompleteEvaluations(recoveredAt: string) {
+    return this.db.transaction(() => {
+      const count = this.db
+        .prepare(
+          `UPDATE paper_bot_evaluation_ledger SET status='RECOVERED_SAFE',evaluation_completed_at=?,
+           strategy_decision=COALESCE(strategy_decision,'NOT_COMPLETED'),
+           risk_decision=COALESCE(risk_decision,'FAIL_CLOSED'),observe_only_reason='INCOMPLETE_EVALUATION_RECOVERED',
+           account_snapshot_after_json=account_snapshot_before_json
+           WHERE status='STARTED'`,
+        )
+        .run(recoveredAt).changes;
+      this.db
+        .prepare(
+          `UPDATE completed_candle_notifications SET status='COMPLETED',processed_at=? WHERE status='PENDING'
+           AND completed_at IN (SELECT candle_close_time FROM paper_bot_evaluation_ledger WHERE status='RECOVERED_SAFE')`,
+        )
+        .run(recoveredAt);
+      return count;
+    })();
+  }
+  beginDurableEvaluation(input: {
+    sessionId: string;
+    idempotencyKey: string;
+    candleOpenTime: string;
+    candleCloseTime: string;
+    symbol: string;
+    timeframe: string;
+    evaluationStartedAt: string;
+    accountSnapshotBefore: object;
+  }) {
+    const accountSnapshotBefore = this.getPaperAccountSnapshot();
+    return (
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO paper_bot_evaluation_ledger(
+           idempotency_key,session_id,candle_open_time,candle_close_time,symbol,timeframe,
+           evaluation_started_at,account_snapshot_before_json,status) VALUES(?,?,?,?,?,?,?,?, 'STARTED')`,
+        )
+        .run(
+          input.idempotencyKey,
+          input.sessionId,
+          input.candleOpenTime,
+          input.candleCloseTime,
+          input.symbol,
+          input.timeframe,
+          input.evaluationStartedAt,
+          JSON.stringify(accountSnapshotBefore),
+        ).changes === 1
+    );
+  }
+  completeDurableEvaluation(input: {
+    sessionId: string;
+    idempotencyKey: string;
+    evaluationCompletedAt: string;
+    strategyDecision: string;
+    riskDecision: string;
+    riskIntentCreated: boolean;
+    orderCreated: boolean;
+    observeOnlyReason: string | null;
+    accountSnapshotAfter: object;
+    candleCloseTime: string;
+    markPrice?: number;
+    simulatedAction?: simulated_paper_action;
+  }) {
+    this.db.transaction(() => {
+      if (input.simulatedAction !== undefined)
+        this.applySimulatedPaperExecution({
+          ...input.simulatedAction,
+          sessionId: input.sessionId,
+          evaluationId: input.idempotencyKey,
+        });
+      if (input.markPrice !== undefined)
+        this.applyPaperAccountMark({
+          sessionId: input.sessionId,
+          evaluationId: input.idempotencyKey,
+          markPrice: input.markPrice,
+          markedAt: input.evaluationCompletedAt,
+        });
+      const accountSnapshotAfter = this.getPaperAccountSnapshot();
+      const changed = this.db
+        .prepare(
+          `UPDATE paper_bot_evaluation_ledger SET evaluation_completed_at=?,strategy_decision=?,risk_decision=?,
+           risk_intent_created=?,order_created=?,observe_only_reason=?,account_snapshot_after_json=?,status='COMPLETED'
+           WHERE idempotency_key=? AND session_id=? AND status='STARTED'`,
+        )
+        .run(
+          input.evaluationCompletedAt,
+          input.strategyDecision,
+          input.riskDecision,
+          input.riskIntentCreated ? 1 : 0,
+          input.orderCreated ? 1 : 0,
+          input.observeOnlyReason,
+          JSON.stringify(accountSnapshotAfter),
+          input.idempotencyKey,
+          input.sessionId,
+        ).changes;
+      if (changed !== 1) throw new Error('PAPER_BOT_EVALUATION_NOT_ACTIVE');
+      this.db
+        .prepare(
+          `UPDATE paper_bot_sessions SET last_evaluated_candle_closed_at=? WHERE session_id=?`,
+        )
+        .run(input.candleCloseTime, input.sessionId);
+    })();
+  }
+  getSessions() {
+    return this.db
+      .prepare('SELECT * FROM paper_bot_sessions ORDER BY started_at,session_id')
+      .all() as Record<string, unknown>[];
+  }
+  getEvaluationLedger() {
+    return this.db
+      .prepare('SELECT * FROM paper_bot_evaluation_ledger ORDER BY candle_close_time')
+      .all() as Record<string, unknown>[];
+  }
+  getIncompleteEvaluationCount() {
+    return (
+      this.db
+        .prepare("SELECT COUNT(*) AS count FROM paper_bot_evaluation_ledger WHERE status='STARTED'")
+        .get() as { count: number }
+    ).count;
+  }
+  getPaperAccountSnapshot() {
+    const state = this.readPaperAccountUnits();
+    return {
+      cashBalance: accountValue(state.cashBalanceUnits),
+      equity: accountValue(state.equityUnits),
+      availableBalance: accountValue(state.availableBalanceUnits),
+      positionSize: accountValue(state.positionSizeUnits),
+      averageEntryPrice: accountValue(state.averageEntryPriceUnits),
+      realizedPnL: accountValue(state.realizedPnLUnits),
+      unrealizedPnL: accountValue(state.unrealizedPnLUnits),
+      feesPaid: accountValue(state.feesPaidUnits),
+      lastMarkedPrice: accountValue(state.lastMarkedPriceUnits),
+      lastUpdatedAt: state.lastUpdatedAt,
+    };
+  }
+  getPaperAccountLedger() {
+    return this.db
+      .prepare('SELECT * FROM paper_bot_account_ledger ORDER BY sequence')
+      .all() as Record<string, unknown>[];
+  }
+  getSimulatedExecutions() {
+    return this.db
+      .prepare(
+        'SELECT * FROM paper_bot_simulated_executions ORDER BY created_at,simulated_order_id',
+      )
+      .all() as Record<string, unknown>[];
+  }
+  simulatePaperExecution(
+    input: simulated_paper_action & { sessionId: string; evaluationId: string },
+  ) {
+    return this.db.transaction(() => this.applySimulatedPaperExecution(input))();
+  }
+  markPaperAccount(input: {
+    sessionId: string;
+    evaluationId: string;
+    markPrice: number;
+    markedAt: string;
+  }) {
+    return this.db.transaction(() => this.applyPaperAccountMark(input))();
+  }
+  private readPaperAccountUnits(): paper_bot_account_units {
+    const row = this.db
+      .prepare('SELECT * FROM paper_bot_account_ledger ORDER BY sequence DESC LIMIT 1')
+      .get() as Record<string, unknown>;
+    return {
+      cashBalanceUnits: BigInt(String(row.cash_balance_units)),
+      equityUnits: BigInt(String(row.equity_units)),
+      availableBalanceUnits: BigInt(String(row.available_balance_units)),
+      positionSizeUnits: BigInt(String(row.position_size_units)),
+      averageEntryPriceUnits: BigInt(String(row.average_entry_price_units)),
+      realizedPnLUnits: BigInt(String(row.realized_pnl_units)),
+      unrealizedPnLUnits: BigInt(String(row.unrealized_pnl_units)),
+      feesPaidUnits: BigInt(String(row.fees_paid_units)),
+      lastMarkedPriceUnits: BigInt(String(row.last_marked_price_units)),
+      lastUpdatedAt: String(row.last_updated_at),
+    };
+  }
+  private appendPaperAccount(
+    state: paper_bot_account_units,
+    input: {
+      sessionId: string;
+      evaluationId: string;
+      eventType: string;
+      idempotencyKey: string;
+    },
+  ) {
+    this.db
+      .prepare(
+        `INSERT INTO paper_bot_account_ledger(
+         session_id,evaluation_id,cash_balance_units,equity_units,available_balance_units,
+         position_size_units,average_entry_price_units,realized_pnl_units,unrealized_pnl_units,
+         fees_paid_units,last_marked_price_units,last_updated_at,event_type,idempotency_key)
+         VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .run(
+        input.sessionId,
+        input.evaluationId,
+        state.cashBalanceUnits.toString(),
+        state.equityUnits.toString(),
+        state.availableBalanceUnits.toString(),
+        state.positionSizeUnits.toString(),
+        state.averageEntryPriceUnits.toString(),
+        state.realizedPnLUnits.toString(),
+        state.unrealizedPnLUnits.toString(),
+        state.feesPaidUnits.toString(),
+        state.lastMarkedPriceUnits.toString(),
+        state.lastUpdatedAt,
+        input.eventType,
+        input.idempotencyKey,
+      );
+  }
+  private applyPaperAccountMark(input: {
+    sessionId: string;
+    evaluationId: string;
+    markPrice: number;
+    markedAt: string;
+  }) {
+    const key = `mark:${input.evaluationId}`;
+    if (
+      this.db.prepare('SELECT 1 FROM paper_bot_account_ledger WHERE idempotency_key=?').get(key) !==
+      undefined
+    )
+      return 'DUPLICATE' as const;
+    const state = this.readPaperAccountUnits(),
+      mark = accountUnits(input.markPrice),
+      direction = state.positionSizeUnits < 0n ? -1n : 1n,
+      quantity = state.positionSizeUnits < 0n ? -state.positionSizeUnits : state.positionSizeUnits;
+    state.lastMarkedPriceUnits = mark;
+    state.unrealizedPnLUnits =
+      quantity === 0n
+        ? 0n
+        : multiplyAccountUnits((mark - state.averageEntryPriceUnits) * direction, quantity);
+    state.equityUnits = state.cashBalanceUnits + state.unrealizedPnLUnits;
+    state.availableBalanceUnits = state.equityUnits;
+    state.lastUpdatedAt = input.markedAt;
+    this.appendPaperAccount(state, {
+      ...input,
+      eventType: 'MARKED',
+      idempotencyKey: key,
+    });
+    return 'INSERTED' as const;
+  }
+  private applySimulatedPaperExecution(
+    input: simulated_paper_action & { sessionId: string; evaluationId: string },
+  ) {
+    const inserted = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO paper_bot_simulated_executions VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+      )
+      .run(
+        input.simulatedOrderId,
+        input.evaluationId,
+        input.side,
+        accountUnits(input.requestedSize).toString(),
+        accountUnits(input.filledSize).toString(),
+        accountUnits(input.fillPrice).toString(),
+        accountUnits(input.fee).toString(),
+        accountUnits(input.slippage).toString(),
+        input.status,
+        input.createdAt,
+        input.filledAt,
+        input.idempotencyKey,
+      ).changes;
+    if (inserted === 0) return 'DUPLICATE' as const;
+    const state = this.readPaperAccountUnits(),
+      fillQuantity = accountUnits(input.filledSize),
+      fillPrice = accountUnits(input.fillPrice),
+      fee = accountUnits(input.fee),
+      slippage = accountUnits(input.slippage),
+      fillSigned = input.side === 'BUY' ? fillQuantity : -fillQuantity,
+      oldPosition = state.positionSizeUnits;
+    if (fillQuantity <= 0n || fillQuantity > accountUnits(input.requestedSize))
+      throw new Error('INVALID_SIMULATED_FILL_SIZE');
+    let realizedDelta = 0n;
+    if (oldPosition === 0n || oldPosition > 0n === fillSigned > 0n) {
+      const oldQuantity = oldPosition < 0n ? -oldPosition : oldPosition,
+        newQuantity = oldQuantity + fillQuantity;
+      state.averageEntryPriceUnits =
+        oldQuantity === 0n
+          ? fillPrice
+          : (state.averageEntryPriceUnits * oldQuantity + fillPrice * fillQuantity) / newQuantity;
+      state.positionSizeUnits = oldPosition + fillSigned;
+    } else {
+      const oldQuantity = oldPosition < 0n ? -oldPosition : oldPosition,
+        closedQuantity = fillQuantity < oldQuantity ? fillQuantity : oldQuantity,
+        oldDirection = oldPosition > 0n ? 1n : -1n;
+      realizedDelta = multiplyAccountUnits(
+        (fillPrice - state.averageEntryPriceUnits) * oldDirection,
+        closedQuantity,
+      );
+      state.positionSizeUnits = oldPosition + fillSigned;
+      if (state.positionSizeUnits === 0n) state.averageEntryPriceUnits = 0n;
+      else if (state.positionSizeUnits > 0n !== oldPosition > 0n)
+        state.averageEntryPriceUnits = fillPrice;
+    }
+    state.realizedPnLUnits += realizedDelta;
+    state.feesPaidUnits += fee;
+    state.cashBalanceUnits += realizedDelta - fee - slippage;
+    const mark = state.lastMarkedPriceUnits === 0n ? fillPrice : state.lastMarkedPriceUnits,
+      remaining = state.positionSizeUnits < 0n ? -state.positionSizeUnits : state.positionSizeUnits,
+      direction = state.positionSizeUnits < 0n ? -1n : 1n;
+    state.lastMarkedPriceUnits = mark;
+    state.unrealizedPnLUnits =
+      remaining === 0n
+        ? 0n
+        : multiplyAccountUnits((mark - state.averageEntryPriceUnits) * direction, remaining);
+    state.equityUnits = state.cashBalanceUnits + state.unrealizedPnLUnits;
+    state.availableBalanceUnits = state.equityUnits;
+    state.lastUpdatedAt = input.filledAt;
+    this.appendPaperAccount(state, {
+      sessionId: input.sessionId,
+      evaluationId: input.evaluationId,
+      eventType: 'SIMULATED_FILL',
+      idempotencyKey: `execution:${input.idempotencyKey}`,
+    });
+    return 'INSERTED' as const;
+  }
+  restoreHighWaterMarkFromEvaluationLedger() {
+    const row = this.db
+      .prepare(
+        `SELECT MAX(candle_open_time) AS candle_time FROM paper_bot_evaluation_ledger
+         WHERE status IN ('COMPLETED','RECOVERED_SAFE')`,
+      )
+      .get() as { candle_time: string | null };
+    if (row.candle_time !== null) this.setHighWaterMark(row.candle_time);
+    return this.getHighWaterMark();
   }
   beginEvaluation(id: string, candleTime: string, at: string) {
     return (
@@ -945,6 +1477,13 @@ export class paper_bot_journal {
           observedAt: row.observed_at,
           source: row.source,
         };
+  }
+  completeNotification(notificationId: string, processedAt: string) {
+    this.db
+      .prepare(
+        `UPDATE completed_candle_notifications SET status='COMPLETED',processed_at=? WHERE notification_id=?`,
+      )
+      .run(processedAt, notificationId);
   }
   recordQueuedEvaluation(
     input: Parameters<paper_bot_journal['recordLiveEvaluation']>[0] & { notificationId: string },

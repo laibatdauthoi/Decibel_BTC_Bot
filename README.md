@@ -20,6 +20,10 @@ Completed-candle evaluation uses a durable chronological queue outside the WebSo
 
 In composed mode, `bot:paper` exclusively owns SIGINT/SIGTERM. Its `STOPPED` state is emitted only after evaluation/reconciliation checkpointing, unified child shutdown, database closure, and lock release. Standalone collectors retain their own signal handling. Shutdown is bounded by `PAPER_BOT_SHUTDOWN_TIMEOUT_MS`; incomplete cleanup returns nonzero without falsely reporting `STOPPED`.
 
+The paper database also contains durable session and evaluation ledgers. Each completed BTC/USD 5-minute candle close is globally idempotent across restarts and records its session, decisions, observe-only boundary, timestamps, and consistent account snapshots. Startup restores the evaluation high-water mark, skips completed candle closes, and marks crash-visible incomplete evaluations fail-closed rather than silently replaying them. `npm run verify:paper-bot` validates ledger uniqueness, restart recovery, observe-only safety, and clean resource release using temporary databases.
+
+Paper accounting uses exact 8-decimal fixed-point values for cash, equity, available balance, BTC position size, average entry, realized/unrealized PnL, fees, slippage, and marks. Simulated executions are idempotent and linked to evaluations; their account mutation commits atomically with evaluation completion and restores from SQLite after restart. This accounting layer has no wallet, signing, transaction-building, submission, cancellation, or live-execution capability, and `OBSERVE_ONLY` cannot create simulated fills.
+
 ## Setup
 
 Requires Node.js and npm. Install the pinned dependencies and copy the example environment file:
