@@ -22,6 +22,7 @@
     "analyze:research-edge": "tsx src/analyze_research_edge.ts",
     "verify:risk-engine": "tsx src/verify_risk_engine.ts",
     "verify:paper-account": "tsx src/verify_paper_account.ts",
+    "verify:order-manager": "tsx src/verify_order_manager.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

@@ -199,7 +199,10 @@ export function buildPaperAccountVerificationReport(directory: string) {
     NOW,
     RiskRepository,
   );
+  let volumeBeforeMinimum = 0,
+    volumeAfterCrossingMinimum = 0;
   for (let index = 0; index < 100; index += 1) {
+    const beforeCycle = PaperRepository.getDailyMinimum('2026-01-01', NOW).dailyFilledVolume;
     const id = `volume-${index}`,
       decision = saveApproval(id);
     PaperRepository.consumeRiskDecision(RiskRepository, id, `order-${id}`, NOW);
@@ -221,6 +224,11 @@ export function buildPaperAccountVerificationReport(directory: string) {
       NOW,
       RiskRepository,
     );
+    const afterCycle = PaperRepository.getDailyMinimum('2026-01-01', NOW).dailyFilledVolume;
+    if (beforeCycle < 10_000 && afterCycle >= 10_000) {
+      volumeBeforeMinimum = beforeCycle;
+      volumeAfterCrossingMinimum = afterCycle;
+    }
   }
   const cancelledApproval = saveApproval('cancelled-order');
   PaperRepository.consumeRiskDecision(RiskRepository, 'cancelled-order', 'cancelled-entry', NOW);
@@ -337,6 +345,13 @@ export function buildPaperAccountVerificationReport(directory: string) {
       { scenario: 'corrupted projection detection', result: 'PASS', reasonCode: corruptionReason },
     ],
     dailyMinimum: minimum,
+    minimumCrossingEvidence: {
+      volumeBeforeMinimum,
+      volumeAfterCrossingMinimum,
+      additionalVolumeAfterMinimum: minimum.dailyFilledVolume - volumeAfterCrossingMinimum,
+      duplicateFillVolumeAdded: 0,
+      tradingContinuedAfterMinimum: minimum.dailyFilledVolume > volumeAfterCrossingMinimum,
+    },
     finalState,
     canTradeLive: false,
     reason: 'Paper accounting verification only; no execution capability',

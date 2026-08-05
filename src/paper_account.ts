@@ -359,7 +359,7 @@ export class paper_account_repository {
     })();
   }
   consumeRiskDecision(
-    RiskRepository: risk_repository,
+    RiskRepository: Pick<risk_repository, 'getPersistedApproval'>,
     intentId: string,
     orderId: string,
     occurredAt: string,
@@ -514,6 +514,7 @@ export class paper_account_repository {
   ): 'INSERTED' | 'DUPLICATE' {
     if (this.state.processedFillIds.includes(fillId)) return 'DUPLICATE';
     const order = this.requireOrder(orderId);
+    const cancellationPending = order.state === 'CANCEL_REQUESTED';
     if (!['ACTIVE', 'PARTIALLY_FILLED', 'CANCEL_REQUESTED'].includes(order.state))
       throw new Error('FILL_NOT_ALLOWED');
     if (order.effectiveCancelAt !== null && occurredAt >= order.effectiveCancelAt)
@@ -580,7 +581,9 @@ export class paper_account_repository {
     order.state =
       value(order.filledQuantityUnits) === value(order.requestedQuantityUnits)
         ? 'FILLED'
-        : 'PARTIALLY_FILLED';
+        : cancellationPending
+          ? 'CANCEL_REQUESTED'
+          : 'PARTIALLY_FILLED';
     if (order.state === 'FILLED' && value(order.reservedMarginUnits) > 0n)
       this.releaseReservation(order);
     this.state.processedFillIds.push(fillId);

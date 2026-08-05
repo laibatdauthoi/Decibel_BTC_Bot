@@ -10,6 +10,8 @@ The engine is validation, sizing, persistence, and audit code only. It cannot tr
 
 `npm run verify:paper-account` exercises the isolated event-sourced USD 30 paper account, including exact 40x variable-margin fills, positions, fees, PnL, restart replay, and the uncapped USD 10,000 daily minimum-volume objective. Stop triggers create reduce-only intents but never assume execution. See [the paper-account documentation](docs/paper_account.md).
 
+`npm run verify:order-manager` verifies the durable, exchange-agnostic order lifecycle against the paper adapter. Entries remain post-only, acknowledgements precede activation, cancellation uncertainty requires reconciliation, and V1 never reprices or falls back to taker execution. See [the order-manager documentation](docs/order_manager.md).
+
 ## Setup
 
 Requires Node.js and npm. Install the pinned dependencies and copy the example environment file:
