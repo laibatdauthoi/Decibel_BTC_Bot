@@ -7,6 +7,7 @@ import type {
   research_trade_classification,
 } from './research_dataset.js';
 import type { research_sample } from './research_types.js';
+import type { research_market_metadata } from './research_market_metadata.js';
 
 export const MAKER_SIMULATOR_VERSION = 'POST_ONLY_MAKER_V1';
 export const MAKER_FILL_ASSUMPTIONS = ['STRICT_TRADE_THROUGH', 'TOUCH_WITH_FLOW'] as const;
@@ -60,12 +61,30 @@ export function loadMakerSimulatorConfig(
   };
 }
 
-export type maker_market_metadata = {
-  marketAddress: string;
-  tickSize: number;
-  minimumSize: number;
-  lotSize: number;
-};
+export type maker_market_metadata = research_market_metadata;
+
+export function validateMakerMarketMetadata(
+  metadata: maker_market_metadata | null,
+  candidateMarketAddresses: readonly string[],
+  microstructureMarketAddress: string,
+): maker_market_metadata {
+  if (metadata === null)
+    throw new Error(
+      'Normalized BTC/USD market metadata is unavailable in the research database; run npm run build:research-dataset first',
+    );
+  const mismatches = candidateMarketAddresses.filter(
+    (marketAddress) => marketAddress !== metadata.marketAddress,
+  );
+  if (mismatches.length > 0)
+    throw new Error(
+      `Research candidate market address does not match metadata snapshot ${metadata.marketAddress}`,
+    );
+  if (microstructureMarketAddress !== metadata.marketAddress)
+    throw new Error(
+      `Microstructure market address ${microstructureMarketAddress} does not match metadata snapshot ${metadata.marketAddress}`,
+    );
+  return metadata;
+}
 export type maker_fill = {
   economicTradeId: string;
   timestamp: string;
@@ -242,9 +261,10 @@ export function simulateMakerOrder(
     sample.candidate.direction === 'LONG'
       ? initialBook.bestBid - config.entryOffsetTicks * metadata.tickSize
       : initialBook.bestAsk + config.entryOffsetTicks * metadata.tickSize;
+  const effectiveLeverage = Math.min(config.leverageCap, metadata.maximumLeverage);
   const riskNotional = Math.min(
-    config.startingEquity * config.riskPerCandidate * config.leverageCap,
-    config.startingEquity * config.leverageCap,
+    config.startingEquity * config.riskPerCandidate * effectiveLeverage,
+    config.startingEquity * effectiveLeverage,
   );
   const requestedQuantity = roundDown(riskNotional / initialBook.midPrice, metadata.lotSize);
   if (requestedQuantity < metadata.minimumSize)

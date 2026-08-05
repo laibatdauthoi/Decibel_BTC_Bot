@@ -7,6 +7,7 @@ import { readMainnetBTCBacktestDataset } from './backtest_data.js';
 import { candlestick_repository } from './candlestick_repository.js';
 import { loadConfig } from './config.js';
 import { resolveCandlestickDatabasePath } from './database_path.js';
+import { decibel_client } from './decibel_client.js';
 import { createLogger } from './logger.js';
 import { loadMarketStructureConfig } from './market_structure.js';
 import { resolveMicrostructureDatabasePath } from './microstructure_database_path.js';
@@ -17,6 +18,7 @@ import {
   resolveResearchReportPath,
 } from './research_database_path.js';
 import { research_dataset_repository, research_source_repository } from './research_repository.js';
+import { createResearchMarketMetadata } from './research_market_metadata.js';
 import { buildBTCTimeframes } from './timeframe_aggregation.js';
 
 function countBy<T extends string>(values: readonly T[]): Record<string, number> {
@@ -25,22 +27,38 @@ function countBy<T extends string>(values: readonly T[]): Record<string, number>
   return counts;
 }
 
-function run(): void {
+async function run(): Promise<void> {
   const config = loadConfig();
   const ResearchLogger = createLogger(config.logFormat);
   const CandleRepository = new candlestick_repository(resolveCandlestickDatabasePath());
   const SourceRepository = new research_source_repository(resolveMicrostructureDatabasePath());
   const DatasetRepository = new research_dataset_repository(resolveResearchDatabasePath());
+  const DecibelClient = new decibel_client(config);
   try {
     const dataset = readMainnetBTCBacktestDataset(CandleRepository, config.network);
+    const normalizedMarket = await DecibelClient.getBTCMarketMetadata();
+    if (normalizedMarket.marketAddress !== dataset.marketAddress)
+      throw new Error(
+        `Normalized BTC/USD market address ${normalizedMarket.marketAddress} does not match stored candle market ${dataset.marketAddress}`,
+      );
     const candidates = scanBTCOpportunities(
       buildBTCTimeframes(dataset.candles),
       loadOpportunityScannerConfig(),
       loadMarketStructureConfig(),
     );
     const now = Date.now();
+    if (!SourceRepository.getMarketAddresses().includes(dataset.marketAddress))
+      throw new Error(
+        `No microstructure data matches normalized BTC/USD market ${dataset.marketAddress}`,
+      );
     const source = SourceRepository.loadSource(dataset.marketAddress, now);
+    if (source.marketAddress !== dataset.marketAddress)
+      throw new Error('Microstructure source market does not match the BTC/USD research market');
+    const metadata = createResearchMarketMetadata(normalizedMarket, new Date(now));
     const samples = buildResearchSamples(candidates, dataset.candles, source, now);
+    if (samples.some((sample) => sample.marketAddress !== metadata.marketAddress))
+      throw new Error('Research candidate market does not match the normalized BTC/USD metadata');
+    const metadataPersistence = DatasetRepository.saveMarketMetadata(metadata);
     const persistence = DatasetRepository.save(samples);
     const validByWindow = Object.fromEntries(
       RESEARCH_WINDOWS_SECONDS.map((seconds) => {
@@ -80,6 +98,12 @@ function run(): void {
       earliestUsableDecisionTimestamp: usable[0] ?? null,
       latestUsableDecisionTimestamp: usable.at(-1) ?? null,
       persistence,
+      marketMetadata: {
+        marketAddress: metadata.marketAddress,
+        metadataVersion: metadata.metadataVersion,
+        observedAt: metadata.observedAt,
+        persistence: metadataPersistence,
+      },
     };
     const reportPath = resolveResearchReportPath();
     mkdirSync(dirname(reportPath), { recursive: true });
@@ -97,11 +121,12 @@ function run(): void {
     DatasetRepository.close();
     SourceRepository.close();
     CandleRepository.close();
+    DecibelClient.closeWebSocket();
   }
 }
 
 try {
-  run();
+  await run();
 } catch (error) {
   const Logger = createLogger('pretty');
   Logger.error(

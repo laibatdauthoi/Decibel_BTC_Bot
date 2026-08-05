@@ -68,7 +68,7 @@ describe('microstructure schema migration', () => {
       MigratedDatabase.prepare(
         'SELECT MAX(version) AS version FROM microstructure_schema_migrations',
       ).get(),
-    ).toEqual({ version: 7 });
+    ).toEqual({ version: 6 });
     expect(
       MigratedDatabase.prepare(
         'SELECT started_at_ms, stopped_at_ms, graceful_shutdown_at_ms, feature_version FROM microstructure_collector_sessions',

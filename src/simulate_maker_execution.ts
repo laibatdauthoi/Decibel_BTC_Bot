@@ -11,6 +11,7 @@ import {
   MAKER_SIMULATOR_VERSION,
   simulateMakerOrder,
   summarizeMakerSimulations,
+  validateMakerMarketMetadata,
   type maker_simulation_result,
 } from './maker_execution_simulator.js';
 import { resolveMicrostructureDatabasePath } from './microstructure_database_path.js';
@@ -30,6 +31,14 @@ function run(): void {
     const samples = DatasetRepository.getSamples().filter((sample) =>
       Object.values(sample.features).every((feature) => feature.status === 'VALID'),
     );
+    const microstructureMarketAddresses = SourceRepository.getMarketAddresses();
+    const missingMicrostructureMarkets = [
+      ...new Set(samples.map((sample) => sample.marketAddress)),
+    ].filter((marketAddress) => !microstructureMarketAddresses.includes(marketAddress));
+    if (missingMicrostructureMarkets.length > 0)
+      throw new Error(
+        `Research candidate market has no matching microstructure data: ${missingMicrostructureMarkets.join(', ')}`,
+      );
     const sourceByMarket = new Map(
       [...new Set(samples.map((sample) => sample.marketAddress))].map((marketAddress) => [
         marketAddress,
@@ -37,23 +46,20 @@ function run(): void {
       ]),
     );
     const metadataByMarket = new Map(
-      [...sourceByMarket.keys()].map((marketAddress) => [
+      [...sourceByMarket.entries()].map(([marketAddress, source]) => [
         marketAddress,
-        SourceRepository.getMarketMetadata(marketAddress),
+        validateMakerMarketMetadata(
+          DatasetRepository.getMarketMetadata(marketAddress),
+          samples.map((sample) => sample.marketAddress),
+          source.marketAddress,
+        ),
       ]),
     );
-    const missingMetadata = [...metadataByMarket.entries()]
-      .filter((entry) => entry[1] === null)
-      .map(([marketAddress]) => marketAddress);
-    if (missingMetadata.length > 0)
-      throw new Error(
-        `Normalized market metadata is not stored for ${missingMetadata.join(', ')}; run the read-only collector once before simulation`,
-      );
     const results: maker_simulation_result[] = [];
     for (const sample of samples) {
       const source = sourceByMarket.get(sample.marketAddress);
       const metadata = metadataByMarket.get(sample.marketAddress);
-      if (source === undefined || metadata === undefined || metadata === null) continue;
+      if (source === undefined || metadata === undefined) continue;
       for (const assumption of MAKER_FILL_ASSUMPTIONS)
         results.push(simulateMakerOrder(sample, source, metadata, simulatorConfig, assumption));
     }

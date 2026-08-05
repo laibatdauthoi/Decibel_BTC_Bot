@@ -20,6 +20,11 @@ const metadata: maker_market_metadata = {
   tickSize: 0.5,
   minimumSize: 0.01,
   lotSize: 0.01,
+  sizeDecimals: 2,
+  priceDecimals: 1,
+  maximumLeverage: 2,
+  metadataVersion: `sha256:${'0'.repeat(64)}`,
+  observedAt: '2026-01-01T00:00:00.000Z',
 };
 const config = loadMakerSimulatorConfig({
   MAKER_SIMULATOR_STARTING_EQUITY: '10000',

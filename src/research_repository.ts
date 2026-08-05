@@ -3,11 +3,12 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 import { MICROSTRUCTURE_FEATURE_VERSION } from './microstructure_repository.js';
-import type {
-  maker_market_metadata,
-  maker_simulation_result,
-} from './maker_execution_simulator.js';
+import type { maker_simulation_result } from './maker_execution_simulator.js';
 import type { research_source } from './research_dataset.js';
+import {
+  type research_market_metadata,
+  validateResearchMarketMetadata,
+} from './research_market_metadata.js';
 import type { research_sample } from './research_types.js';
 
 type session_row = { session_id: string; started_at_ms: number; stopped_at_ms: number | null };
@@ -150,23 +151,17 @@ export class research_source_repository {
       }));
     return { marketAddress, aggregates, books, trades, compatibleSegments };
   }
-  getMarketMetadata(marketAddress: string): maker_market_metadata | null {
-    const row = this.database
-      .prepare<
-        [string],
-        { market_address: string; tick_size: number; minimum_size: number; lot_size: number }
-      >(
-        'SELECT market_address, tick_size, minimum_size, lot_size FROM microstructure_market_metadata WHERE market_address=?',
+  getMarketAddresses(): string[] {
+    return this.database
+      .prepare<[], { market_address: string }>(
+        `SELECT market_address FROM order_book_snapshots
+         UNION SELECT market_address FROM market_price_snapshots
+         UNION SELECT market_address FROM microstructure_aggregates_1s
+         UNION SELECT market_address FROM microstructure_economic_trades
+         ORDER BY market_address`,
       )
-      .get(marketAddress);
-    return row === undefined
-      ? null
-      : {
-          marketAddress: row.market_address,
-          tickSize: row.tick_size,
-          minimumSize: row.minimum_size,
-          lotSize: row.lot_size,
-        };
+      .all()
+      .map((row) => row.market_address);
   }
   close(): void {
     this.database.close();
@@ -193,6 +188,18 @@ const migrations = [
       PRIMARY KEY(market_address, candidate_id, feature_version, simulator_version, fill_assumption, fill_index)
     ) WITHOUT ROWID;`,
   },
+  {
+    version: 3,
+    sql: `CREATE TABLE research_market_metadata_snapshots (
+      market_address TEXT NOT NULL, metadata_version TEXT NOT NULL,
+      tick_size REAL NOT NULL, lot_size REAL NOT NULL, minimum_size REAL NOT NULL,
+      size_decimals INTEGER NOT NULL, price_decimals INTEGER NOT NULL,
+      maximum_leverage REAL NOT NULL, observed_at_ms INTEGER NOT NULL,
+      PRIMARY KEY(market_address, metadata_version)
+    ) WITHOUT ROWID;
+    CREATE INDEX research_market_metadata_observed
+      ON research_market_metadata_snapshots(market_address, observed_at_ms DESC);`,
+  },
 ] as const;
 export type research_write_result = {
   inserted: number;
@@ -200,6 +207,7 @@ export type research_write_result = {
   unchanged: number;
   total: number;
 };
+export type metadata_write_result = 'inserted' | 'updated' | 'unchanged';
 export class research_dataset_repository {
   private readonly database: Database.Database;
   constructor(databasePath: string) {
@@ -281,6 +289,91 @@ export class research_dataset_repository {
         features: JSON.parse(row.features_json) as research_sample['features'],
         outcomes: JSON.parse(row.outcomes_json) as research_sample['outcomes'],
       }));
+  }
+  saveMarketMetadata(metadata: research_market_metadata): metadata_write_result {
+    const value = validateResearchMarketMetadata(metadata);
+    const old = this.database
+      .prepare<
+        [string, string],
+        {
+          tick_size: number;
+          lot_size: number;
+          minimum_size: number;
+          size_decimals: number;
+          price_decimals: number;
+          maximum_leverage: number;
+          observed_at_ms: number;
+        }
+      >(
+        `SELECT tick_size, lot_size, minimum_size, size_decimals, price_decimals,
+         maximum_leverage, observed_at_ms FROM research_market_metadata_snapshots
+         WHERE market_address=? AND metadata_version=?`,
+      )
+      .get(value.marketAddress, value.metadataVersion);
+    const observedAtMs = Date.parse(value.observedAt);
+    if (
+      old?.tick_size === value.tickSize &&
+      old.lot_size === value.lotSize &&
+      old.minimum_size === value.minimumSize &&
+      old.size_decimals === value.sizeDecimals &&
+      old.price_decimals === value.priceDecimals &&
+      old.maximum_leverage === value.maximumLeverage
+    )
+      return 'unchanged';
+    this.database
+      .prepare(
+        `INSERT INTO research_market_metadata_snapshots VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(market_address, metadata_version) DO UPDATE SET
+         tick_size=excluded.tick_size, lot_size=excluded.lot_size,
+         minimum_size=excluded.minimum_size, size_decimals=excluded.size_decimals,
+         price_decimals=excluded.price_decimals, maximum_leverage=excluded.maximum_leverage`,
+      )
+      .run(
+        value.marketAddress,
+        value.metadataVersion,
+        value.tickSize,
+        value.lotSize,
+        value.minimumSize,
+        value.sizeDecimals,
+        value.priceDecimals,
+        value.maximumLeverage,
+        observedAtMs,
+      );
+    return old === undefined ? 'inserted' : 'updated';
+  }
+  getMarketMetadata(marketAddress: string): research_market_metadata | null {
+    const row = this.database
+      .prepare<
+        [string],
+        {
+          market_address: string;
+          metadata_version: string;
+          tick_size: number;
+          lot_size: number;
+          minimum_size: number;
+          size_decimals: number;
+          price_decimals: number;
+          maximum_leverage: number;
+          observed_at_ms: number;
+        }
+      >(
+        `SELECT * FROM research_market_metadata_snapshots WHERE market_address=?
+         ORDER BY observed_at_ms DESC, metadata_version DESC LIMIT 1`,
+      )
+      .get(marketAddress);
+    return row === undefined
+      ? null
+      : validateResearchMarketMetadata({
+          marketAddress: row.market_address,
+          metadataVersion: row.metadata_version,
+          tickSize: row.tick_size,
+          lotSize: row.lot_size,
+          minimumSize: row.minimum_size,
+          sizeDecimals: row.size_decimals,
+          priceDecimals: row.price_decimals,
+          maximumLeverage: row.maximum_leverage,
+          observedAt: new Date(row.observed_at_ms).toISOString(),
+        });
   }
   saveMakerSimulations(results: readonly maker_simulation_result[]): research_write_result {
     const get = this.database.prepare<

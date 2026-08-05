@@ -9,7 +9,6 @@ import type {
   normalized_trade,
   order_book_snapshot,
 } from './microstructure.js';
-import type { BTC_market_metadata } from './decibel_client.js';
 
 export const MICROSTRUCTURE_FEATURE_VERSION = 'V5_CONTINUOUS_AGGREGATES';
 
@@ -130,13 +129,6 @@ const migrations = [
         FOREIGN KEY(session_id) REFERENCES microstructure_collector_sessions(session_id)
       ) WITHOUT ROWID;
     `,
-  },
-  {
-    version: 7,
-    sql: `CREATE TABLE microstructure_market_metadata (
-      market_address TEXT PRIMARY KEY, symbol TEXT NOT NULL, tick_size REAL NOT NULL,
-      minimum_size REAL NOT NULL, lot_size REAL NOT NULL, recorded_at_ms INTEGER NOT NULL
-    ) WITHOUT ROWID;`,
   },
 ] as const;
 
@@ -456,24 +448,6 @@ export class microstructure_repository {
         aggregateTrades,
       };
     })();
-  }
-
-  saveMarketMetadata(market: BTC_market_metadata, recordedAtMs = Date.now()): void {
-    this.database
-      .prepare(
-        `INSERT INTO microstructure_market_metadata VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(market_address) DO UPDATE SET symbol=excluded.symbol,
-      tick_size=excluded.tick_size, minimum_size=excluded.minimum_size,
-      lot_size=excluded.lot_size, recorded_at_ms=excluded.recorded_at_ms`,
-      )
-      .run(
-        market.marketAddress,
-        market.symbol,
-        market.tickSize,
-        market.minimumSize,
-        market.lotSize,
-        recordedAtMs,
-      );
   }
 
   getCounts(): { trades: number; books: number; prices: number; aggregates: number } {
