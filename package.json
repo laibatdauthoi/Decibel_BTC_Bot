@@ -27,6 +27,7 @@
     "bot:paper": "tsx src/bot_paper.ts",
     "paper:report": "tsx src/paper_report.ts",
     "paper:soak-report": "tsx src/paper_soak.ts",
+    "decibel:preflight": "tsx src/decibel_preflight.ts",
     "strategy:diagnose": "tsx src/strategy_diagnose.ts",
     "microstructure:diagnose": "tsx src/microstructure_diagnose.ts",
     "diagnose:candle-gap": "tsx src/diagnose_candle_gap.ts",
