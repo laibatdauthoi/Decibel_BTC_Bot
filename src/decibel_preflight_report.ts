@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { loadConfig } from './config.js';
 import type { BTC_market_metadata, BTC_market_price } from './decibel_client.js';
+import type { decibel_execution_adapter } from './decibel_execution_adapter.js';
 import { normalizePaperBotConfiguration } from './paper_bot.js';
 import { buildPaperSoakReport } from './paper_soak_report.js';
 
@@ -59,6 +60,7 @@ export async function buildDecibelPreflightReport(input: {
   candleDatabasePath: string;
   microstructureDatabasePath: string;
   probe: preflight_probe;
+  executionAdapter?: decibel_execution_adapter;
   soakReport?: soak_summary;
 }) {
   const parsed = PreflightSchema.safeParse(input.environment);
@@ -79,6 +81,8 @@ export async function buildDecibelPreflightReport(input: {
   if (raw?.CANDLE_INTERVAL !== '5m')
     missingConfiguration.push('CANDLE_INTERVAL_MISSING_OR_INVALID');
   if (!parsed.success) missingConfiguration.push('DECIBEL_PREFLIGHT_CONFIG_INVALID');
+  if (input.executionAdapter === undefined)
+    missingConfiguration.push('DECIBEL_EXECUTION_ADAPTER_UNAVAILABLE');
 
   const liveExecutionEnabled = raw?.LIVE_TRADING_ENABLED === 'true';
   const killSwitchEnabled = raw?.LIVE_TRADING_KILL_SWITCH_ENABLED !== 'false';
@@ -92,17 +96,40 @@ export async function buildDecibelPreflightReport(input: {
   };
   let market: BTC_market_metadata | null = null;
   let price: BTC_market_price | null = null;
+  const adapterStatus = input.executionAdapter?.getStatus() ?? {
+    discovered: false as const,
+    mode: 'UNAVAILABLE' as const,
+    privateKeyLoaded: false as const,
+    orderSubmissionEnabled: false as const,
+    disabledReason: 'ADAPTER_UNAVAILABLE' as const,
+  };
+  let capabilityProbe: {
+    status: 'PASS' | 'FAIL' | 'NOT_ATTEMPTED';
+    readOnly: true;
+    errorCode: string | null;
+  } = { status: 'NOT_ATTEMPTED', readOnly: true, errorCode: null };
   if (parsed.success && parsed.data.DECIBEL_NETWORK !== undefined) {
     try {
       const config = loadConfig(input.environment);
-      const result = await input.probe(config);
+      const result =
+        input.executionAdapter === undefined
+          ? await input.probe(config)
+          : await input.executionAdapter.checkCapability();
       market = result.market;
       price = result.price;
       connectivity = { status: 'PASS', errorCode: null };
+      if (input.executionAdapter !== undefined)
+        capabilityProbe = { status: 'PASS', readOnly: true, errorCode: null };
       if (market.symbol !== 'BTC/USD') missingConfiguration.push('BTC_USD_MARKET_NOT_RESOLVED');
       if (market.mode !== 'Open') safetyFailures.push(`MARKET_MODE_${market.mode.toUpperCase()}`);
     } catch {
       connectivity = { status: 'FAIL', errorCode: 'DECIBEL_READ_CONNECTIVITY_FAILED' };
+      if (input.executionAdapter !== undefined)
+        capabilityProbe = {
+          status: 'FAIL',
+          readOnly: true,
+          errorCode: 'DECIBEL_READ_CAPABILITY_FAILED',
+        };
       missingConfiguration.push('DECIBEL_READ_CONNECTIVITY_FAILED');
     }
   }
@@ -131,7 +158,14 @@ export async function buildDecibelPreflightReport(input: {
     readOnly: true,
     currentBotMode: paperConfig.mode,
     liveExecutionEnabled,
-    executionAdapter: { wired: false, capability: 'UNAVAILABLE_IN_THIS_BUILD' },
+    executionAdapter: {
+      discovered: adapterStatus.discovered,
+      mode: adapterStatus.mode,
+      capabilityProbe,
+      orderSubmissionEnabled: false,
+      orderSubmissionDisabledReason: adapterStatus.disabledReason,
+      privateKeyLoaded: false,
+    },
     configuration: {
       networkConfigured: raw?.DECIBEL_NETWORK !== undefined,
       nodeApiKeyPresent: raw?.DECIBEL_NODE_API_KEY !== undefined,

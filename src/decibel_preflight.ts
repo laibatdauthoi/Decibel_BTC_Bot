@@ -2,9 +2,10 @@ import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveCandlestickDatabasePath } from './database_path.js';
-import type { application_config } from './config.js';
+import { loadConfig, type application_config } from './config.js';
 import { buildDecibelPreflightReport } from './decibel_preflight_report.js';
 import { decibel_client } from './decibel_client.js';
+import { fail_closed_decibel_execution_adapter } from './decibel_execution_adapter.js';
 import { createLogger } from './logger.js';
 import { resolveMicrostructureDatabasePath } from './microstructure_database_path.js';
 import { resolvePaperBotDatabasePath } from './paper_bot_database_path.js';
@@ -23,12 +24,14 @@ export async function runDecibelPreflight(
       Client.closeWebSocket();
     }
   };
+  const Adapter = new fail_closed_decibel_execution_adapter(() => probe(loadConfig(environment)));
   const report = await buildDecibelPreflightReport({
     environment,
     paperDatabasePath: resolvePaperBotDatabasePath(),
     candleDatabasePath: resolveCandlestickDatabasePath(),
     microstructureDatabasePath: resolveMicrostructureDatabasePath(),
     probe,
+    executionAdapter: Adapter,
   });
   createLogger(environment.LOG_FORMAT === 'json' ? 'json' : 'pretty').info(
     { event: 'decibel_live_preflight', ...report },

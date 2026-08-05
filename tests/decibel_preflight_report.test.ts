@@ -3,6 +3,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildDecibelPreflightReport } from '../src/decibel_preflight_report.js';
+import {
+  fail_closed_decibel_execution_adapter,
+  LIVE_EXECUTION_DISABLED,
+  type decibel_execution_adapter,
+} from '../src/decibel_execution_adapter.js';
 
 const Directories: string[] = [];
 afterEach(() => {
@@ -44,6 +49,7 @@ const Probe = () =>
       observedAt: new Date('2026-01-01T00:00:00.000Z'),
     },
   });
+const Adapter = new fail_closed_decibel_execution_adapter(Probe);
 
 function soak(verdict = 'PAPER_RUNTIME_HEALTHY_COLLECT_MORE', modern = 100) {
   return {
@@ -57,6 +63,7 @@ function soak(verdict = 'PAPER_RUNTIME_HEALTHY_COLLECT_MORE', modern = 100) {
 async function run(
   environment: Record<string, string | undefined> = CompleteEnvironment,
   report = soak(),
+  adapter: decibel_execution_adapter | null = Adapter,
 ) {
   const root = mkdtempSync(path.join(tmpdir(), 'decibel-preflight-'));
   Directories.push(root);
@@ -68,6 +75,7 @@ async function run(
       candleDatabasePath: path.join(root, 'candles.sqlite'),
       microstructureDatabasePath: path.join(root, 'micro.sqlite'),
       probe: Probe,
+      ...(adapter === null ? {} : { executionAdapter: adapter }),
       soakReport: report,
     }),
   };
@@ -80,6 +88,17 @@ describe('Decibel live-readiness preflight', () => {
     expect(report.paperEvidence).toMatchObject({
       modernEvaluationCount: 17,
       minimumModernEvaluations: 100,
+    });
+  });
+
+  it('reports an unavailable adapter as missing readiness configuration', async () => {
+    const { report } = await run(CompleteEnvironment, soak(), null);
+    expect(report.finalVerdict).toBe('NOT_READY_CONFIG_MISSING');
+    expect(report.executionAdapter).toMatchObject({
+      discovered: false,
+      mode: 'UNAVAILABLE',
+      capabilityProbe: { status: 'NOT_ATTEMPTED' },
+      orderSubmissionDisabledReason: 'ADAPTER_UNAVAILABLE',
     });
   });
 
@@ -126,7 +145,13 @@ describe('Decibel live-readiness preflight', () => {
     expect(report).toMatchObject({
       finalVerdict: 'READY_FOR_MANUAL_LIVE_REVIEW',
       liveExecutionEnabled: false,
-      executionAdapter: { wired: false, capability: 'UNAVAILABLE_IN_THIS_BUILD' },
+      executionAdapter: {
+        discovered: true,
+        mode: 'READ_ONLY',
+        capabilityProbe: { status: 'PASS', readOnly: true },
+        orderSubmissionEnabled: false,
+        orderSubmissionDisabledReason: LIVE_EXECUTION_DISABLED,
+      },
       wallet: { publicAddressPresent: true, publicAddressValid: true, privateKeyLoaded: false },
       connectivity: { status: 'PASS' },
       liveSafety: { liveRiskIntentCount: 0, liveOrderCount: 0 },
@@ -135,6 +160,29 @@ describe('Decibel live-readiness preflight', () => {
     const audit = JSON.stringify(report);
     expect(audit).not.toContain(CompleteEnvironment.DECIBEL_NODE_API_KEY);
     expect(audit).not.toContain(CompleteEnvironment.DECIBEL_WALLET_ADDRESS);
+  });
+
+  it('keeps the discovered adapter read-only and submission fail-closed', async () => {
+    expect(Adapter.getStatus()).toMatchObject({
+      discovered: true,
+      mode: 'READ_ONLY',
+      privateKeyLoaded: false,
+      orderSubmissionEnabled: false,
+    });
+    expect(Adapter.validatePublicWalletAddress(undefined)).toEqual({
+      valid: false,
+      reason: 'DECIBEL_WALLET_ADDRESS_MISSING',
+    });
+    const payload = {
+      marketAddress: Market.marketAddress,
+      side: 'BUY' as const,
+      quantity: 0.001,
+      limitPrice: 65_000,
+      reduceOnly: false,
+      clientOrderId: 'dry-run-only',
+    };
+    expect(Adapter.validateOrderPayload(payload)).toEqual({ valid: true, reasons: [] });
+    await expect(Adapter.submitOrder(payload)).rejects.toThrow(LIVE_EXECUTION_DISABLED);
   });
 
   it('does not create databases or change live ledger counts', async () => {
