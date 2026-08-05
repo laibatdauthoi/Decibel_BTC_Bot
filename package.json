@@ -27,6 +27,7 @@
     "bot:paper": "tsx src/bot_paper.ts",
     "paper:report": "tsx src/paper_report.ts",
     "strategy:diagnose": "tsx src/strategy_diagnose.ts",
+    "microstructure:diagnose": "tsx src/microstructure_diagnose.ts",
     "diagnose:candle-gap": "tsx src/diagnose_candle_gap.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
