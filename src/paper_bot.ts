@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
 import type { opportunity_candidate, opportunity_candidate_type } from './opportunity_scanner.js';
+import type { strategy_candidate_diagnostic } from './strategy_candidate_diagnostics.js';
 import { getFinancialDecimal, getFinancialUnits } from './risk_engine.js';
 export const PAPER_BOT_VERSION = 'BTC_USD_PAPER_BOT_V1',
   ENGINEERING_PAPER_POLICY_VERSION = 'ENGINEERING_PAPER_POLICY_V1';
@@ -225,6 +226,7 @@ export class paper_bot_runtime_controller {
       validCandidateCount: number;
       selectedCandidateId: string | null;
       featureValidity: unknown;
+      candidateDiagnostics?: strategy_candidate_diagnostic;
       markPrice?: number;
       paperTradeRequest?: paper_trade_request;
     } = () => ({
@@ -530,6 +532,7 @@ export class paper_bot_runtime_controller {
     const inserted = this.Journal.recordQueuedEvaluation({
       evaluationId: `evaluation:${event.marketAddress}:5m:${event.candleTime}`,
       notificationId: getCompletedCandleNotificationId(event),
+      sessionId: this.sessionId,
       marketAddress: event.marketAddress,
       interval: '5m',
       candleTime: event.candleTime,
@@ -544,6 +547,24 @@ export class paper_bot_runtime_controller {
       riskIntentCreated: false,
       orderCreated: false,
       source: 'LIVE_WEBSOCKET',
+      ...(result?.candidateDiagnostics !== undefined
+        ? { candidateDiagnostics: result.candidateDiagnostics }
+        : reasonCode === null
+          ? {}
+          : {
+              candidateDiagnostics: {
+                primaryReason:
+                  reasonCode === 'CANDLE_GAP_DETECTED'
+                    ? 'MISSING_OR_INVALID_FEATURE_DATA'
+                    : 'INSUFFICIENT_CANDLE_HISTORY',
+                reasons: [
+                  reasonCode === 'CANDLE_GAP_DETECTED'
+                    ? 'MISSING_OR_INVALID_FEATURE_DATA'
+                    : 'INSUFFICIENT_CANDLE_HISTORY',
+                ],
+                evidence: { gateReason: reasonCode },
+              },
+            }),
     });
     if (inserted) {
       this.latestPersistedEvaluation = event.candleTime;
@@ -940,6 +961,15 @@ const MIGRATIONS = [
       event_type TEXT NOT NULL,occurred_at TEXT NOT NULL,idempotency_key TEXT NOT NULL UNIQUE);
     CREATE INDEX paper_bot_risk_session ON paper_bot_risk_decisions(session_id,candle_close_time);`,
   },
+  {
+    version: 8,
+    sql: `CREATE TABLE paper_bot_candidate_diagnostics(
+      evaluation_id TEXT PRIMARY KEY,session_id TEXT NOT NULL,candle_open_time TEXT NOT NULL,
+      candle_close_time TEXT NOT NULL,primary_reason TEXT NOT NULL,reasons_json TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,created_at TEXT NOT NULL);
+    CREATE INDEX paper_bot_candidate_diagnostics_session
+      ON paper_bot_candidate_diagnostics(session_id,candle_close_time);`,
+  },
 ];
 type paper_bot_account_units = {
   cashBalanceUnits: bigint;
@@ -1291,7 +1321,7 @@ export class paper_bot_journal {
   private appendPaperAccount(
     state: paper_bot_account_units,
     input: {
-      sessionId: string;
+      sessionId?: string;
       evaluationId: string;
       eventType: string;
       idempotencyKey: string;
@@ -1821,10 +1851,27 @@ export class paper_bot_journal {
       .run(processedAt, notificationId);
   }
   recordQueuedEvaluation(
-    input: Parameters<paper_bot_journal['recordLiveEvaluation']>[0] & { notificationId: string },
+    input: Parameters<paper_bot_journal['recordLiveEvaluation']>[0] & {
+      notificationId: string;
+      sessionId: string;
+      candidateDiagnostics?: strategy_candidate_diagnostic;
+    },
   ) {
     return this.db.transaction(() => {
       const inserted = this.recordLiveEvaluation(input);
+      if (inserted && input.candidateDiagnostics !== undefined)
+        this.db
+          .prepare(`INSERT OR IGNORE INTO paper_bot_candidate_diagnostics VALUES(?,?,?,?,?,?,?,?)`)
+          .run(
+            input.evaluationId,
+            input.sessionId ?? 'LEGACY_UNKNOWN',
+            input.candleTime,
+            input.completedAt,
+            input.candidateDiagnostics.primaryReason,
+            JSON.stringify(input.candidateDiagnostics.reasons),
+            JSON.stringify(input.candidateDiagnostics.evidence),
+            input.observedAt,
+          );
       this.db
         .prepare(
           `UPDATE completed_candle_notifications SET status='COMPLETED',processed_at=? WHERE notification_id=?`,

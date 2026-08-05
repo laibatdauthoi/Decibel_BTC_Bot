@@ -18,6 +18,7 @@ import { resolveCandlestickDatabasePath } from './database_path.js';
 import { readMainnetBTCBacktestDataset } from './backtest_data.js';
 import { buildBTCTimeframes } from './timeframe_aggregation.js';
 import { loadOpportunityScannerConfig, scanBTCOpportunities } from './opportunity_scanner.js';
+import { diagnoseStrategyCandidate } from './strategy_candidate_diagnostics.js';
 import { loadMarketStructureConfig } from './market_structure.js';
 import { research_source_repository } from './research_repository.js';
 import { resolveMicrostructureDatabasePath } from './microstructure_database_path.js';
@@ -71,11 +72,12 @@ export async function runPaperBot() {
     try {
       const cutoff = Date.parse(event.completedAt),
         dataset = readMainnetBTCBacktestDataset(Candles, applicationConfig.network, cutoff),
-        candidates = scanBTCOpportunities(
-          buildBTCTimeframes(dataset.candles, new Date(cutoff)),
-          loadOpportunityScannerConfig(),
-          loadMarketStructureConfig(),
-        ).filter((candidate) => candidate.availableAtTime.toISOString() === event.completedAt);
+        timeframes = buildBTCTimeframes(dataset.candles, new Date(cutoff)),
+        scannerConfig = loadOpportunityScannerConfig(),
+        structureConfig = loadMarketStructureConfig(),
+        candidates = scanBTCOpportunities(timeframes, scannerConfig, structureConfig).filter(
+          (candidate) => candidate.availableAtTime.toISOString() === event.completedAt,
+        );
       const source = Source.readSnapshot(() => Source.loadSource(event.marketAddress, cutoff)),
         samples = buildResearchSamples(candidates, dataset.candles, source, cutoff);
       let valid = 0;
@@ -118,6 +120,19 @@ export async function runPaperBot() {
         selectedCandidate = prioritizeCandidates(validCandidates).at(0),
         selectedCandidateId =
           selectedCandidate === undefined ? null : getCandidateIdentity(selectedCandidate);
+      const candidateDiagnostics = diagnoseStrategyCandidate({
+        timeframes,
+        config: scannerConfig,
+        decisionTime: new Date(cutoff),
+        candidates,
+        structureConfig,
+        microstructureWindows: samples.flatMap((sample) =>
+          ([15, 60, 300] as const).map((seconds) => ({
+            seconds,
+            status: sample.features[String(seconds) as '15' | '60' | '300']?.status ?? 'INVALID',
+          })),
+        ),
+      });
       let paperTradeRequest;
       if (
         config.mode === 'PAPER_SIMULATION' &&
@@ -155,6 +170,7 @@ export async function runPaperBot() {
         validCandidateCount: valid,
         selectedCandidateId,
         featureValidity: { valid, invalid: candidates.length - valid },
+        candidateDiagnostics,
         ...(markPrice === undefined ? {} : { markPrice }),
         ...(paperTradeRequest === undefined ? {} : { paperTradeRequest }),
       };

@@ -125,6 +125,9 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
       liveRiskIntentCount: 0,
       liveOrderCount: 0,
       noTradeDiagnostic: { active: false, recentEvaluationCount: 0, explanation: 'NO_EVALUATIONS' },
+      topNoCandidateReasons: {},
+      latestNoCandidateEvaluations: [],
+      postCandidateRiskRejections: [],
     };
   const highWater = hasTable(DatabaseHandle, 'paper_bot_high_water')
       ? (DatabaseHandle.prepare(
@@ -143,6 +146,11 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
           evaluation_id: string;
           reason_codes_json: string;
         }>)
+      : [],
+    diagnosticRows = hasTable(DatabaseHandle, 'paper_bot_candidate_diagnostics')
+      ? (DatabaseHandle.prepare(
+          'SELECT * FROM paper_bot_candidate_diagnostics ORDER BY candle_close_time DESC',
+        ).all() as row[])
       : [],
     candidateReasons = candidateRows.flatMap((candidate) => {
       const parsed = JSON.parse(candidate.reason_codes_json) as unknown;
@@ -200,6 +208,51 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
     ),
     noTrade =
       recentCompleted.length > 0 && recentCompleted.every((value) => value.candidateCount === 0);
+  const evaluationById = new Map(liveRows.map((value) => [String(value.evaluation_id), value])),
+    noCandidateDiagnostics = diagnosticRows.filter(
+      (value) => Number(evaluationById.get(String(value.evaluation_id))?.candidate_count) === 0,
+    ),
+    diagnosticsByEvaluation = new Map(
+      noCandidateDiagnostics.map((value) => [String(value.evaluation_id), value]),
+    ),
+    parseStringArray = (value: unknown): string[] => {
+      if (typeof value !== 'string') return [];
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed)
+        ? parsed.filter((item): item is string => typeof item === 'string')
+        : [];
+    },
+    parseEvidence = (value: unknown): Record<string, unknown> => {
+      if (typeof value !== 'string') return {};
+      const parsed = JSON.parse(value) as unknown;
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    },
+    noCandidateEvaluationRows = liveRows.filter(
+      (value) => value.status === 'EVALUATED' && Number(value.candidate_count) === 0,
+    ),
+    resolvedNoCandidateDiagnostics = noCandidateEvaluationRows.map((evaluation) => {
+      const diagnostic = diagnosticsByEvaluation.get(String(evaluation.evaluation_id));
+      return diagnostic === undefined
+        ? {
+            candleTime: evaluation.candle_time,
+            candleCloseTime: evaluation.completed_at,
+            primaryReason: 'LEGACY_DIAGNOSTIC_UNAVAILABLE',
+            reasons: ['LEGACY_DIAGNOSTIC_UNAVAILABLE'],
+            evidence: {
+              gateReason: evaluation.reason_code,
+              explanation: 'Evaluation predates structured strategy diagnostics.',
+            },
+          }
+        : {
+            candleTime: diagnostic.candle_open_time,
+            candleCloseTime: diagnostic.candle_close_time,
+            primaryReason: String(diagnostic.primary_reason),
+            reasons: parseStringArray(diagnostic.reasons_json),
+            evidence: parseEvidence(diagnostic.evidence_json),
+          };
+    });
   return {
     databaseStatus: 'AVAILABLE',
     highWaterMark: highWater?.candle_time ?? null,
@@ -292,6 +345,18 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
           ? 'NO_COMPLETED_EVALUATIONS'
           : 'RECENT_CANDIDATES_OR_ACTIONS_PRESENT',
     },
+    topNoCandidateReasons: countBy(
+      resolvedNoCandidateDiagnostics.map((value) => value.primaryReason),
+    ),
+    latestNoCandidateEvaluations: resolvedNoCandidateDiagnostics.slice(0, latestCount),
+    postCandidateRiskRejections: riskRows
+      .filter((value) => value.approved === 0)
+      .slice(0, latestCount)
+      .map((value) => ({
+        evaluationId: value.evaluation_id,
+        reason: value.rejection_reason,
+        diagnosticReason: 'RISK_OR_POLICY_REJECTION_AFTER_CANDIDATE',
+      })),
   };
 }
 
@@ -307,7 +372,7 @@ export function buildPaperRuntimeReport(input: {
   try {
     const paper = readPaper(PaperDatabase, latestCount);
     return {
-      reportVersion: 'PAPER_RUNTIME_REPORT_V1',
+      reportVersion: 'PAPER_RUNTIME_REPORT_V2',
       generatedAt: new Date().toISOString(),
       configuredMode: input.mode,
       liveExecutionEnabled: false,

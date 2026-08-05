@@ -112,6 +112,57 @@ describe('paper runtime report', () => {
     expect(report.liveOrderCount).toBe(0);
   });
 
+  it('reports durable no-candidate diagnostics and post-candidate risk rejection reasons', () => {
+    const root = directory(),
+      paperPath = path.join(root, 'paper.sqlite'),
+      Journal = new paper_bot_journal(paperPath),
+      sessionId = Journal.startSession({
+        startedAt: '2026-01-01T00:00:00.000Z',
+        mode: 'PAPER_SIMULATION',
+        startupRecoveryStatus: 'CLEAN',
+      }),
+      event = {
+        marketAddress: 'market',
+        interval: '5m' as const,
+        candleTime: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:05:00.000Z',
+        observedAt: '2026-01-01T00:05:00.100Z',
+        source: 'LIVE_WEBSOCKET' as const,
+      };
+    Journal.enqueueCompletedCandle(event);
+    Journal.recordQueuedEvaluation({
+      evaluationId: 'evaluation:market:5m:2026-01-01T00:00:00.000Z',
+      notificationId: 'completed:market:5m:2026-01-01T00:00:00.000Z',
+      sessionId,
+      ...event,
+      paperBotState: 'PAPER_ACTIVE',
+      mode: 'PAPER_SIMULATION',
+      status: 'EVALUATED',
+      reasonCode: null,
+      candidateCount: 0,
+      selectedCandidateId: null,
+      riskIntentCreated: false,
+      orderCreated: false,
+      candidateDiagnostics: {
+        primaryReason: 'VOLATILITY_OR_RANGE_FILTER_FAILED',
+        reasons: ['VOLATILITY_OR_RANGE_FILTER_FAILED', 'TREND_OR_REGIME_FILTER_FAILED'],
+        evidence: { volatilityRatio: 0.8, threshold: 1.6 },
+      },
+    });
+    Journal.close();
+    const report = buildPaperRuntimeReport({
+      paperDatabasePath: paperPath,
+      candleDatabasePath: path.join(root, 'missing.sqlite'),
+      mode: 'PAPER_SIMULATION',
+    });
+    expect(report.topNoCandidateReasons).toEqual({ VOLATILITY_OR_RANGE_FILTER_FAILED: 1 });
+    expect(report.latestNoCandidateEvaluations[0]).toMatchObject({
+      primaryReason: 'VOLATILITY_OR_RANGE_FILTER_FAILED',
+      reasons: ['VOLATILITY_OR_RANGE_FILTER_FAILED', 'TREND_OR_REGIME_FILTER_FAILED'],
+      evidence: { volatilityRatio: 0.8, threshold: 1.6 },
+    });
+  });
+
   it('reports simulation risk, fills, account state, and zero live actions', () => {
     const root = directory(),
       paperPath = path.join(root, 'paper.sqlite'),
