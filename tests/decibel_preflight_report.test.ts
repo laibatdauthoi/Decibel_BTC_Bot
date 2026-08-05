@@ -83,8 +83,13 @@ async function run(
 
 describe('Decibel live-readiness preflight', () => {
   it('reports insufficient paper evidence', async () => {
-    const { report } = await run(CompleteEnvironment, soak('INSUFFICIENT_EVIDENCE', 17));
+    const { report } = await run(
+      { ...CompleteEnvironment, TRADING_MODE: 'paper', LIVE_TRADING_ENABLED: 'false' },
+      soak('INSUFFICIENT_EVIDENCE', 17),
+    );
     expect(report.finalVerdict).toBe('NOT_READY_INSUFFICIENT_PAPER_EVIDENCE');
+    expect(report.currentBotMode).toBe('PAPER_SIMULATION');
+    expect(report.liveExecutionEnabled).toBe(false);
     expect(report.paperEvidence).toMatchObject({
       modernEvaluationCount: 17,
       minimumModernEvaluations: 100,

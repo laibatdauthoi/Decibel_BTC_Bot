@@ -766,6 +766,24 @@ describe('paper bot orchestrator', () => {
     expect(normalizePaperBotConfiguration({ PAPER_BOT_MODE: 'PAPER_SIMULATION' }).mode).toBe(
       'PAPER_SIMULATION',
     );
+    expect(
+      normalizePaperBotConfiguration({
+        TRADING_MODE: 'paper',
+        LIVE_TRADING_ENABLED: 'false',
+      }).mode,
+    ).toBe('PAPER_SIMULATION');
+    expect(normalizePaperBotConfiguration({ TRADING_MODE: 'observe-only' }).mode).toBe(
+      'OBSERVE_ONLY',
+    );
+    expect(() => normalizePaperBotConfiguration({ TRADING_MODE: 'live' })).toThrow(
+      'live execution remains disabled',
+    );
+    expect(() =>
+      normalizePaperBotConfiguration({
+        TRADING_MODE: 'paper',
+        PAPER_BOT_MODE: 'OBSERVE_ONLY',
+      }),
+    ).toThrow('TRADING_MODE conflicts with PAPER_BOT_MODE');
     expect(() => normalizePaperBotConfiguration({ PAPER_BOT_MODE: 'LIVE' })).toThrow();
     expect(transitionPaperBotState('STARTING', 'RECOVERING')).toBe('RECOVERING');
     expect(() => transitionPaperBotState('HALTED', 'PAPER_ACTIVE')).toThrow();

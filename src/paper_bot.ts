@@ -25,6 +25,7 @@ export type paper_bot_state =
   | 'STOPPING'
   | 'STOPPED';
 const Schema = z.object({
+  TRADING_MODE: z.enum(['paper', 'observe-only', 'live']).optional(),
   PAPER_BOT_MODE: z
     .enum([
       'OBSERVE_ONLY',
@@ -32,7 +33,7 @@ const Schema = z.object({
       'PAPER_EXECUTE_ALL_VALID_CANDIDATES',
       'PAPER_EXECUTE_SUPPORTED_EDGE_ONLY',
     ])
-    .default('OBSERVE_ONLY'),
+    .optional(),
   PAPER_STOP_ATR_PERIOD: z.coerce.number().int().positive().default(14),
   PAPER_STOP_ATR_MULTIPLE: z.coerce.number().positive().default(1),
   PAPER_TAKE_PROFIT_R_MULTIPLE: z.coerce.number().positive().default(1.5),
@@ -72,8 +73,22 @@ export type paper_risk_policy = {
 };
 export function normalizePaperBotConfiguration(environment: Record<string, string | undefined>) {
   const value = Schema.parse(environment);
+  if (value.TRADING_MODE === 'live')
+    throw new Error('TRADING_MODE=live is unavailable; live execution remains disabled');
+  const tradingMode =
+    value.TRADING_MODE === 'paper'
+      ? ('PAPER_SIMULATION' as const)
+      : value.TRADING_MODE === 'observe-only'
+        ? ('OBSERVE_ONLY' as const)
+        : undefined;
+  if (
+    tradingMode !== undefined &&
+    value.PAPER_BOT_MODE !== undefined &&
+    tradingMode !== value.PAPER_BOT_MODE
+  )
+    throw new Error('TRADING_MODE conflicts with PAPER_BOT_MODE');
   return {
-    mode: value.PAPER_BOT_MODE,
+    mode: value.PAPER_BOT_MODE ?? tradingMode ?? 'OBSERVE_ONLY',
     stopATRPeriod: value.PAPER_STOP_ATR_PERIOD,
     stopATRMultiple: value.PAPER_STOP_ATR_MULTIPLE,
     takeProfitRMultiple: value.PAPER_TAKE_PROFIT_R_MULTIPLE,

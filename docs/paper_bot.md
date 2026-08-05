@@ -2,7 +2,7 @@
 
 `npm run bot:paper` runs the unified data collectors and the durable paper-bot runtime in one Node.js process. Stop standalone `npm start`, `npm run collect:microstructure`, or `npm run collect:data` writers before starting it so the database-set lock can be acquired safely.
 
-The default `PAPER_BOT_MODE=OBSERVE_ONLY` records completed-candle evaluations, candidates, feature gates, marks, and reasons without creating paper risk decisions, simulated fills, live risk intents, or live orders. `PAPER_BOT_MODE=PAPER_SIMULATION` enables only the deterministic paper-risk, simulated-order, simulated-fill, and paper-account lifecycle. Both modes hard-code `liveExecutionEnabled: false`; `LIVE` is not an accepted mode.
+The default `PAPER_BOT_MODE=OBSERVE_ONLY` records completed-candle evaluations, candidates, feature gates, marks, and reasons without creating paper risk decisions, simulated fills, live risk intents, or live orders. `PAPER_BOT_MODE=PAPER_SIMULATION` enables only the deterministic paper-risk, simulated-order, simulated-fill, and paper-account lifecycle. The external `TRADING_MODE` accepts `observe-only` and `paper`, mapping them to those canonical modes. When both variables are present they must agree. `TRADING_MODE=live` is rejected, and `LIVE_TRADING_ENABLED=false` remains a hard live-execution block.
 
 `PAPER_SIMULATION` selects at most one deterministic, point-in-time-valid candidate per completed candle. An approved decision creates only SQLite-backed simulated order events and a simulated fill. A rejected decision records its stable reason, updates no trade accounting, and produces no fill. Duplicate or restarted candle delivery is suppressed by the shared evaluation identity before risk or execution can repeat.
 
