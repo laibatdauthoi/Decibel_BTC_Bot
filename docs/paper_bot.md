@@ -28,6 +28,14 @@ Risk decisions, order-state events, fills, account projections, and evaluations 
 
 For an operational smoke test, stop standalone database writers, set `PAPER_BOT_MODE=OBSERVE_ONLY`, run `npm run bot:paper`, wait for readiness and a completed candle, then stop with Ctrl+C and confirm `paper_bot_stopped` is the last log. Repeat with `PAPER_BOT_MODE=PAPER_SIMULATION`; approved or rejected paper decisions may appear, but every log and session must still report `liveExecutionEnabled: false`. Run `npm run verify:paper-bot` first for the deterministic multi-candle and restart proof.
 
+## Runtime report
+
+Run `npm run paper:report` at any time, including while `bot:paper` is running. It opens the candle and paper databases strictly read-only, takes no writer lock, performs no migration, and writes nothing. `PAPER_REPORT_LATEST_COUNT` controls the latest evaluation, fill, and account-entry list length and defaults to 10.
+
+The report shows the configured mode, evaluation high-water mark, BTC/USD 5-minute candle range and gaps, evaluation gate distribution, candidate and valid-candidate distributions, risk approvals/rejections, simulated orders and fills, and the latest fixed-point account/PnL projection. Live risk-intent and order counters must remain zero in both supported modes.
+
+If recent completed evaluations all show `candidateCount=0`, the scanner produced no candidate before risk filtering; this is not a risk rejection and no strategy threshold is changed. Inspect `featureAndGateEvidence` for skipped readiness/continuity gates and persisted candidate feature reasons. A nonzero candidate count with no fill should be traced through `paperRisk.byReason`. Fills affect cash through fees/slippage and affect equity through realized and marked unrealized PnL.
+
 WebSocket connectivity does not imply candle continuity. Completed-candle notifications are durably queued and evaluated serially outside the SDK listener. Unchanged duplicate deliveries do not enqueue work. A detected 5-minute gap pauses new paper entries, records the triggering decision as `SKIPPED/CANDLE_GAP_DETECTED`, and performs a bounded, single-flight REST repair of only the missing range. Repaired history is never treated as a retroactive signal, and unsupported synthetic candles are never created. If REST cannot find the interval, the bot remains degraded for operator inspection.
 
 Only newly completed UTC-aligned 5-minute candles after the durable high-water mark are eligible. Candidate priority is score, supported-edge status, fixed candidate-type order, then stable identity. Feature windows use point-in-time 15s, 60s, and 300s data and fail closed on missing, stale, incompatible, or future observations.
