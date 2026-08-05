@@ -438,6 +438,113 @@ export async function buildPaperBotVerificationReport(directory: string) {
   );
   await GapController.shutdown();
   GapJournal.close();
+  const simulationDatabasePath = path.join(directory, 'runtime-paper-simulation.sqlite'),
+    SimulationJournal = new paper_bot_journal(simulationDatabasePath),
+    SimulationScheduler = new fake_scheduler(),
+    SimulationHealth = new fake_health(),
+    simulationPolicy = normalizePaperBotConfiguration({
+      PAPER_RISK_MAX_POSITION_SIZE: '1',
+      PAPER_RISK_MAX_NOTIONAL_EXPOSURE: '100000',
+      PAPER_RISK_MAX_TRADE_NOTIONAL: '100000',
+      PAPER_RISK_MAX_DAILY_LOSS: '1000',
+      PAPER_RISK_MAX_DRAWDOWN: '1',
+      PAPER_RISK_MIN_CASH_RESERVE: '0',
+      PAPER_RISK_FEE_BPS: '1',
+      PAPER_RISK_SLIPPAGE_BPS: '2',
+      PAPER_RISK_COOLDOWN_CANDLES: '0',
+      PAPER_RISK_ALLOW_INCREASE_POSITION: 'false',
+    }).paperRiskPolicy,
+    SimulationController = new paper_bot_runtime_controller(
+      SimulationJournal,
+      'PAPER_SIMULATION',
+      SimulationHealth,
+      SimulationScheduler,
+      60,
+      900,
+      { info: () => undefined, warn: () => undefined, error: () => undefined },
+      (event) => ({
+        candidateCount: 1,
+        validCandidateCount: 1,
+        selectedCandidateId: `candidate:${event.candleTime}`,
+        featureValidity: { valid: 1, invalid: 0 },
+        markPrice: 100,
+        paperTradeRequest: {
+          requestedAction: 'OPEN',
+          requestedSide: 'BUY',
+          requestedSize: 0.1,
+          markPrice: 100,
+          markObservedAt: event.completedAt,
+        },
+      }),
+      () => true,
+      null,
+      { maximumAttempts: 3, baseDelayMs: 1_000, maximumDelayMs: 10_000 },
+      simulationPolicy,
+    );
+  SimulationController.start();
+  SimulationHealth.set('HEALTHY');
+  SimulationScheduler.advance(60_000);
+  const firstSimulationCandle = {
+      marketAddress: 'verification-btc-market',
+      interval: '5m' as const,
+      candleTime: '2026-08-05T10:00:00.000Z',
+      completedAt: '2026-08-05T10:05:00.000Z',
+      observedAt: SimulationScheduler.now().toISOString(),
+      source: 'LIVE_WEBSOCKET' as const,
+    },
+    secondSimulationCandle = {
+      ...firstSimulationCandle,
+      candleTime: '2026-08-05T10:05:00.000Z',
+      completedAt: '2026-08-05T10:10:00.000Z',
+    };
+  check(
+    SimulationController.handleCompletedCandle(firstSimulationCandle),
+    'simulation entry candle queued',
+  );
+  SimulationScheduler.advance(0);
+  const accountAfterApprovedSimulation = SimulationJournal.getPaperAccountSnapshot();
+  check(
+    SimulationController.handleCompletedCandle(secondSimulationCandle),
+    'simulation rejection candle queued',
+  );
+  SimulationScheduler.advance(0);
+  const accountAfterRejectedSimulation = SimulationJournal.getPaperAccountSnapshot(),
+    duplicateSimulationCandleSuppressed =
+      !SimulationController.handleCompletedCandle(secondSimulationCandle),
+    simulationRiskDecisions = SimulationJournal.getPaperRiskDecisions(),
+    simulationExecutions = SimulationJournal.getSimulatedExecutions(),
+    simulationEvaluations = SimulationJournal.getEvaluationLedger();
+  check(
+    simulationRiskDecisions.filter((row) => row.approved === 1).length === 1,
+    'runtime approval',
+  );
+  check(
+    simulationRiskDecisions.filter((row) => row.approved === 0).length === 1,
+    'runtime rejection',
+  );
+  check(simulationExecutions.length === 1, 'only approved runtime decision filled');
+  check(
+    accountAfterApprovedSimulation.cashBalance === accountAfterRejectedSimulation.cashBalance &&
+      accountAfterApprovedSimulation.positionSize === accountAfterRejectedSimulation.positionSize,
+    'rejected runtime decision has no financial effect',
+  );
+  check(duplicateSimulationCandleSuppressed, 'runtime duplicate candle suppressed');
+  await SimulationController.shutdown();
+  SimulationJournal.close();
+  const RestartedSimulationJournal = new paper_bot_journal(simulationDatabasePath),
+    restoredSimulationAccount = RestartedSimulationJournal.getPaperAccountSnapshot(),
+    restoredSimulationRiskDecisions = RestartedSimulationJournal.getPaperRiskDecisions(),
+    restoredSimulationEvaluations = RestartedSimulationJournal.getEvaluationLedger();
+  check(
+    JSON.stringify(restoredSimulationAccount) === JSON.stringify(accountAfterRejectedSimulation),
+    'runtime simulation account restored',
+  );
+  check(
+    restoredSimulationRiskDecisions.length === simulationRiskDecisions.length &&
+      restoredSimulationEvaluations.length === simulationEvaluations.length,
+    'runtime simulation ledgers restored',
+  );
+  RestartedSimulationJournal.close();
   const observeJournal = new paper_bot_journal(path.join(directory, 'observe.sqlite')),
     observe = new paper_bot_orchestrator(
       observeJournal,
@@ -849,6 +956,27 @@ export async function buildPaperBotVerificationReport(directory: string) {
       incompleteRiskDecisionCount: 0,
       observeOnlyLiveRiskIntentCount: 0,
       observeOnlyLiveOrderCount: 0,
+      liveExecutionEnabled: false,
+    },
+    paperSimulationRuntime: {
+      mode: 'PAPER_SIMULATION',
+      approvedDecisionCount: simulationRiskDecisions.filter((row) => row.approved === 1).length,
+      rejectedDecisionCount: simulationRiskDecisions.filter((row) => row.approved === 0).length,
+      simulatedExecutionCount: simulationExecutions.length,
+      accountChangedFromApprovedFill:
+        accountAfterApprovedSimulation.positionSize !== 0 &&
+        accountAfterApprovedSimulation.feesPaid > 0,
+      rejectedDecisionFinancialEffect: 0,
+      duplicateCandleSuppressed: duplicateSimulationCandleSuppressed,
+      duplicateFinancialEffect: 0,
+      restartRestoresAccountRiskEvaluationState:
+        JSON.stringify(restoredSimulationAccount) ===
+          JSON.stringify(accountAfterRejectedSimulation) &&
+        restoredSimulationRiskDecisions.length === simulationRiskDecisions.length &&
+        restoredSimulationEvaluations.length === simulationEvaluations.length,
+      observeOnlyPaperFillCount: 0,
+      liveRiskIntentCount: 0,
+      liveOrderCount: 0,
       liveExecutionEnabled: false,
     },
     candleGapRegression: gapIncident,

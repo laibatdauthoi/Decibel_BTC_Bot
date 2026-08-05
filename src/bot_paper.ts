@@ -23,7 +23,7 @@ import { research_source_repository } from './research_repository.js';
 import { resolveMicrostructureDatabasePath } from './microstructure_database_path.js';
 import { buildResearchSamples } from './research_dataset.js';
 import { loadConfig } from './config.js';
-import { getCandidateIdentity } from './paper_bot.js';
+import { getCandidateIdentity, prioritizeCandidates } from './paper_bot.js';
 import { decibel_client } from './decibel_client.js';
 import type { candle_gap } from './paper_bot.js';
 import { database_runtime_lock } from './data_runtime_lock.js';
@@ -79,6 +79,7 @@ export async function runPaperBot() {
       const source = Source.readSnapshot(() => Source.loadSource(event.marketAddress, cutoff)),
         samples = buildResearchSamples(candidates, dataset.candles, source, cutoff);
       let valid = 0;
+      const validCandidates = [];
       for (const sample of samples) {
         const windows = [sample.features['15'], sample.features['60'], sample.features['300']],
           allValid = windows.every((window) => window?.status === 'VALID');
@@ -86,14 +87,15 @@ export async function runPaperBot() {
         const candidate = candidates.find(
           (item) => getCandidateIdentity(item) === sample.candidateId,
         );
-        if (candidate !== undefined)
+        if (candidate !== undefined) {
+          if (allValid) validCandidates.push(candidate);
           Journal.saveCandidate({
             candidateId: sample.candidateId,
             evaluationId: `evaluation:${event.marketAddress}:5m:${event.candleTime}`,
             candidate,
-            decision: 'OBSERVED',
+            decision: config.mode === 'PAPER_SIMULATION' ? 'PAPER_SIMULATION' : 'OBSERVED',
             reasons: allValid
-              ? ['OBSERVE_ONLY']
+              ? [config.mode === 'PAPER_SIMULATION' ? 'PAPER_SIMULATION' : 'OBSERVE_ONLY']
               : windows.flatMap((window, index) =>
                   window?.status === 'VALID'
                     ? []
@@ -110,14 +112,51 @@ export async function runPaperBot() {
               featureHash: `sha256:${sample.candidateId}`,
             },
           });
+        }
       }
-      const markPrice = dataset.candles.at(-1)?.close;
+      const markPrice = dataset.candles.at(-1)?.close,
+        selectedCandidate = prioritizeCandidates(validCandidates).at(0),
+        selectedCandidateId =
+          selectedCandidate === undefined ? null : getCandidateIdentity(selectedCandidate);
+      let paperTradeRequest;
+      if (
+        config.mode === 'PAPER_SIMULATION' &&
+        selectedCandidate !== undefined &&
+        markPrice !== undefined
+      ) {
+        const positionSize = Journal.getPaperAccountSnapshot().positionSize,
+          requestedSide: 'BUY' | 'SELL' = selectedCandidate.direction === 'LONG' ? 'BUY' : 'SELL',
+          requestedSize = Math.min(
+            config.paperRiskPolicy.maxPositionSize,
+            config.paperRiskPolicy.maxTradeNotional / markPrice,
+          ),
+          requestedSignedSize = requestedSide === 'BUY' ? requestedSize : -requestedSize,
+          sameDirection =
+            positionSize !== 0 && Math.sign(positionSize) === Math.sign(requestedSignedSize);
+        paperTradeRequest = {
+          requestedAction:
+            positionSize === 0
+              ? ('OPEN' as const)
+              : sameDirection
+                ? ('INCREASE' as const)
+                : requestedSize < Math.abs(positionSize)
+                  ? ('REDUCE' as const)
+                  : requestedSize === Math.abs(positionSize)
+                    ? ('CLOSE' as const)
+                    : ('REVERSE' as const),
+          requestedSide,
+          requestedSize,
+          markPrice,
+          markObservedAt: event.completedAt,
+        };
+      }
       return {
         candidateCount: candidates.length,
         validCandidateCount: valid,
-        selectedCandidateId: null,
+        selectedCandidateId,
         featureValidity: { valid, invalid: candidates.length - valid },
         ...(markPrice === undefined ? {} : { markPrice }),
+        ...(paperTradeRequest === undefined ? {} : { paperTradeRequest }),
       };
     } finally {
       Source.close();

@@ -763,6 +763,10 @@ describe('paper bot orchestrator', () => {
       },
     });
     expect(() => normalizePaperBotConfiguration({ PAPER_RISK_MAX_DRAWDOWN: '1.1' })).toThrow();
+    expect(normalizePaperBotConfiguration({ PAPER_BOT_MODE: 'PAPER_SIMULATION' }).mode).toBe(
+      'PAPER_SIMULATION',
+    );
+    expect(() => normalizePaperBotConfiguration({ PAPER_BOT_MODE: 'LIVE' })).toThrow();
     expect(transitionPaperBotState('STARTING', 'RECOVERING')).toBe('RECOVERING');
     expect(() => transitionPaperBotState('HALTED', 'PAPER_ACTIVE')).toThrow();
   });
@@ -907,6 +911,21 @@ describe('paper bot orchestrator', () => {
       liveExecutionEnabled: false,
     });
     expect(report.paperRisk.rejectionReasons).toContain('INSUFFICIENT_AVAILABLE_BALANCE');
+    expect(report.paperSimulationRuntime).toMatchObject({
+      mode: 'PAPER_SIMULATION',
+      approvedDecisionCount: 1,
+      rejectedDecisionCount: 1,
+      simulatedExecutionCount: 1,
+      accountChangedFromApprovedFill: true,
+      rejectedDecisionFinancialEffect: 0,
+      duplicateCandleSuppressed: true,
+      duplicateFinancialEffect: 0,
+      restartRestoresAccountRiskEvaluationState: true,
+      observeOnlyPaperFillCount: 0,
+      liveRiskIntentCount: 0,
+      liveOrderCount: 0,
+      liveExecutionEnabled: false,
+    });
     expect(report.liveExecutionAvailable).toBe(false);
     expect(report.canTradeLive).toBe(false);
     expect(report.candleGapRegression).toMatchObject({
