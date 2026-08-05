@@ -196,6 +196,18 @@ This command reads only candidates whose 15-second, 60-second, and 300-second mi
 
 Configuration defaults are `MAKER_SIMULATOR_ENTRY_OFFSET_TICKS=0`, `MAKER_SIMULATOR_TTL_SECONDS=30`, `MAKER_SIMULATOR_PLACEMENT_LATENCY_MS=250`, `MAKER_SIMULATOR_CANCEL_LATENCY_MS=250`, `MAKER_SIMULATOR_FEE_RATE=0.00011`, `MAKER_SIMULATOR_STARTING_EQUITY=10000`, `MAKER_SIMULATOR_RISK_PER_CANDIDATE=0.0025`, and `MAKER_SIMULATOR_LEVERAGE_CAP=2`. The simulator records lifecycle events, partial fills, maker fees, and 5/15/30/60-second mid-price markouts, but intentionally does not simulate exits or profitability. Results are versioned and idempotently persisted in `data/btc_usd_research.sqlite`; a formatted ignored report is written to `data/maker_execution_report.json`. Fewer than 100 eligible candidates is `NOT_ENOUGH_DATA`.
 
+## Research-edge analysis
+
+```powershell
+npm run analyze:research-edge
+```
+
+This fully offline command joins valid, outcome-complete research candidates to the matching versioned maker simulations. A candidate is one statistical unit even though `STRICT_TRADE_THROUGH` and `TOUCH_WITH_FLOW` execution views are reported separately. It evaluates only the predefined directional-volume, top-book imbalance, imbalance-change, spread, depth, intensity, and combined-confirmation hypotheses using the fixed 60-second hypothesis window; all 15/60/300-second windows must be valid. It never searches candidate, feature, or execution thresholds.
+
+Evaluation uses chronological expanding training windows, 25-candidate test blocks, a default minimum of 100 training candidates, a 60-minute forward-outcome purge, and `RESEARCH_EDGE_EMBARGO_MINUTES=60`. `RESEARCH_EDGE_MINIMUM_TRAINING_SAMPLES` and `RESEARCH_EDGE_TEST_BLOCK_SIZE` configure the first two bounds. Spread, depth, and intensity medians are fitted only on earlier training observations. Chronological overlap clusters drive a deterministic seeded block bootstrap; reports include 95% confidence intervals, effect sizes versus the unfiltered baseline, and Benjamini-Hochberg false-discovery rates. Evidence remains exploratory unless both corrected significance and a positive expectancy interval support it, and no profitability claim is made when an interval includes zero.
+
+The concise terminal event reports eligibility, exclusions, and `NOT_ENOUGH_DATA`, `EXPLORATORY`, `SUPPORTED`, or `REJECTED`. Full versioned metrics and separate maker-assumption results are written deterministically to ignored `data/research_edge_report.json`. Fewer than 100 eligible candidates produces `NOT_ENOUGH_DATA` and no recommendation. This is research only and never emits an automatic live-trading recommendation.
+
 The reusable `decibel_client` exposes:
 
 - `getBTCMarketMetadata()` for address, precision, sizing, leverage, open-interest limit, and market mode.

@@ -446,6 +446,21 @@ export class research_dataset_repository {
     ).count;
     return { ...counters, total };
   }
+  getMakerSimulations(simulatorVersion?: string): maker_simulation_result[] {
+    const rows =
+      simulatorVersion === undefined
+        ? this.database
+            .prepare<[], { order_json: string }>(
+              'SELECT order_json FROM maker_simulation_orders ORDER BY candidate_id, fill_assumption',
+            )
+            .all()
+        : this.database
+            .prepare<[string], { order_json: string }>(
+              'SELECT order_json FROM maker_simulation_orders WHERE simulator_version=? ORDER BY candidate_id, fill_assumption',
+            )
+            .all(simulatorVersion);
+    return rows.map((row) => JSON.parse(row.order_json) as maker_simulation_result);
+  }
   getCount(): number {
     return (
       this.database.prepare('SELECT COUNT(*) AS count FROM research_samples').get() as {

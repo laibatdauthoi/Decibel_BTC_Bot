@@ -11,3 +11,6 @@ export function resolveResearchReportPath(projectRoot = PROJECT_ROOT): string {
 export function resolveMakerExecutionReportPath(projectRoot = PROJECT_ROOT): string {
   return resolve(projectRoot, 'data', 'maker_execution_report.json');
 }
+export function resolveResearchEdgeReportPath(projectRoot = PROJECT_ROOT): string {
+  return resolve(projectRoot, 'data', 'research_edge_report.json');
+}

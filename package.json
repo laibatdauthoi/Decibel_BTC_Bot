@@ -19,6 +19,7 @@
     "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build:research-dataset": "tsx src/build_research_dataset.ts",
     "simulate:maker-execution": "tsx src/simulate_maker_execution.ts",
+    "analyze:research-edge": "tsx src/analyze_research_edge.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
