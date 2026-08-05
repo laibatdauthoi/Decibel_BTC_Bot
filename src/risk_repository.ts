@@ -126,6 +126,27 @@ export class risk_repository {
     );
   }
 
+  getDecision(intentId: string): risk_decision | null {
+    const row = this.database
+      .prepare('SELECT decision_json FROM risk_decisions WHERE intent_id = ?')
+      .get(intentId) as { decision_json: string } | undefined;
+    return row === undefined ? null : (JSON.parse(row.decision_json) as risk_decision);
+  }
+
+  getPersistedApproval(
+    intentId: string,
+  ): { intent: proposed_trade_intent; decision: risk_decision } | null {
+    const row = this.database
+      .prepare('SELECT intent_json, decision_json FROM risk_decisions WHERE intent_id = ?')
+      .get(intentId) as { intent_json: string; decision_json: string } | undefined;
+    return row === undefined
+      ? null
+      : {
+          intent: JSON.parse(row.intent_json) as proposed_trade_intent,
+          decision: JSON.parse(row.decision_json) as risk_decision,
+        };
+  }
+
   recordFill(fill: fill_record): 'INSERTED' | 'DUPLICATE' {
     assertFinitePositive(fill.price, 'Fill price');
     assertFinitePositive(fill.quantity, 'Fill quantity');

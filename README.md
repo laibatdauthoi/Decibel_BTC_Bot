@@ -8,6 +8,8 @@ A strict TypeScript foundation for reading the Decibel BTC/USD perpetual market.
 
 The engine is validation, sizing, persistence, and audit code only. It cannot trade and contains no wallet, signing, order-submission, modification, or cancellation integration. The USD 10,000 daily volume target is monitoring-only and never overrides risk. Liquidation and exchange margin-mode calculations remain unavailable pending verified Decibel semantics. See [the risk policy](docs/risk_policy.md).
 
+`npm run verify:paper-account` exercises the isolated event-sourced USD 30 paper account, including exact 40x variable-margin fills, positions, fees, PnL, restart replay, and the uncapped USD 10,000 daily minimum-volume objective. Stop triggers create reduce-only intents but never assume execution. See [the paper-account documentation](docs/paper_account.md).
+
 ## Setup
 
 Requires Node.js and npm. Install the pinned dependencies and copy the example environment file:
