@@ -209,8 +209,8 @@ export class microstructure_collector {
     );
   }
 
-  stop(): void {
-    if (this.stopped) return;
+  stop(): Promise<void> {
+    if (this.stopped) return Promise.resolve();
     this.stopped = true;
     let persistenceFailure: Error | undefined;
     try {
@@ -237,6 +237,7 @@ export class microstructure_collector {
       'Microstructure collector stopped cleanly',
     );
     if (persistenceFailure !== undefined) throw persistenceFailure;
+    return Promise.resolve();
   }
 
   getHealth(): Readonly<Record<stream_name, stream_health>> {
@@ -254,7 +255,7 @@ export class microstructure_collector {
     malformedCount: number;
     timestampRegressionCount: number;
     latestAggregateSecond: number | null;
-    persistenceHealth: 'waiting' | 'healthy' | 'failed';
+    persistenceHealth: 'waiting' | 'healthy' | 'failed' | 'stopped';
   } {
     return {
       health: { ...this.health },
@@ -263,11 +264,13 @@ export class microstructure_collector {
       malformedCount: this.counters.malformed,
       timestampRegressionCount: this.counters.regressions,
       latestAggregateSecond: this.latestAggregateSecond,
-      persistenceHealth: this.persistenceFailed
-        ? 'failed'
-        : this.latestAggregateSecond === null
-          ? 'waiting'
-          : 'healthy',
+      persistenceHealth: this.stopped
+        ? 'stopped'
+        : this.persistenceFailed
+          ? 'failed'
+          : this.latestAggregateSecond === null
+            ? 'waiting'
+            : 'healthy',
     };
   }
 

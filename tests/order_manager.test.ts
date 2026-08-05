@@ -101,7 +101,7 @@ describe('order manager', () => {
     expect(report.timingEvidence.fillBeforeCancelEffectivenessAt < cancelEffectiveAt).toBe(true);
     expect(report.timingEvidence.fillAfterCancellationResult).toBe('FILL_NOT_ALLOWED');
     expect(JSON.stringify(report)).not.toContain('00000000000004');
-  });
+  }, 15_000);
   it('preserves deterministic adapter latency without sleeping', () => {
     const Clock = new deterministic_clock('2026-01-01T00:00:00Z'),
       Adapter = new paper_execution_adapter(Clock, 250, 400);

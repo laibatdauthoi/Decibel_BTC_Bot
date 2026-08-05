@@ -12,6 +12,14 @@ The engine is validation, sizing, persistence, and audit code only. It cannot tr
 
 `npm run verify:order-manager` verifies the durable, exchange-agnostic order lifecycle against the paper adapter. Entries remain post-only, acknowledgements precede activation, cancellation uncertainty requires reconciliation, and V1 never reprices or falls back to taker execution. See [the order-manager documentation](docs/order_manager.md).
 
+`npm run bot:paper` is the unified realtime paper runtime and replaces `npm run collect:data` while it is running. Its default `OBSERVE_ONLY` mode cannot create risk intents or paper orders. Stop standalone collectors first. Engineering execution is explicitly non-profitable testing, and supported-edge execution requires operator activation plus compatible persisted evidence. See [the paper-bot documentation](docs/paper_bot.md) and run `npm run verify:paper-bot` for isolated deterministic verification.
+
+The runtime installs health and completed-candle listeners before data startup, requires an uninterrupted configured health-stabilization period, and has a bounded readiness timeout. Warm-up start/deadline, completion duration, and cancelled attempts are transactionally audited; restart never shortens an unproven stabilization period. Live candles completed before readiness are journaled as skipped and never replayed; REST catch-up candles are not treated as live evaluations.
+
+Completed-candle evaluation uses a durable chronological queue outside the WebSocket callback. Candle continuity is distinct from connection health: detected gaps degrade the paper bot, skip the triggering decision once, and invoke bounded single-flight REST reconciliation. Historical repairs never become retroactive paper trades, duplicates are idempotent, and the runtime never invents unsupported empty candles. `npm run diagnose:candle-gap -- --start=<ISO> --end=<ISO>` inspects an exact REST range without writing a database.
+
+In composed mode, `bot:paper` exclusively owns SIGINT/SIGTERM. Its `STOPPED` state is emitted only after evaluation/reconciliation checkpointing, unified child shutdown, database closure, and lock release. Standalone collectors retain their own signal handling. Shutdown is bounded by `PAPER_BOT_SHUTDOWN_TIMEOUT_MS`; incomplete cleanup returns nonzero without falsely reporting `STOPPED`.
+
 ## Setup
 
 Requires Node.js and npm. Install the pinned dependencies and copy the example environment file:

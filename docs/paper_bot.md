@@ -1,0 +1,21 @@
+# Realtime BTC/USD Paper Bot
+
+`npm run bot:paper` runs the unified data collectors and the durable paper-bot runtime in one Node.js process. Stop standalone `npm start`, `npm run collect:microstructure`, or `npm run collect:data` writers before starting it so the database-set lock can be acquired safely.
+
+The default `PAPER_BOT_MODE=OBSERVE_ONLY` records completed-candle evaluations, candidates, feature gates, and reasons without creating risk intents or paper orders. `PAPER_EXECUTE_ALL_VALID_CANDIDATES` is labeled `ENGINEERING_PAPER_POLICY_V1`; it is operational testing and is not evidence of a profitable strategy. `PAPER_EXECUTE_SUPPORTED_EDGE_ONLY` requires explicit operator configuration at restart and compatible, current, statistically supported research evidence.
+
+Startup always passes through `STARTING -> RECOVERING -> WARMING_UP` before becoming `OBSERVING` or `PAPER_ACTIVE`. The health listener is installed before unified-runtime startup and immediately checks the current status. A full uninterrupted `HEALTHY_STABILIZATION_SECONDS` period is required; degradation cancels and resets that period. `PAPER_BOT_READINESS_TIMEOUT_SECONDS` defaults to 900 and halts fail-closed with `PAPER_BOT_READINESS_TIMEOUT` instead of waiting forever.
+
+Each warm-up is stored as a versioned stabilization attempt. The `WARMING_UP` state, start time, deadline, previous state, and transition reason are committed atomically before its single deadline timer is scheduled or logged. Completion records configured and actual duration. Degradation retains the cancelled attempt, recovery creates a new generation, and a restart requires a fresh full period when continuous health cannot be proven.
+
+`bot:paper` is the sole signal owner in composed mode; child collectors register signals only in their standalone commands. On SIGINT or SIGTERM it stops paper ingestion, drains or checkpoints workers, awaits the unified candle and microstructure shutdown, closes repositories, releases locks, and only then persists `STOPPED` and emits `paper_bot_stopped`. `PAPER_BOT_SHUTDOWN_TIMEOUT_MS` bounds the complete sequence. An incomplete shutdown remains non-stopped and returns a nonzero status. A clean stop releases every lock so an immediate restart is supported.
+
+Live WebSocket candles completed during warm-up are durably recorded as `SKIPPED/PAPER_BOT_NOT_READY`, advance the high-water mark, and are never replayed as trades. REST catch-up does not emit live evaluation events. After readiness, every live completed 5-minute candle receives one evaluation row and concise summary, including zero-candidate candles. Duplicate and reconnect events are idempotent.
+
+WebSocket connectivity does not imply candle continuity. Completed-candle notifications are durably queued and evaluated serially outside the SDK listener. Unchanged duplicate deliveries do not enqueue work. A detected 5-minute gap pauses new paper entries, records the triggering decision as `SKIPPED/CANDLE_GAP_DETECTED`, and performs a bounded, single-flight REST repair of only the missing range. Repaired history is never treated as a retroactive signal, and unsupported synthetic candles are never created. If REST cannot find the interval, the bot remains degraded for operator inspection.
+
+Only newly completed UTC-aligned 5-minute candles after the durable high-water mark are eligible. Candidate priority is score, supported-edge status, fixed candidate-type order, then stable identity. Feature windows use point-in-time 15s, 60s, and 300s data and fail closed on missing, stale, incompatible, or future observations.
+
+Every approved paper entry remains a post-only maker attempt at exactly 40x leverage with variable risk-sized margin. The engineering exit policy uses completed-candle ATR(14), a 1x ATR stop, 1.5R take profit, and a 12-bar maximum hold. These values are fixed and unoptimized. Triggers create reduce-only instructions and do not guarantee fills.
+
+USD 10,000 is an uncapped daily minimum filled-volume objective. It cannot select candidates or alter risk, price, quantity, margin, leverage, TTL, stops, or exits. This runtime contains no wallet, private-key access, signing, Decibel transaction construction, real submission, real cancellation, or live execution adapter.

@@ -25,7 +25,7 @@ function components(events: string[] = []) {
     malformedCount: 0,
     timestampRegressionCount: 0,
     latestAggregateSecond: null as number | null,
-    persistenceHealth: 'waiting' as 'waiting' | 'healthy' | 'failed',
+    persistenceHealth: 'waiting' as 'waiting' | 'healthy' | 'failed' | 'stopped',
   };
   return {
     candleStatus,
@@ -138,6 +138,38 @@ describe('unified data runtime', () => {
     await Runtime.shutdown();
   });
 
+  it('treats candle continuity independently from WebSocket stream health', async () => {
+    vi.useFakeTimers();
+    const { Runtime, values } = runtime();
+    await Runtime.start();
+    values.microStatus.health = { depth: 'healthy', trades: 'healthy', marketPrice: 'healthy' };
+    values.microStatus.persistenceHealth = 'healthy';
+    await vi.advanceTimersByTimeAsync(100);
+    expect(Runtime.getStatus()).toBe('HEALTHY');
+    Runtime.setCandleContinuity({
+      health: 'gap',
+      firstMissingCandleTime: '2026-08-05T10:50:00.000Z',
+      lastMissingCandleTime: '2026-08-05T10:50:00.000Z',
+      missingIntervalCount: 1,
+      reconciliationStatus: 'DETECTED',
+    });
+    expect(Runtime.getStatus()).toBe('DEGRADED');
+    expect(Runtime.getHealthSummary().candles).toMatchObject({
+      candleStreamHealth: 'healthy',
+      candleContinuityHealth: 'gap',
+      missingIntervalCount: 1,
+    });
+    Runtime.setCandleContinuity({
+      health: 'healthy',
+      firstMissingCandleTime: null,
+      lastMissingCandleTime: null,
+      missingIntervalCount: 0,
+      reconciliationStatus: 'REPAIRED',
+    });
+    expect(Runtime.getStatus()).toBe('HEALTHY');
+    await Runtime.shutdown();
+  });
+
   it('handles only the first signal and shutdown is idempotent', async () => {
     const { Runtime, values, lock } = runtime();
     await Runtime.start();
@@ -151,6 +183,80 @@ describe('unified data runtime', () => {
     expect(values.candles.stop).toHaveBeenCalledOnce();
     expect(values.microstructure.stop).toHaveBeenCalledOnce();
     expect(lock.release).toHaveBeenCalledOnce();
+  });
+
+  it('awaits child stops, repository close, and lock release in order', async () => {
+    let resolveCandle!: () => void, resolveMicrostructure!: () => void, resolveLock!: () => void;
+    const values = components(),
+      order: string[] = [];
+    values.candles.stop.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          order.push('candle-stop-start');
+          resolveCandle = () => {
+            order.push('candle-stop-complete');
+            resolve();
+          };
+        }),
+    );
+    values.microstructure.stop.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          order.push('micro-stop-start');
+          resolveMicrostructure = () => {
+            order.push('micro-stop-complete');
+            resolve();
+          };
+        }),
+    );
+    const repository = {
+        close: vi.fn(() => {
+          order.push('repository-close');
+        }),
+      },
+      lock = {
+        release: vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              order.push('lock-release-start');
+              resolveLock = () => {
+                order.push('lock-release-complete');
+                resolve();
+              };
+            }),
+        ),
+      },
+      Runtime = new unified_data_runtime({
+        candles: values.candles,
+        microstructure: values.microstructure,
+        repositories: [repository],
+        lock,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        shutdownTimeoutMs: 10_000,
+      });
+    await Runtime.start();
+    const first = Runtime.shutdown(),
+      second = Runtime.shutdown();
+    expect(first).toBe(second);
+    expect(Runtime.getStatus()).toBe('STOPPING');
+    await vi.waitFor(() => expect(order).toContain('candle-stop-start'));
+    expect(order).toEqual(['candle-stop-start']);
+    resolveCandle();
+    await vi.waitFor(() => expect(order).toContain('micro-stop-start'));
+    resolveMicrostructure();
+    await vi.waitFor(() => expect(order).toContain('lock-release-start'));
+    expect(order).toEqual([
+      'candle-stop-start',
+      'candle-stop-complete',
+      'micro-stop-start',
+      'micro-stop-complete',
+      'repository-close',
+      'lock-release-start',
+    ]);
+    expect(Runtime.getStatus()).toBe('STOPPED');
+    resolveLock();
+    await first;
+    expect(order.at(-1)).toBe('lock-release-complete');
   });
 
   it('bounds shutdown when a component does not stop', async () => {

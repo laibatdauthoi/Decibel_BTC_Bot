@@ -28,7 +28,7 @@ type microstructure_component = {
     malformedCount: number;
     timestampRegressionCount: number;
     latestAggregateSecond: number | null;
-    persistenceHealth: 'waiting' | 'healthy' | 'failed';
+    persistenceHealth: 'waiting' | 'healthy' | 'failed' | 'stopped';
   };
 };
 type closable = { close(): void | Promise<void> };
@@ -51,7 +51,16 @@ export class unified_data_runtime {
   private status: unified_data_status = 'STARTING';
   private healthTimer: ReturnType<typeof setInterval> | undefined;
   private shutdownPromise: Promise<void> | undefined;
+  private lockReleased = false;
   private started = false;
+  private readonly statusListeners = new Set<(status: unified_data_status) => void>();
+  private candleContinuity = {
+    health: 'healthy' as 'healthy' | 'gap',
+    firstMissingCandleTime: null as string | null,
+    lastMissingCandleTime: null as string | null,
+    missingIntervalCount: 0,
+    reconciliationStatus: 'NONE',
+  };
 
   constructor(private readonly dependencies: unified_data_runtime_dependencies) {}
 
@@ -81,6 +90,7 @@ export class unified_data_runtime {
     } catch (error) {
       this.setStatus('FAILED');
       await this.cleanup(false);
+      await this.releaseLock();
       throw error;
     }
   }
@@ -88,12 +98,29 @@ export class unified_data_runtime {
   getStatus(): unified_data_status {
     return this.status;
   }
+  subscribeStatus(listener: (status: unified_data_status) => void): () => void {
+    this.statusListeners.add(listener);
+    listener(this.status);
+    return () => this.statusListeners.delete(listener);
+  }
+  setCandleContinuity(continuity: typeof this.candleContinuity): void {
+    this.candleContinuity = { ...continuity };
+    this.refreshHealth();
+  }
 
   getHealthSummary() {
     const candles = this.dependencies.candles.getOperationalStatus();
     const microstructure = this.dependencies.microstructure.getOperationalStatus();
     return {
-      candles,
+      candles: {
+        ...candles,
+        candleStreamHealth: candles.health,
+        candleContinuityHealth: this.candleContinuity.health,
+        firstMissingCandleTime: this.candleContinuity.firstMissingCandleTime,
+        lastMissingCandleTime: this.candleContinuity.lastMissingCandleTime,
+        missingIntervalCount: this.candleContinuity.missingIntervalCount,
+        reconciliationStatus: this.candleContinuity.reconciliationStatus,
+      },
       depth: {
         health: microstructure.health.depth,
         lastReceivedAt: microstructure.lastReceivedAt.depth,
@@ -136,6 +163,7 @@ export class unified_data_runtime {
     if (summary.aggregatePersistence.health === 'failed') this.setStatus('FAILED');
     else if (
       summary.candles.health === 'healthy' &&
+      summary.candles.candleContinuityHealth === 'healthy' &&
       streamHealth.every((health) => health === 'healthy') &&
       summary.aggregatePersistence.health === 'healthy'
     )
@@ -153,7 +181,15 @@ export class unified_data_runtime {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        this.cleanup(true),
+        (async () => {
+          await this.cleanup(true);
+          this.setStatus('STOPPED');
+          this.dependencies.logger.info(
+            { event: 'unified_data_runtime_stopped', signal, health: this.getHealthSummary() },
+            'Unified BTC/USD data runtime stopped cleanly',
+          );
+          await this.releaseLock();
+        })(),
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new Error('Unified data runtime shutdown timed out')),
@@ -161,12 +197,8 @@ export class unified_data_runtime {
           );
         }),
       ]);
-      this.setStatus('STOPPED');
-      this.dependencies.logger.info(
-        { event: 'unified_data_runtime_stopped', signal, health: this.getHealthSummary() },
-        'Unified BTC/USD data runtime stopped cleanly',
-      );
     } catch (error) {
+      await this.releaseLock().catch(() => undefined);
       this.setStatus('FAILED');
       this.dependencies.logger.error(
         {
@@ -194,6 +226,7 @@ export class unified_data_runtime {
           );
         }),
       ]);
+      await this.releaseLock();
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
@@ -202,27 +235,38 @@ export class unified_data_runtime {
   private async cleanup(stopComponents: boolean): Promise<void> {
     if (this.healthTimer !== undefined) clearInterval(this.healthTimer);
     this.healthTimer = undefined;
-    const componentResults = await Promise.allSettled([
-      Promise.resolve().then(() => this.dependencies.candles.stop()),
-      Promise.resolve().then(() => this.dependencies.microstructure.stop()),
-    ]);
+    const componentResults = [];
+    for (const component of [this.dependencies.candles, this.dependencies.microstructure])
+      componentResults.push(
+        await Promise.resolve()
+          .then(() => component.stop())
+          .then(
+            () => ({ status: 'fulfilled' as const, value: undefined }),
+            (reason: unknown) => ({ status: 'rejected' as const, reason }),
+          ),
+      );
     const repositoryResults = await Promise.allSettled(
       this.dependencies.repositories.map((repository) =>
         Promise.resolve().then(() => repository.close()),
       ),
     );
-    const lockResult = await Promise.allSettled([this.dependencies.lock.release()]);
     if (!stopComponents) return;
-    const failure = [...componentResults, ...repositoryResults, ...lockResult].find(
+    const failure = [...componentResults, ...repositoryResults].find(
       (result) => result.status === 'rejected',
     );
     if (failure?.status === 'rejected') throw failure.reason;
+  }
+  private async releaseLock() {
+    if (this.lockReleased) return;
+    await this.dependencies.lock.release();
+    this.lockReleased = true;
   }
 
   private setStatus(status: unified_data_status): void {
     if (this.status === status) return;
     const previousStatus = this.status;
     this.status = status;
+    for (const listener of this.statusListeners) listener(status);
     const fields = { event: 'unified_data_runtime_health', previousStatus, status };
     if (status === 'FAILED')
       this.dependencies.logger.error(fields, 'Unified data runtime health changed');

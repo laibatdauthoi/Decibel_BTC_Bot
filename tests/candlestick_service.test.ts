@@ -96,7 +96,7 @@ describe('candlestick_service', () => {
     expect(fake.subscribeBTCCandlesticks.mock.calls[0]?.[1]).toBe('5m');
     expect(typeof fake.subscribeBTCCandlesticks.mock.calls[0]?.[2]).toBe('function');
     expect(Service.isStrategyEvaluationAllowed()).toBe(true);
-    Service.stop();
+    await Service.stop();
   });
 
   it('keeps the current candle in memory and persists it only when a newer interval begins', async () => {
@@ -112,7 +112,7 @@ describe('candlestick_service', () => {
 
     fake.emitCandle(makeCandle(300_000));
     expect(CandlestickRepository.getCandlesticks('0xbtc', '5m')).toEqual([makeCandle(0, 60_075)]);
-    Service.stop();
+    await Service.stop();
   });
 
   it('reconnects with backoff, disables strategy, and does not duplicate candles', async () => {
@@ -136,7 +136,27 @@ describe('candlestick_service', () => {
     fake.emitCandle(makeCandle(300_000));
     fake.emitCandle(makeCandle(600_000));
     expect(CandlestickRepository.getTotalCandlesticks('0xbtc', '5m')).toBe(2);
-    Service.stop();
+    await Service.stop();
+  });
+
+  it('publishes a completed notification only for an inserted candle, not an unchanged replay', async () => {
+    const fake = makeClient(),
+      onCompletedCandle = vi.fn(),
+      Service = new candlestick_service(fake.client, CandlestickRepository, {
+        synchronize: vi.fn().mockResolvedValue(catchUpResult),
+        onCompletedCandle,
+      });
+    await Service.start();
+    fake.emitCandle(makeCandle(0));
+    fake.emitCandle(makeCandle(300_000));
+    expect(onCompletedCandle).toHaveBeenCalledOnce();
+
+    fake.emitError();
+    await vi.advanceTimersByTimeAsync(1_000);
+    fake.emitCandle(makeCandle(0));
+    fake.emitCandle(makeCandle(300_000));
+    expect(onCompletedCandle).toHaveBeenCalledOnce();
+    await Service.stop();
   });
 
   it('caps exponential reconnect delays', async () => {
@@ -169,7 +189,7 @@ describe('candlestick_service', () => {
     expect(fake.subscribeBTCCandlesticks).toHaveBeenCalledTimes(4);
     await vi.advanceTimersByTimeAsync(1);
     expect(fake.subscribeBTCCandlesticks).toHaveBeenCalledTimes(5);
-    Service.stop();
+    await Service.stop();
   });
 
   it('runs REST reconciliation every 15 minutes', async () => {
@@ -184,7 +204,7 @@ describe('candlestick_service', () => {
     await vi.advanceTimersByTimeAsync(15 * 60 * 1_000);
 
     expect(synchronize).toHaveBeenCalledTimes(2);
-    Service.stop();
+    await Service.stop();
   });
 
   it('detects stale data and stops strategy execution while reconnecting', async () => {
@@ -201,7 +221,7 @@ describe('candlestick_service', () => {
 
     expect(Service.getHealth()).toBe('reconnecting');
     expect(Service.isStrategyEvaluationAllowed()).toBe(false);
-    Service.stop();
+    await Service.stop();
   });
 
   it('gracefully stops timers, subscription, and WebSocket activity', async () => {
@@ -210,7 +230,7 @@ describe('candlestick_service', () => {
     const Service = new candlestick_service(fake.client, CandlestickRepository, { synchronize });
     await Service.start();
 
-    Service.stop();
+    await Service.stop();
     await vi.advanceTimersByTimeAsync(30 * 60 * 1_000);
 
     expect(Service.getHealth()).toBe('stopped');

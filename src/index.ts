@@ -30,7 +30,7 @@ async function startApplication(): Promise<void> {
   const stopApplication = async (signal: 'SIGINT' | 'SIGTERM'): Promise<void> => {
     if (stopped) return;
     stopped = true;
-    CandleService.stop();
+    await CandleService.stop();
     CandlestickRepository.close();
     await RuntimeLock.release();
     ApplicationLogger.info({ event: 'candle_service_stopped', signal }, 'Service stopped cleanly');
@@ -59,7 +59,7 @@ async function startApplication(): Promise<void> {
   } catch (error: unknown) {
     if (!stopped) {
       stopped = true;
-      CandleService.stop();
+      await CandleService.stop();
       CandlestickRepository.close();
       await RuntimeLock.release();
     }

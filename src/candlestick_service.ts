@@ -56,6 +56,14 @@ export type candle_service_options = {
   onStatus?: (health: candle_service_health) => void;
   logger?: Pick<Logger, 'info' | 'warn' | 'error'>;
   onFatal?: (error: Error) => void;
+  onCompletedCandle?: (event: {
+    marketAddress: string;
+    interval: '5m';
+    candle: BTC_candlestick;
+    completedAt: Date;
+    observedAt: Date;
+    source: 'LIVE_WEBSOCKET';
+  }) => void;
 };
 
 export class candlestick_service {
@@ -74,6 +82,7 @@ export class candlestick_service {
   private latestCompletedCandleAt: number | null = null;
   private realtimeStarted = false;
   private reconciliationRunning = false;
+  private reconciliationPromise: Promise<void> | undefined;
   private readonly synchronize: () => Promise<candlestick_pipeline_result>;
 
   constructor(
@@ -128,7 +137,7 @@ export class candlestick_service {
     }, this.options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS);
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.unsubscribeCandle?.();
     this.unsubscribeCandle = undefined;
     this.unsubscribeError?.();
@@ -138,6 +147,7 @@ export class candlestick_service {
     if (this.reconnectTimer !== undefined) clearTimeout(this.reconnectTimer);
     this.client.closeWebSocket();
     this.realtimeStarted = false;
+    await this.reconciliationPromise;
     this.options.logger?.info({ event: 'websocket_shutdown' }, 'WebSocket shutdown completed');
     this.setHealth('stopped');
   }
@@ -230,11 +240,24 @@ export class candlestick_service {
       },
       'Completed candle persisted',
     );
+    if (result.inserted === 1)
+      this.options.onCompletedCandle?.({
+        marketAddress: this.market.marketAddress,
+        interval: '5m',
+        candle,
+        completedAt: new Date(candle.timestamp.getTime() + 5 * 60_000),
+        observedAt: new Date(),
+        source: 'LIVE_WEBSOCKET',
+      });
   }
 
   private async reconcile(): Promise<void> {
-    if (this.health === 'stopped' || this.reconciliationRunning) return;
+    if (this.health === 'stopped' || this.reconciliationRunning) return this.reconciliationPromise;
     this.reconciliationRunning = true;
+    this.reconciliationPromise = this.runReconciliation();
+    return this.reconciliationPromise;
+  }
+  private async runReconciliation(): Promise<void> {
     try {
       await this.synchronize();
       if (this.health !== 'reconnecting') this.setHealth('healthy');
@@ -246,6 +269,7 @@ export class candlestick_service {
       this.handleDisconnect();
     } finally {
       this.reconciliationRunning = false;
+      this.reconciliationPromise = undefined;
     }
   }
 

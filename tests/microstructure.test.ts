@@ -403,7 +403,7 @@ describe('microstructure collector', () => {
       marketPrice: 'waiting',
     });
     expect(fake.subscribeBTCDepth).toHaveBeenCalledOnce();
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -424,7 +424,7 @@ describe('microstructure collector', () => {
     }
     expect(fake.Collector.getHealth().trades).toBe('waiting');
     expect(fake.subscribeBTCDepth).toHaveBeenCalledOnce();
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -444,7 +444,7 @@ describe('microstructure collector', () => {
     expect(fake.subscribeBTCDepth).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(100);
     expect(fake.subscribeBTCDepth).toHaveBeenCalledTimes(2);
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -467,7 +467,7 @@ describe('microstructure collector', () => {
     });
     fake.handlers.depth?.(depth());
     expect(fake.Collector.getHealth().depth).toBe('healthy');
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -478,7 +478,7 @@ describe('microstructure collector', () => {
     expect(fake.getBTCRecentTradesPage.mock.invocationCallOrder[0]).toBeLessThan(
       fake.subscribeBTCDepth.mock.invocationCallOrder[0] ?? Infinity,
     );
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -527,7 +527,7 @@ describe('microstructure collector', () => {
       trades: 'healthy',
       marketPrice: 'healthy',
     });
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -553,7 +553,7 @@ describe('microstructure collector', () => {
         }),
       ]),
     );
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -563,7 +563,7 @@ describe('microstructure collector', () => {
     const fake = makeCollector();
     await fake.Collector.start();
     vi.setSystemTime(12_500);
-    fake.Collector.stop();
+    await fake.Collector.stop();
     expect(fake.Repository.getAggregates().map((aggregate) => aggregate.secondTimestamp)).toEqual([
       new Date(10_000),
       new Date(11_000),
@@ -589,7 +589,7 @@ describe('microstructure collector', () => {
       { second: 11_000, bookAgeMs: 2_000, spread: 1 },
       { second: 12_000, bookAgeMs: 3_000, spread: null },
     ]);
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -606,7 +606,7 @@ describe('microstructure collector', () => {
       new Date(10_000),
       new Date(12_000),
     ]);
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -664,7 +664,7 @@ describe('microstructure collector', () => {
         openInterest: null,
       },
     ]);
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -695,7 +695,7 @@ describe('microstructure collector', () => {
       unknownVolume: 1,
       orderFlowImbalance: 0,
     });
-    fake.Collector.stop();
+    await fake.Collector.stop();
     fake.Repository.close();
   });
 
@@ -712,7 +712,7 @@ describe('microstructure collector', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(fake.subscribeBTCDepth).toHaveBeenCalledTimes(2);
     fake.getError()?.();
-    fake.Collector.stop();
+    await fake.Collector.stop();
     expect(fake.unsubscribe).toHaveBeenCalled();
     expect(fake.closeWebSocket).toHaveBeenCalledOnce();
     expect(Object.values(fake.Collector.getHealth())).toEqual(['stopped', 'stopped', 'stopped']);

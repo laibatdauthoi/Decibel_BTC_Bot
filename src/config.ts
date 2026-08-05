@@ -20,6 +20,19 @@ const EnvironmentSchema = z
     MARKET_SYMBOL: z.literal('BTC/USD').default('BTC/USD'),
     CANDLE_INTERVAL: CandleIntervalSchema.default('5m'),
     CANDLE_HISTORY_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+    CANDLE_GAP_RECONCILIATION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+    CANDLE_GAP_RECONCILIATION_BASE_DELAY_MS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(60_000)
+      .default(1_000),
+    CANDLE_GAP_RECONCILIATION_MAX_DELAY_MS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(300_000)
+      .default(10_000),
     LIVE_TRADING_ENABLED: booleanEnvironmentValue,
     LOG_FORMAT: z.enum(['pretty', 'json']).default('pretty'),
     MICROSTRUCTURE_SAMPLE_INTERVAL_MS: z.coerce.number().int().min(50).max(5_000).default(250),
@@ -65,6 +78,15 @@ const EnvironmentSchema = z
   })
   .superRefine((environment, context) => {
     if (
+      environment.CANDLE_GAP_RECONCILIATION_BASE_DELAY_MS >
+      environment.CANDLE_GAP_RECONCILIATION_MAX_DELAY_MS
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['CANDLE_GAP_RECONCILIATION_BASE_DELAY_MS'],
+        message: 'Candle gap reconciliation base delay must not exceed maximum delay',
+      });
+    if (
       environment.MICROSTRUCTURE_TRADES_STALE_AFTER_MS <=
       environment.MICROSTRUCTURE_DEPTH_STALE_AFTER_MS
     )
@@ -81,6 +103,9 @@ export type application_config = {
   marketSymbol: 'BTC/USD';
   candleInterval: candle_interval;
   candleHistoryDays: number;
+  candleGapReconciliationMaximumAttempts: number;
+  candleGapReconciliationBaseDelayMs: number;
+  candleGapReconciliationMaximumDelayMs: number;
   liveTradingEnabled: boolean;
   logFormat: log_format;
   microstructureSampleIntervalMs: number;
@@ -111,6 +136,9 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): applic
     marketSymbol: parsed.data.MARKET_SYMBOL,
     candleInterval: parsed.data.CANDLE_INTERVAL,
     candleHistoryDays: parsed.data.CANDLE_HISTORY_DAYS,
+    candleGapReconciliationMaximumAttempts: parsed.data.CANDLE_GAP_RECONCILIATION_MAX_ATTEMPTS,
+    candleGapReconciliationBaseDelayMs: parsed.data.CANDLE_GAP_RECONCILIATION_BASE_DELAY_MS,
+    candleGapReconciliationMaximumDelayMs: parsed.data.CANDLE_GAP_RECONCILIATION_MAX_DELAY_MS,
     liveTradingEnabled: parsed.data.LIVE_TRADING_ENABLED,
     logFormat: parsed.data.LOG_FORMAT,
     microstructureSampleIntervalMs: parsed.data.MICROSTRUCTURE_SAMPLE_INTERVAL_MS,

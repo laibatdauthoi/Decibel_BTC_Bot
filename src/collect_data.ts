@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { candlestick_repository } from './candlestick_repository.js';
 import { candlestick_service } from './candlestick_service.js';
@@ -11,8 +13,24 @@ import { createLogger } from './logger.js';
 import { microstructure_collector } from './microstructure_collector.js';
 import { resolveMicrostructureDatabasePath } from './microstructure_database_path.js';
 import { microstructure_repository } from './microstructure_repository.js';
+import type { BTC_candlestick } from './decibel_client.js';
+import type { unified_data_runtime as unified_data_runtime_type } from './data_runtime.js';
 
-async function collectData(): Promise<void> {
+export type collect_data_hooks = {
+  onRuntime?: (runtime: unified_data_runtime_type) => void;
+  onCompletedCandle?: (event: {
+    marketAddress: string;
+    interval: '5m';
+    candle: BTC_candlestick;
+    completedAt: Date;
+    observedAt: Date;
+    source: 'LIVE_WEBSOCKET';
+  }) => void;
+  registerSignals?: boolean;
+};
+export async function collectData(
+  hooks: collect_data_hooks = {},
+): Promise<unified_data_runtime_type> {
   const config = loadConfig();
   const RuntimeLogger = createLogger(config.logFormat);
   const candleDatabasePath = resolveCandlestickDatabasePath();
@@ -45,6 +63,9 @@ async function collectData(): Promise<void> {
   const CandleService = new candlestick_service(CandleClient, CandleRepository, {
     logger: RuntimeLogger,
     onFatal: handleFatalPersistence,
+    ...(hooks.onCompletedCandle === undefined
+      ? {}
+      : { onCompletedCandle: hooks.onCompletedCandle }),
   });
   const MicrostructureCollector = new microstructure_collector(
     MicrostructureClient,
@@ -71,18 +92,21 @@ async function collectData(): Promise<void> {
     logger: RuntimeLogger,
     shutdownTimeoutMs: config.dataRuntimeShutdownTimeoutMs,
   });
-  registerDataRuntimeSignals(Runtime);
+  hooks.onRuntime?.(Runtime);
+  if (hooks.registerSignals !== false) registerDataRuntimeSignals(Runtime);
   await Runtime.start();
+  return Runtime;
 }
 
-collectData().catch((error) => {
-  const FailureLogger = createLogger('pretty');
-  FailureLogger.error(
-    {
-      event: 'unified_data_runtime_start_failed',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    },
-    'Unable to start unified BTC/USD data runtime',
-  );
-  process.exitCode = 1;
-});
+if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
+  void collectData().catch((error) => {
+    const FailureLogger = createLogger('pretty');
+    FailureLogger.error(
+      {
+        event: 'unified_data_runtime_start_failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      'Unable to start unified BTC/USD data runtime',
+    );
+    process.exitCode = 1;
+  });

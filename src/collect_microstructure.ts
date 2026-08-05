@@ -41,7 +41,7 @@ async function collectMicrostructure(): Promise<void> {
   const stop = async (signal: 'SIGINT' | 'SIGTERM'): Promise<void> => {
     if (stopped) return;
     stopped = true;
-    MicrostructureCollector.stop();
+    await MicrostructureCollector.stop();
     const persisted = MicrostructureRepository.getCounts();
     MicrostructureRepository.close();
     await RuntimeLock.release();

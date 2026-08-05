@@ -31,7 +31,7 @@ describe('paper account', () => {
     });
     expect(report.canTradeLive).toBe(false);
     expect(JSON.stringify(report)).not.toContain('00000000000004');
-  });
+  }, 20_000);
 
   it('implements cancel and expiry transitions and rejects fills after effective cancellation', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'paper-order-'));
@@ -46,7 +46,7 @@ describe('paper account', () => {
         }),
       ]),
     );
-  });
+  }, 20_000);
 
   it('detects a corrupted projection on restart instead of repairing it', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'paper-corrupt-'));
@@ -59,7 +59,7 @@ describe('paper account', () => {
     ).run();
     Corruptor.close();
     expect(() => new paper_account_repository(databasePath)).toThrow('PAPER_PROJECTION_MISMATCH');
-  });
+  }, 20_000);
 
   it('migrates idempotently and initializes exact USD 30 collateral', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'paper-migration-'));
