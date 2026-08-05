@@ -52,6 +52,155 @@ function countBy(values: readonly string[]): Record<string, number> {
   return result;
 }
 
+function parseStringList(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  const parsed = JSON.parse(value) as unknown;
+  return Array.isArray(parsed)
+    ? parsed.filter((item): item is string => typeof item === 'string')
+    : [];
+}
+
+function buildCandidateLifecycle(input: {
+  liveRows: row[];
+  candidateRows: row[];
+  riskRows: row[];
+  executionRows: row[];
+  orderEventRows: row[];
+  accountRows: row[];
+  latestCount: number;
+}) {
+  const candidatesByEvaluation = new Map<string, row[]>();
+  for (const candidate of input.candidateRows) {
+    const evaluationId = String(candidate.evaluation_id);
+    candidatesByEvaluation.set(evaluationId, [
+      ...(candidatesByEvaluation.get(evaluationId) ?? []),
+      candidate,
+    ]);
+  }
+  const accountAscending = [...input.accountRows].sort(
+    (left, right) => Number(left.sequence) - Number(right.sequence),
+  );
+  const isInvalid = (candidate: row) =>
+    parseStringList(candidate.reason_codes_json).some((reason) =>
+      reason.startsWith('FEATURE_WINDOW_INVALID_'),
+    );
+  const records = input.liveRows
+    .filter((evaluation) => Number(evaluation.candidate_count) > 0)
+    .map((evaluation) => {
+      const candidates = candidatesByEvaluation.get(String(evaluation.evaluation_id)) ?? [];
+      const selectedCandidateId =
+        typeof evaluation.selected_candidate_id === 'string'
+          ? evaluation.selected_candidate_id
+          : null;
+      const selected = candidates.find(
+        (candidate) => candidate.candidate_id === selectedCandidateId,
+      );
+      const microstructureValidity =
+        selectedCandidateId === null
+          ? candidates.length === 0
+            ? 'UNKNOWN'
+            : candidates.every(isInvalid)
+              ? 'INVALID'
+              : 'VALID_CANDIDATE_AVAILABLE'
+          : selected === undefined
+            ? 'UNKNOWN'
+            : isInvalid(selected)
+              ? 'INVALID'
+              : 'VALID';
+      const risk = input.riskRows.find(
+        (value) => value.candle_close_time === evaluation.completed_at,
+      );
+      const durableEvaluationId =
+        risk === undefined
+          ? `evaluation:${String(evaluation.market_address)}:5m:${String(evaluation.completed_at)}`
+          : String(risk.evaluation_id);
+      const fills = input.executionRows.filter(
+        (value) => String(value.evaluation_id) === durableEvaluationId,
+      );
+      const orderEvents = input.orderEventRows.filter(
+        (value) => String(value.evaluation_id) === durableEvaluationId,
+      );
+      const accountEntries = accountAscending.filter(
+        (value) => String(value.evaluation_id) === durableEvaluationId,
+      );
+      const firstSequence = Number(accountEntries[0]?.sequence ?? Number.MAX_SAFE_INTEGER);
+      const before = accountAscending
+        .filter((value) => Number(value.sequence) < firstSequence)
+        .at(-1);
+      const after = accountEntries.at(-1);
+      const change = (field: string, defaultBeforeUnits: bigint) =>
+        after === undefined
+          ? null
+          : getFinancialDecimal(
+              BigInt(String(after[field])) -
+                (before === undefined ? defaultBeforeUnits : BigInt(String(before[field]))),
+            );
+      const accountImpact =
+        after === undefined
+          ? null
+          : {
+              ledgerUpdated: true,
+              eventTypes: accountEntries.map((value) => String(value.event_type)),
+              cashBalanceChange: change(
+                'cash_balance_units',
+                BigInt(String(after.cash_balance_units)),
+              ),
+              equityChange: change('equity_units', BigInt(String(after.equity_units))),
+              positionSizeChange: change('position_size_units', 0n),
+              realizedPnLChange: change('realized_pnl_units', 0n),
+              unrealizedPnLChange: change('unrealized_pnl_units', 0n),
+              feesPaidChange: change('fees_paid_units', 0n),
+              finalPositionSize: decimal(after.position_size_units),
+              finalEquity: decimal(after.equity_units),
+            };
+      let outcome: string;
+      if (selectedCandidateId === null)
+        outcome =
+          microstructureValidity === 'INVALID'
+            ? 'CANDIDATES_FAILED_MICROSTRUCTURE'
+            : 'CANDIDATE_GENERATED_NO_SELECTION';
+      else if (microstructureValidity === 'INVALID')
+        outcome = 'SELECTED_CANDIDATE_FAILED_MICROSTRUCTURE';
+      else if (risk !== undefined && risk.approved === 0) outcome = 'PAPER_RISK_REJECTED';
+      else if (fills.length > 0)
+        outcome =
+          accountImpact === null
+            ? 'PAPER_FILL_CREATED_ACCOUNT_UPDATE_MISSING'
+            : 'PAPER_FILL_CREATED_ACCOUNT_UPDATED';
+      else if (orderEvents.length > 0) outcome = 'PAPER_ORDER_CREATED_NO_FILL';
+      else if (evaluation.mode === 'OBSERVE_ONLY') outcome = 'OBSERVE_ONLY_NO_PAPER_ACTION';
+      else outcome = 'PAPER_RISK_DECISION_MISSING';
+      return {
+        candleTime: evaluation.candle_time,
+        candleCloseTime: evaluation.completed_at,
+        candidateCount: Number(evaluation.candidate_count),
+        selectedCandidateId,
+        microstructureValidity,
+        microstructureReasons:
+          selected === undefined
+            ? candidates.flatMap((candidate) => parseStringList(candidate.reason_codes_json))
+            : parseStringList(selected.reason_codes_json),
+        gateDecision: getGateDecision(evaluation),
+        paperRiskStatus:
+          risk === undefined ? 'NOT_CREATED' : risk.approved === 1 ? 'APPROVED' : 'REJECTED',
+        paperRiskLedgerStatus: risk?.status ?? null,
+        paperRiskDecisionId: risk?.risk_decision_id ?? null,
+        paperRiskReason: risk?.rejection_reason ?? null,
+        simulatedOrderIds: [
+          ...new Set(orderEvents.map((value) => String(value.simulated_order_id))),
+        ],
+        simulatedFillIds: fills.map((value) => String(value.simulated_order_id)),
+        accountImpact,
+        outcome,
+      };
+    });
+  return {
+    total: records.length,
+    byOutcome: countBy(records.map((value) => value.outcome)),
+    records: records.slice(0, input.latestCount),
+  };
+}
+
 function readCandles(DatabaseHandle: database | null, marketAddress: string | null) {
   if (DatabaseHandle === null || !hasTable(DatabaseHandle, 'candlesticks'))
     return {
@@ -128,6 +277,7 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
       topNoCandidateReasons: {},
       latestNoCandidateEvaluations: [],
       postCandidateRiskRejections: [],
+      candidateLifecycle: { total: 0, byOutcome: {}, records: [] },
     };
   const highWater = hasTable(DatabaseHandle, 'paper_bot_high_water')
       ? (DatabaseHandle.prepare(
@@ -140,12 +290,7 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
         ).all() as row[])
       : [],
     candidateRows = hasTable(DatabaseHandle, 'candidate_decisions')
-      ? (DatabaseHandle.prepare(
-          'SELECT evaluation_id,reason_codes_json FROM candidate_decisions',
-        ).all() as Array<{
-          evaluation_id: string;
-          reason_codes_json: string;
-        }>)
+      ? (DatabaseHandle.prepare('SELECT * FROM candidate_decisions').all() as row[])
       : [],
     diagnosticRows = hasTable(DatabaseHandle, 'paper_bot_candidate_diagnostics')
       ? (DatabaseHandle.prepare(
@@ -153,23 +298,16 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
         ).all() as row[])
       : [],
     candidateReasons = candidateRows.flatMap((candidate) => {
-      const parsed = JSON.parse(candidate.reason_codes_json) as unknown;
-      return Array.isArray(parsed)
-        ? parsed.filter((reason): reason is string => typeof reason === 'string')
-        : [];
+      return parseStringList(candidate.reason_codes_json);
     }),
     validByEvaluation = new Map<string, number>();
   for (const candidate of candidateRows) {
-    const parsed = JSON.parse(candidate.reason_codes_json) as unknown,
-      reasons = Array.isArray(parsed)
-        ? parsed.filter((reason): reason is string => typeof reason === 'string')
-        : [],
+    const reasons = parseStringList(candidate.reason_codes_json),
       invalid = reasons.some((reason) => reason.startsWith('FEATURE_WINDOW_INVALID_'));
-    if (!invalid)
-      validByEvaluation.set(
-        candidate.evaluation_id,
-        (validByEvaluation.get(candidate.evaluation_id) ?? 0) + 1,
-      );
+    if (!invalid) {
+      const evaluationId = String(candidate.evaluation_id);
+      validByEvaluation.set(evaluationId, (validByEvaluation.get(evaluationId) ?? 0) + 1);
+    }
   }
   const evaluations = liveRows.filter((value) => value.status === 'EVALUATED'),
     latestEvaluations = liveRows.slice(0, latestCount).map((value) => ({
@@ -187,6 +325,11 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
     executionRows = hasTable(DatabaseHandle, 'paper_bot_simulated_executions')
       ? (DatabaseHandle.prepare(
           'SELECT * FROM paper_bot_simulated_executions ORDER BY filled_at DESC',
+        ).all() as row[])
+      : [],
+    orderEventRows = hasTable(DatabaseHandle, 'paper_bot_simulated_order_events')
+      ? (DatabaseHandle.prepare(
+          'SELECT * FROM paper_bot_simulated_order_events ORDER BY sequence',
         ).all() as row[])
       : [],
     accountRows = hasTable(DatabaseHandle, 'paper_bot_account_ledger')
@@ -357,6 +500,15 @@ function readPaper(DatabaseHandle: database | null, latestCount: number) {
         reason: value.rejection_reason,
         diagnosticReason: 'RISK_OR_POLICY_REJECTION_AFTER_CANDIDATE',
       })),
+    candidateLifecycle: buildCandidateLifecycle({
+      liveRows,
+      candidateRows,
+      riskRows,
+      executionRows,
+      orderEventRows,
+      accountRows,
+      latestCount,
+    }),
   };
 }
 
@@ -370,9 +522,11 @@ export function buildPaperRuntimeReport(input: {
     PaperDatabase = openReadOnly(input.paperDatabasePath),
     CandleDatabase = openReadOnly(input.candleDatabasePath);
   try {
+    PaperDatabase?.exec('BEGIN');
+    CandleDatabase?.exec('BEGIN');
     const paper = readPaper(PaperDatabase, latestCount);
     return {
-      reportVersion: 'PAPER_RUNTIME_REPORT_V2',
+      reportVersion: 'PAPER_RUNTIME_REPORT_V3',
       generatedAt: new Date().toISOString(),
       configuredMode: input.mode,
       liveExecutionEnabled: false,
@@ -380,6 +534,8 @@ export function buildPaperRuntimeReport(input: {
       ...paper,
     };
   } finally {
+    if (PaperDatabase?.inTransaction) PaperDatabase.exec('COMMIT');
+    if (CandleDatabase?.inTransaction) CandleDatabase.exec('COMMIT');
     PaperDatabase?.close();
     CandleDatabase?.close();
   }
