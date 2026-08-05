@@ -24,6 +24,8 @@ The paper database also contains durable session and evaluation ledgers. Each co
 
 Paper accounting uses exact 8-decimal fixed-point values for cash, equity, available balance, BTC position size, average entry, realized/unrealized PnL, fees, slippage, and marks. Simulated executions are idempotent and linked to evaluations; their account mutation commits atomically with evaluation completion and restores from SQLite after restart. This accounting layer has no wallet, signing, transaction-building, submission, cancellation, or live-execution capability, and `OBSERVE_ONLY` cannot create simulated fills.
 
+Paper-enabled strategy actions must pass the durable deterministic paper-risk policy before any simulated fill. The policy enforces position/notional/trade caps, daily loss, drawdown, cash reserve, fees, slippage, cooldown, and reversal/increase/reduce permissions. Valid oversized requests are resized; all other failures persist stable rejection reasons without changing the position. Decision, simulated order events, fill, account update, and evaluation completion are atomic and idempotent across restart. Configuration is listed in `.env.example`.
+
 ## Setup
 
 Requires Node.js and npm. Install the pinned dependencies and copy the example environment file:

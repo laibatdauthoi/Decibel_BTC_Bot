@@ -38,7 +38,33 @@ const Schema = z.object({
   HEALTHY_STABILIZATION_SECONDS: z.coerce.number().int().nonnegative().default(60),
   PAPER_BOT_READINESS_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(900),
   PAPER_BOT_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(15_000),
+  PAPER_RISK_MAX_POSITION_SIZE: z.coerce.number().positive().default(0.1),
+  PAPER_RISK_MAX_NOTIONAL_EXPOSURE: z.coerce.number().positive().default(20_000),
+  PAPER_RISK_MAX_TRADE_NOTIONAL: z.coerce.number().positive().default(5_000),
+  PAPER_RISK_MAX_DAILY_LOSS: z.coerce.number().positive().default(500),
+  PAPER_RISK_MAX_DRAWDOWN: z.coerce.number().min(0).max(1).default(0.1),
+  PAPER_RISK_MIN_CASH_RESERVE: z.coerce.number().nonnegative().default(1_000),
+  PAPER_RISK_FEE_BPS: z.coerce.number().nonnegative().default(1),
+  PAPER_RISK_SLIPPAGE_BPS: z.coerce.number().nonnegative().default(2),
+  PAPER_RISK_COOLDOWN_CANDLES: z.coerce.number().int().nonnegative().default(1),
+  PAPER_RISK_ALLOW_REVERSAL: z.enum(['true', 'false']).default('false'),
+  PAPER_RISK_ALLOW_INCREASE_POSITION: z.enum(['true', 'false']).default('false'),
+  PAPER_RISK_ALLOW_REDUCE_POSITION: z.enum(['true', 'false']).default('true'),
 });
+export type paper_risk_policy = {
+  maxPositionSize: number;
+  maxNotionalExposure: number;
+  maxTradeNotional: number;
+  maxDailyLoss: number;
+  maxDrawdown: number;
+  minCashReserve: number;
+  feeBps: number;
+  slippageBps: number;
+  cooldownCandlesAfterTrade: number;
+  allowReversal: boolean;
+  allowIncreasePosition: boolean;
+  allowReducePosition: boolean;
+};
 export function normalizePaperBotConfiguration(environment: Record<string, string | undefined>) {
   const value = Schema.parse(environment);
   return {
@@ -53,6 +79,20 @@ export function normalizePaperBotConfiguration(environment: Record<string, strin
     healthyStabilizationSeconds: value.HEALTHY_STABILIZATION_SECONDS,
     readinessTimeoutSeconds: value.PAPER_BOT_READINESS_TIMEOUT_SECONDS,
     shutdownTimeoutMs: value.PAPER_BOT_SHUTDOWN_TIMEOUT_MS,
+    paperRiskPolicy: {
+      maxPositionSize: value.PAPER_RISK_MAX_POSITION_SIZE,
+      maxNotionalExposure: value.PAPER_RISK_MAX_NOTIONAL_EXPOSURE,
+      maxTradeNotional: value.PAPER_RISK_MAX_TRADE_NOTIONAL,
+      maxDailyLoss: value.PAPER_RISK_MAX_DAILY_LOSS,
+      maxDrawdown: value.PAPER_RISK_MAX_DRAWDOWN,
+      minCashReserve: value.PAPER_RISK_MIN_CASH_RESERVE,
+      feeBps: value.PAPER_RISK_FEE_BPS,
+      slippageBps: value.PAPER_RISK_SLIPPAGE_BPS,
+      cooldownCandlesAfterTrade: value.PAPER_RISK_COOLDOWN_CANDLES,
+      allowReversal: value.PAPER_RISK_ALLOW_REVERSAL === 'true',
+      allowIncreasePosition: value.PAPER_RISK_ALLOW_INCREASE_POSITION === 'true',
+      allowReducePosition: value.PAPER_RISK_ALLOW_REDUCE_POSITION === 'true',
+    } satisfies paper_risk_policy,
   };
 }
 
@@ -182,7 +222,7 @@ export class paper_bot_runtime_controller {
       selectedCandidateId: string | null;
       featureValidity: unknown;
       markPrice?: number;
-      simulatedAction?: simulated_paper_action;
+      paperTradeRequest?: paper_trade_request;
     } = () => ({
       candidateCount: 0,
       validCandidateCount: 0,
@@ -197,6 +237,8 @@ export class paper_bot_runtime_controller {
       baseDelayMs: 1_000,
       maximumDelayMs: 10_000,
     },
+    private readonly paperRiskPolicy: paper_risk_policy = normalizePaperBotConfiguration({})
+      .paperRiskPolicy,
   ) {}
   start() {
     if (this.state !== 'STARTING') return;
@@ -477,9 +519,9 @@ export class paper_bot_runtime_controller {
       accountSnapshotAfter: accountSnapshotBefore,
       candleCloseTime: event.completedAt,
       ...(result?.markPrice === undefined ? {} : { markPrice: result.markPrice }),
-      ...(this.mode === 'OBSERVE_ONLY' || result?.simulatedAction === undefined
+      ...(this.mode === 'OBSERVE_ONLY' || result?.paperTradeRequest === undefined
         ? {}
-        : { simulatedAction: result.simulatedAction }),
+        : { paperTradeRequest: result.paperTradeRequest, paperRiskPolicy: this.paperRiskPolicy }),
     });
     const inserted = this.Journal.recordQueuedEvaluation({
       evaluationId: `evaluation:${event.marketAddress}:5m:${event.candleTime}`,
@@ -880,6 +922,20 @@ const MIGRATIONS = [
       filled_at TEXT,idempotency_key TEXT NOT NULL UNIQUE);
     CREATE INDEX paper_bot_account_evaluation ON paper_bot_account_ledger(evaluation_id);`,
   },
+  {
+    version: 7,
+    sql: `CREATE TABLE paper_bot_risk_decisions(
+      risk_decision_id TEXT PRIMARY KEY,evaluation_id TEXT NOT NULL UNIQUE,session_id TEXT NOT NULL,
+      candle_close_time TEXT NOT NULL,requested_action TEXT NOT NULL,requested_side TEXT NOT NULL,
+      requested_size_units TEXT NOT NULL,requested_notional_units TEXT NOT NULL,approved INTEGER NOT NULL,
+      rejection_reason TEXT,adjusted_size_units TEXT NOT NULL,policy_snapshot_json TEXT NOT NULL,
+      account_snapshot_before_json TEXT NOT NULL,created_at TEXT NOT NULL,idempotency_key TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL);
+    CREATE TABLE paper_bot_simulated_order_events(
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,simulated_order_id TEXT NOT NULL,evaluation_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,occurred_at TEXT NOT NULL,idempotency_key TEXT NOT NULL UNIQUE);
+    CREATE INDEX paper_bot_risk_session ON paper_bot_risk_decisions(session_id,candle_close_time);`,
+  },
 ];
 type paper_bot_account_units = {
   cashBalanceUnits: bigint;
@@ -905,6 +961,13 @@ export type simulated_paper_action = {
   createdAt: string;
   filledAt: string;
   idempotencyKey: string;
+};
+export type paper_trade_request = {
+  requestedAction: 'OPEN' | 'INCREASE' | 'REDUCE' | 'REVERSE' | 'CLOSE';
+  requestedSide: 'BUY' | 'SELL';
+  requestedSize: number;
+  markPrice: number;
+  markObservedAt: string;
 };
 const accountUnits = (value: number) => getFinancialUnits(value),
   accountValue = (value: bigint) => getFinancialDecimal(value),
@@ -1003,6 +1066,12 @@ export class paper_bot_journal {
            AND completed_at IN (SELECT candle_close_time FROM paper_bot_evaluation_ledger WHERE status='RECOVERED_SAFE')`,
         )
         .run(recoveredAt);
+      this.db
+        .prepare(
+          `UPDATE paper_bot_risk_decisions SET approved=0,rejection_reason='INCOMPLETE_RECOVERED_FAIL_CLOSED',
+           adjusted_size_units='0',status='RECOVERED_SAFE' WHERE status='PENDING'`,
+        )
+        .run();
       return count;
     })();
   }
@@ -1048,15 +1117,27 @@ export class paper_bot_journal {
     accountSnapshotAfter: object;
     candleCloseTime: string;
     markPrice?: number;
-    simulatedAction?: simulated_paper_action;
+    paperTradeRequest?: paper_trade_request;
+    paperRiskPolicy?: paper_risk_policy;
   }) {
     this.db.transaction(() => {
-      if (input.simulatedAction !== undefined)
-        this.applySimulatedPaperExecution({
-          ...input.simulatedAction,
+      let persistedRiskDecision = input.riskDecision;
+      if (input.paperTradeRequest !== undefined) {
+        if (input.paperRiskPolicy === undefined) throw new Error('PAPER_RISK_POLICY_MISSING');
+        const decision = this.applyPaperRiskDecision({
           sessionId: input.sessionId,
           evaluationId: input.idempotencyKey,
+          candleCloseTime: input.candleCloseTime,
+          createdAt: input.evaluationCompletedAt,
+          request: input.paperTradeRequest,
+          policy: input.paperRiskPolicy,
         });
+        persistedRiskDecision = decision.approved
+          ? decision.adjusted
+            ? 'APPROVED_RESIZED'
+            : 'APPROVED'
+          : `REJECTED:${decision.rejectionReason}`;
+      }
       if (input.markPrice !== undefined)
         this.applyPaperAccountMark({
           sessionId: input.sessionId,
@@ -1074,7 +1155,7 @@ export class paper_bot_journal {
         .run(
           input.evaluationCompletedAt,
           input.strategyDecision,
-          input.riskDecision,
+          persistedRiskDecision,
           input.riskIntentCreated ? 1 : 0,
           input.orderCreated ? 1 : 0,
           input.observeOnlyReason,
@@ -1134,10 +1215,49 @@ export class paper_bot_journal {
       )
       .all() as Record<string, unknown>[];
   }
-  simulatePaperExecution(
-    input: simulated_paper_action & { sessionId: string; evaluationId: string },
-  ) {
-    return this.db.transaction(() => this.applySimulatedPaperExecution(input))();
+  getPaperRiskDecisions() {
+    return this.db
+      .prepare('SELECT * FROM paper_bot_risk_decisions ORDER BY created_at,risk_decision_id')
+      .all() as Record<string, unknown>[];
+  }
+  getSimulatedOrderEvents() {
+    return this.db
+      .prepare('SELECT * FROM paper_bot_simulated_order_events ORDER BY sequence')
+      .all() as Record<string, unknown>[];
+  }
+  getIncompletePaperRiskDecisionCount() {
+    return (
+      this.db
+        .prepare("SELECT COUNT(*) AS count FROM paper_bot_risk_decisions WHERE status='PENDING'")
+        .get() as { count: number }
+    ).count;
+  }
+  beginIncompletePaperRiskDecision(input: {
+    riskDecisionId: string;
+    evaluationId: string;
+    sessionId: string;
+    candleCloseTime: string;
+    createdAt: string;
+    idempotencyKey: string;
+  }) {
+    const snapshot = this.getPaperAccountSnapshot();
+    return (
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO paper_bot_risk_decisions VALUES(?,?,?,?,?,'BUY','0','0',0,
+         'INCOMPLETE_RISK_DECISION','0','{}',?,?,?,'PENDING')`,
+        )
+        .run(
+          input.riskDecisionId,
+          input.evaluationId,
+          input.sessionId,
+          input.candleCloseTime,
+          'OPEN',
+          JSON.stringify(snapshot),
+          input.createdAt,
+          input.idempotencyKey,
+        ).changes === 1
+    );
   }
   markPaperAccount(input: {
     sessionId: string;
@@ -1228,6 +1348,217 @@ export class paper_bot_journal {
       idempotencyKey: key,
     });
     return 'INSERTED' as const;
+  }
+  private applyPaperRiskDecision(input: {
+    sessionId: string;
+    evaluationId: string;
+    candleCloseTime: string;
+    createdAt: string;
+    request: paper_trade_request;
+    policy: paper_risk_policy;
+  }) {
+    const riskDecisionId = `paper-risk:${input.evaluationId}`,
+      idempotencyKey = `paper-risk:${input.evaluationId}`,
+      existing = this.db
+        .prepare('SELECT * FROM paper_bot_risk_decisions WHERE idempotency_key=?')
+        .get(idempotencyKey) as Record<string, unknown> | undefined;
+    if (existing !== undefined)
+      return {
+        approved: existing.approved === 1,
+        adjusted: existing.adjusted_size_units !== existing.requested_size_units,
+        rejectionReason:
+          existing.rejection_reason === null
+            ? null
+            : typeof existing.rejection_reason === 'string'
+              ? existing.rejection_reason
+              : 'INVALID_PERSISTED_REJECTION_REASON',
+      };
+    const account = this.readPaperAccountUnits(),
+      request = input.request,
+      requestedSize =
+        Number.isFinite(request.requestedSize) && request.requestedSize > 0
+          ? accountUnits(request.requestedSize)
+          : 0n,
+      validMark = Number.isFinite(request.markPrice) && request.markPrice > 0,
+      markPrice = validMark ? accountUnits(request.markPrice) : 0n,
+      requestedNotional = multiplyAccountUnits(requestedSize, markPrice),
+      markAge = Date.parse(input.candleCloseTime) - Date.parse(request.markObservedAt);
+    let rejectionReason: string | null = null,
+      adjustedSize = requestedSize;
+    if (requestedSize <= 0n) rejectionReason = 'INVALID_SIZE';
+    else if (!validMark || !Number.isFinite(markAge)) rejectionReason = 'MARK_PRICE_MISSING';
+    else if (markAge < 0 || markAge > 300_000) rejectionReason = 'MARK_PRICE_STALE';
+
+    const day = input.candleCloseTime.slice(0, 10),
+      dayStart = `${day}T00:00:00.000Z`,
+      priorDayClose = this.db
+        .prepare(
+          `SELECT equity_units FROM paper_bot_account_ledger WHERE last_updated_at<?
+           ORDER BY sequence DESC LIMIT 1`,
+        )
+        .get(dayStart) as { equity_units: string } | undefined,
+      dailyStartEquity = BigInt(
+        priorDayClose?.equity_units ?? accountUnits(PAPER_ACCOUNT_STARTING_BALANCE).toString(),
+      ),
+      dailyLoss =
+        dailyStartEquity > account.equityUnits ? dailyStartEquity - account.equityUnits : 0n,
+      historicalEquities = this.db
+        .prepare('SELECT equity_units FROM paper_bot_account_ledger')
+        .all() as Array<{ equity_units: string }>,
+      peakEquity = historicalEquities.reduce(
+        (peak, row) => (BigInt(row.equity_units) > peak ? BigInt(row.equity_units) : peak),
+        account.equityUnits,
+      ),
+      drawdown = peakEquity - account.equityUnits;
+    if (rejectionReason === null && dailyLoss > accountUnits(input.policy.maxDailyLoss))
+      rejectionReason = 'MAX_DAILY_LOSS_EXCEEDED';
+    if (
+      rejectionReason === null &&
+      drawdown * PAPER_ACCOUNT_SCALE > peakEquity * accountUnits(input.policy.maxDrawdown)
+    )
+      rejectionReason = 'MAX_DRAWDOWN_EXCEEDED';
+
+    const latestApproved = this.db
+      .prepare(
+        `SELECT candle_close_time FROM paper_bot_risk_decisions WHERE approved=1 AND status='COMPLETED'
+         ORDER BY candle_close_time DESC LIMIT 1`,
+      )
+      .get() as { candle_close_time: string } | undefined;
+    if (rejectionReason === null && latestApproved !== undefined) {
+      const candleDistance =
+        (Date.parse(input.candleCloseTime) - Date.parse(latestApproved.candle_close_time)) /
+        300_000;
+      if (candleDistance <= input.policy.cooldownCandlesAfterTrade)
+        rejectionReason = 'COOLDOWN_ACTIVE';
+    }
+
+    const fillSigned = request.requestedSide === 'BUY' ? requestedSize : -requestedSize,
+      currentPosition = account.positionSizeUnits,
+      sameDirection = currentPosition !== 0n && currentPosition > 0n === fillSigned > 0n,
+      currentAbsolute = currentPosition < 0n ? -currentPosition : currentPosition,
+      isOpposite = currentPosition !== 0n && !sameDirection,
+      isReduction = isOpposite && requestedSize <= currentAbsolute,
+      isReversal = isOpposite && requestedSize > currentAbsolute;
+    if (rejectionReason === null && sameDirection && !input.policy.allowIncreasePosition)
+      rejectionReason = 'INCREASE_POSITION_NOT_ALLOWED';
+    if (rejectionReason === null && isReduction && !input.policy.allowReducePosition)
+      rejectionReason = 'REDUCE_POSITION_NOT_ALLOWED';
+    if (rejectionReason === null && isReversal && !input.policy.allowReversal)
+      rejectionReason = 'REVERSAL_NOT_ALLOWED';
+
+    if (rejectionReason === null) {
+      const tradeLimit =
+          (accountUnits(input.policy.maxTradeNotional) * PAPER_ACCOUNT_SCALE) / markPrice,
+        maximumPosition = accountUnits(input.policy.maxPositionSize),
+        exposureQuantity =
+          (accountUnits(input.policy.maxNotionalExposure) * PAPER_ACCOUNT_SCALE) / markPrice,
+        positiveCapacity = (limit: bigint) =>
+          request.requestedSide === 'BUY' ? limit - currentPosition : limit + currentPosition;
+      adjustedSize = [
+        adjustedSize,
+        tradeLimit,
+        positiveCapacity(maximumPosition),
+        positiveCapacity(exposureQuantity),
+      ].reduce((minimum, candidate) => (candidate < minimum ? candidate : minimum));
+      const availableForTrade =
+          account.availableBalanceUnits - accountUnits(input.policy.minCashReserve),
+        costBps = accountUnits((input.policy.feeBps + input.policy.slippageBps) / 10_000),
+        unitCashRequirement = isReduction
+          ? multiplyAccountUnits(markPrice, costBps)
+          : markPrice + multiplyAccountUnits(markPrice, costBps),
+        affordableSize =
+          availableForTrade <= 0n || unitCashRequirement <= 0n
+            ? 0n
+            : (availableForTrade * PAPER_ACCOUNT_SCALE) / unitCashRequirement;
+      if (affordableSize < adjustedSize) adjustedSize = affordableSize;
+      if (adjustedSize <= 0n) rejectionReason = 'INSUFFICIENT_AVAILABLE_BALANCE';
+    }
+    const approved = rejectionReason === null,
+      accountSnapshot = this.getPaperAccountSnapshot();
+    this.db
+      .prepare('INSERT INTO paper_bot_risk_decisions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(
+        riskDecisionId,
+        input.evaluationId,
+        input.sessionId,
+        input.candleCloseTime,
+        request.requestedAction,
+        request.requestedSide,
+        requestedSize.toString(),
+        requestedNotional.toString(),
+        approved ? 1 : 0,
+        rejectionReason,
+        approved ? adjustedSize.toString() : '0',
+        JSON.stringify(input.policy),
+        JSON.stringify(accountSnapshot),
+        input.createdAt,
+        idempotencyKey,
+        'COMPLETED',
+      );
+    const simulatedOrderId = `simulated-order:${riskDecisionId}`;
+    this.appendSimulatedOrderEvent(
+      simulatedOrderId,
+      input.evaluationId,
+      'CREATED',
+      input.createdAt,
+      `${simulatedOrderId}:created`,
+    );
+    if (approved) {
+      this.appendSimulatedOrderEvent(
+        simulatedOrderId,
+        input.evaluationId,
+        'RISK_APPROVED',
+        input.createdAt,
+        `${simulatedOrderId}:approved`,
+      );
+      const adjustedNotional = multiplyAccountUnits(adjustedSize, markPrice),
+        fee = multiplyAccountUnits(adjustedNotional, accountUnits(input.policy.feeBps / 10_000)),
+        slippage = multiplyAccountUnits(
+          adjustedNotional,
+          accountUnits(input.policy.slippageBps / 10_000),
+        );
+      this.applySimulatedPaperExecution({
+        sessionId: input.sessionId,
+        evaluationId: input.evaluationId,
+        simulatedOrderId,
+        side: request.requestedSide,
+        requestedSize: accountValue(requestedSize),
+        filledSize: accountValue(adjustedSize),
+        fillPrice: request.markPrice,
+        fee: accountValue(fee),
+        slippage: accountValue(slippage),
+        status: adjustedSize === requestedSize ? 'FILLED' : 'PARTIALLY_FILLED',
+        createdAt: input.createdAt,
+        filledAt: input.createdAt,
+        idempotencyKey: `simulated-fill:${riskDecisionId}`,
+      });
+      this.appendSimulatedOrderEvent(
+        simulatedOrderId,
+        input.evaluationId,
+        adjustedSize === requestedSize ? 'FILLED' : 'PARTIALLY_FILLED',
+        input.createdAt,
+        `${simulatedOrderId}:filled`,
+      );
+    } else
+      this.appendSimulatedOrderEvent(
+        simulatedOrderId,
+        input.evaluationId,
+        'RISK_REJECTED',
+        input.createdAt,
+        `${simulatedOrderId}:rejected`,
+      );
+    return { approved, adjusted: approved && adjustedSize !== requestedSize, rejectionReason };
+  }
+  private appendSimulatedOrderEvent(
+    simulatedOrderId: string,
+    evaluationId: string,
+    eventType: string,
+    occurredAt: string,
+    idempotencyKey: string,
+  ) {
+    this.db
+      .prepare('INSERT OR IGNORE INTO paper_bot_simulated_order_events VALUES(NULL,?,?,?,?,?)')
+      .run(simulatedOrderId, evaluationId, eventType, occurredAt, idempotencyKey);
   }
   private applySimulatedPaperExecution(
     input: simulated_paper_action & { sessionId: string; evaluationId: string },

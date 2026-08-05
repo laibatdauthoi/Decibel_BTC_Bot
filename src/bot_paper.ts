@@ -151,6 +151,7 @@ export async function runPaperBot() {
             baseDelayMs: applicationConfig.candleGapReconciliationBaseDelayMs,
             maximumDelayMs: applicationConfig.candleGapReconciliationMaximumDelayMs,
           },
+          config.paperRiskPolicy,
         );
         Controller.start();
       },

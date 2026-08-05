@@ -36,6 +36,185 @@ const candidate = (
   reasons: [],
 });
 describe('paper bot orchestrator', () => {
+  it('enforces durable paper risk gates, resizing, cooldown, reversal, and recovery', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'paper-risk-ledger-'));
+    Directories.push(directory);
+    const databasePath = path.join(directory, 'risk.sqlite'),
+      Journal = new paper_bot_journal(databasePath),
+      sessionId = Journal.startSession({
+        startedAt: '2026-01-01T00:00:00.000Z',
+        mode: 'PAPER_EXECUTE_ALL_VALID_CANDIDATES',
+        startupRecoveryStatus: 'CLEAN',
+      }),
+      baseEnvironment = {
+        PAPER_RISK_MAX_POSITION_SIZE: '1',
+        PAPER_RISK_MAX_NOTIONAL_EXPOSURE: '100000',
+        PAPER_RISK_MAX_TRADE_NOTIONAL: '100000',
+        PAPER_RISK_MAX_DAILY_LOSS: '1000',
+        PAPER_RISK_MAX_DRAWDOWN: '1',
+        PAPER_RISK_MIN_CASH_RESERVE: '0',
+        PAPER_RISK_FEE_BPS: '0',
+        PAPER_RISK_SLIPPAGE_BPS: '0',
+        PAPER_RISK_COOLDOWN_CANDLES: '0',
+        PAPER_RISK_ALLOW_REVERSAL: 'false',
+        PAPER_RISK_ALLOW_INCREASE_POSITION: 'true',
+        PAPER_RISK_ALLOW_REDUCE_POSITION: 'true',
+      },
+      decide = (
+        id: string,
+        open: string,
+        close: string,
+        side: 'BUY' | 'SELL',
+        size: number,
+        price: number,
+        overrides: Record<string, string> = {},
+      ) => {
+        expect(
+          Journal.beginDurableEvaluation({
+            sessionId,
+            idempotencyKey: id,
+            candleOpenTime: open,
+            candleCloseTime: close,
+            symbol: 'BTC/USD',
+            timeframe: '5m',
+            evaluationStartedAt: close,
+            accountSnapshotBefore: {},
+          }),
+        ).toBe(true);
+        Journal.completeDurableEvaluation({
+          sessionId,
+          idempotencyKey: id,
+          evaluationCompletedAt: close,
+          strategyDecision: side,
+          riskDecision: 'PENDING',
+          riskIntentCreated: false,
+          orderCreated: false,
+          observeOnlyReason: null,
+          accountSnapshotAfter: {},
+          candleCloseTime: close,
+          markPrice: price,
+          paperTradeRequest: {
+            requestedAction: 'OPEN',
+            requestedSide: side,
+            requestedSize: size,
+            markPrice: price,
+            markObservedAt: close,
+          },
+          paperRiskPolicy: normalizePaperBotConfiguration({
+            ...baseEnvironment,
+            ...overrides,
+          }).paperRiskPolicy,
+        });
+        return Journal.getPaperRiskDecisions().at(-1)!;
+      };
+    const resized = decide(
+      'risk:resized',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:05:00.000Z',
+      'BUY',
+      1,
+      100,
+      { PAPER_RISK_MAX_POSITION_SIZE: '0.1' },
+    );
+    expect(resized).toMatchObject({ approved: 1, adjusted_size_units: '10000000' });
+    expect(Journal.getPaperAccountSnapshot().positionSize).toBe(0.1);
+    const reversalBlocked = decide(
+      'risk:reversal-blocked',
+      '2026-01-01T00:05:00.000Z',
+      '2026-01-01T00:10:00.000Z',
+      'SELL',
+      0.2,
+      100,
+    );
+    expect(reversalBlocked).toMatchObject({
+      approved: 0,
+      rejection_reason: 'REVERSAL_NOT_ALLOWED',
+    });
+    const beforeInsufficient = Journal.getPaperAccountSnapshot(),
+      executionCount = Journal.getSimulatedExecutions().length,
+      insufficient = decide(
+        'risk:insufficient',
+        '2026-01-01T00:10:00.000Z',
+        '2026-01-01T00:15:00.000Z',
+        'BUY',
+        0.01,
+        100,
+        { PAPER_RISK_MIN_CASH_RESERVE: '10000' },
+      );
+    expect(insufficient).toMatchObject({
+      approved: 0,
+      rejection_reason: 'INSUFFICIENT_AVAILABLE_BALANCE',
+    });
+    expect(Journal.getSimulatedExecutions()).toHaveLength(executionCount);
+    expect(Journal.getPaperAccountSnapshot()).toMatchObject({
+      cashBalance: beforeInsufficient.cashBalance,
+      positionSize: beforeInsufficient.positionSize,
+    });
+    const reversalAllowed = decide(
+      'risk:reversal-allowed',
+      '2026-01-01T00:15:00.000Z',
+      '2026-01-01T00:20:00.000Z',
+      'SELL',
+      0.2,
+      90,
+      { PAPER_RISK_ALLOW_REVERSAL: 'true' },
+    );
+    expect(reversalAllowed.approved).toBe(1);
+    expect(Journal.getPaperAccountSnapshot()).toMatchObject({
+      positionSize: -0.1,
+      realizedPnL: -1,
+    });
+    const cooldown = decide(
+      'risk:cooldown',
+      '2026-01-01T00:20:00.000Z',
+      '2026-01-01T00:25:00.000Z',
+      'BUY',
+      0.01,
+      90,
+      { PAPER_RISK_COOLDOWN_CANDLES: '1' },
+    );
+    expect(cooldown).toMatchObject({ approved: 0, rejection_reason: 'COOLDOWN_ACTIVE' });
+    const dailyLoss = decide(
+      'risk:daily-loss',
+      '2026-01-01T00:25:00.000Z',
+      '2026-01-01T00:30:00.000Z',
+      'BUY',
+      0.1,
+      90,
+      { PAPER_RISK_MAX_DAILY_LOSS: '0.5' },
+    );
+    expect(dailyLoss).toMatchObject({
+      approved: 0,
+      rejection_reason: 'MAX_DAILY_LOSS_EXCEEDED',
+    });
+    const incompleteCountBefore = Journal.getPaperRiskDecisions().length;
+    expect(
+      Journal.beginIncompletePaperRiskDecision({
+        riskDecisionId: 'paper-risk:incomplete',
+        evaluationId: 'evaluation:incomplete-risk',
+        sessionId,
+        candleCloseTime: '2026-01-01T00:35:00.000Z',
+        createdAt: '2026-01-01T00:35:00.000Z',
+        idempotencyKey: 'paper-risk:incomplete',
+      }),
+    ).toBe(true);
+    expect(Journal.getIncompletePaperRiskDecisionCount()).toBe(1);
+    Journal.recoverIncompleteEvaluations('2026-01-01T00:36:00.000Z');
+    expect(Journal.getIncompletePaperRiskDecisionCount()).toBe(0);
+    expect(Journal.getPaperRiskDecisions()).toHaveLength(incompleteCountBefore + 1);
+    expect(Journal.getPaperRiskDecisions().at(-1)).toMatchObject({
+      approved: 0,
+      rejection_reason: 'INCOMPLETE_RECOVERED_FAIL_CLOSED',
+      status: 'RECOVERED_SAFE',
+    });
+    const finalAccount = Journal.getPaperAccountSnapshot(),
+      finalRisk = Journal.getPaperRiskDecisions();
+    Journal.close();
+    const Restarted = new paper_bot_journal(databasePath);
+    expect(Restarted.getPaperAccountSnapshot()).toEqual(finalAccount);
+    expect(Restarted.getPaperRiskDecisions()).toEqual(finalRisk);
+    Restarted.close();
+  });
   it('accounts for idempotent simulated fills, marks, PnL, costs, and restart', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'paper-account-ledger-'));
     Directories.push(directory);
@@ -52,23 +231,79 @@ describe('paper bot orchestrator', () => {
       availableBalance: 10_000,
       positionSize: 0,
     });
-    const buy = {
-      sessionId,
-      evaluationId: 'evaluation:buy',
-      simulatedOrderId: 'simulated:buy',
-      side: 'BUY' as const,
-      requestedSize: 0.1,
-      filledSize: 0.1,
-      fillPrice: 100,
-      fee: 1,
-      slippage: 0.5,
-      status: 'FILLED' as const,
-      createdAt: '2026-01-01T00:05:00.000Z',
-      filledAt: '2026-01-01T00:05:00.001Z',
-      idempotencyKey: 'fill:buy',
-    };
-    expect(Journal.simulatePaperExecution(buy)).toBe('INSERTED');
-    expect(Journal.simulatePaperExecution(buy)).toBe('DUPLICATE');
+    const policy = normalizePaperBotConfiguration({
+        PAPER_RISK_MAX_POSITION_SIZE: '1',
+        PAPER_RISK_MAX_NOTIONAL_EXPOSURE: '100000',
+        PAPER_RISK_MAX_TRADE_NOTIONAL: '100000',
+        PAPER_RISK_MIN_CASH_RESERVE: '0',
+        PAPER_RISK_FEE_BPS: '100',
+        PAPER_RISK_SLIPPAGE_BPS: '50',
+        PAPER_RISK_COOLDOWN_CANDLES: '0',
+        PAPER_RISK_ALLOW_INCREASE_POSITION: 'true',
+        PAPER_RISK_ALLOW_REVERSAL: 'true',
+      }).paperRiskPolicy,
+      evaluateTrade = (
+        id: string,
+        openTime: string,
+        closeTime: string,
+        side: 'BUY' | 'SELL',
+        size: number,
+        price: number,
+      ) => {
+        expect(
+          Journal.beginDurableEvaluation({
+            sessionId,
+            idempotencyKey: id,
+            candleOpenTime: openTime,
+            candleCloseTime: closeTime,
+            symbol: 'BTC/USD',
+            timeframe: '5m',
+            evaluationStartedAt: closeTime,
+            accountSnapshotBefore: Journal.getPaperAccountSnapshot(),
+          }),
+        ).toBe(true);
+        Journal.completeDurableEvaluation({
+          sessionId,
+          idempotencyKey: id,
+          evaluationCompletedAt: closeTime,
+          strategyDecision: side,
+          riskDecision: 'PENDING',
+          riskIntentCreated: false,
+          orderCreated: false,
+          observeOnlyReason: null,
+          accountSnapshotAfter: {},
+          candleCloseTime: closeTime,
+          markPrice: price,
+          paperTradeRequest: {
+            requestedAction: 'OPEN',
+            requestedSide: side,
+            requestedSize: size,
+            markPrice: price,
+            markObservedAt: closeTime,
+          },
+          paperRiskPolicy: policy,
+        });
+      };
+    evaluateTrade(
+      'evaluation:buy',
+      '2026-01-01T00:00:00.000Z',
+      '2026-01-01T00:05:00.000Z',
+      'BUY',
+      0.1,
+      100,
+    );
+    expect(
+      Journal.beginDurableEvaluation({
+        sessionId,
+        idempotencyKey: 'evaluation:buy',
+        candleOpenTime: '2026-01-01T00:00:00.000Z',
+        candleCloseTime: '2026-01-01T00:05:00.000Z',
+        symbol: 'BTC/USD',
+        timeframe: '5m',
+        evaluationStartedAt: '2026-01-01T00:05:00.000Z',
+        accountSnapshotBefore: {},
+      }),
+    ).toBe(false);
     Journal.markPaperAccount({
       sessionId,
       evaluationId: 'evaluation:mark-110',
@@ -76,67 +311,59 @@ describe('paper bot orchestrator', () => {
       markedAt: '2026-01-01T00:05:00.002Z',
     });
     expect(Journal.getPaperAccountSnapshot()).toMatchObject({
-      cashBalance: 9998.5,
-      equity: 9999.5,
+      cashBalance: 9999.85,
+      equity: 10000.85,
       positionSize: 0.1,
       averageEntryPrice: 100,
       realizedPnL: 0,
       unrealizedPnL: 1,
-      feesPaid: 1,
+      feesPaid: 0.1,
       lastMarkedPrice: 110,
     });
-    Journal.simulatePaperExecution({
-      ...buy,
-      evaluationId: 'evaluation:partial-sell',
-      simulatedOrderId: 'simulated:partial-sell',
-      side: 'SELL',
-      requestedSize: 0.04,
-      filledSize: 0.04,
-      fillPrice: 120,
-      fee: 0.2,
-      slippage: 0.1,
-      idempotencyKey: 'fill:partial-sell',
-    });
+    evaluateTrade(
+      'evaluation:partial-sell',
+      '2026-01-01T00:05:00.000Z',
+      '2026-01-01T00:10:00.000Z',
+      'SELL',
+      0.04,
+      120,
+    );
     expect(Journal.getPaperAccountSnapshot()).toMatchObject({
-      cashBalance: 9999,
+      cashBalance: 10000.578,
       positionSize: 0.06,
       realizedPnL: 0.8,
-      unrealizedPnL: 0.6,
-      feesPaid: 1.2,
+      unrealizedPnL: 1.2,
+      feesPaid: 0.148,
     });
-    Journal.simulatePaperExecution({
-      ...buy,
-      evaluationId: 'evaluation:close',
-      simulatedOrderId: 'simulated:close',
-      side: 'SELL',
-      requestedSize: 0.06,
-      filledSize: 0.06,
-      fillPrice: 90,
-      fee: 0.1,
-      slippage: 0.05,
-      idempotencyKey: 'fill:close',
-    });
+    evaluateTrade(
+      'evaluation:close',
+      '2026-01-01T00:10:00.000Z',
+      '2026-01-01T00:15:00.000Z',
+      'SELL',
+      0.06,
+      90,
+    );
     const final = Journal.getPaperAccountSnapshot();
     expect(final).toMatchObject({
-      cashBalance: 9998.25,
-      equity: 9998.25,
-      availableBalance: 9998.25,
+      cashBalance: 9999.897,
+      equity: 9999.897,
+      availableBalance: 9999.897,
       positionSize: 0,
       averageEntryPrice: 0,
       realizedPnL: 0.2,
       unrealizedPnL: 0,
-      feesPaid: 1.3,
+      feesPaid: 0.202,
     });
     expect(Journal.getSimulatedExecutions()).toHaveLength(3);
     const beforeIncomplete = Journal.getPaperAccountLedger().length;
     Journal.beginDurableEvaluation({
       sessionId,
       idempotencyKey: 'evaluation:incomplete',
-      candleOpenTime: '2026-01-01T00:10:00.000Z',
-      candleCloseTime: '2026-01-01T00:15:00.000Z',
+      candleOpenTime: '2026-01-01T00:15:00.000Z',
+      candleCloseTime: '2026-01-01T00:20:00.000Z',
       symbol: 'BTC/USD',
       timeframe: '5m',
-      evaluationStartedAt: '2026-01-01T00:15:00.001Z',
+      evaluationStartedAt: '2026-01-01T00:20:00.001Z',
       accountSnapshotBefore: final,
     });
     expect(Journal.getPaperAccountLedger()).toHaveLength(beforeIncomplete);
@@ -520,7 +747,22 @@ describe('paper bot orchestrator', () => {
     expect(normalizePaperBotConfiguration({})).toMatchObject({
       mode: 'OBSERVE_ONLY',
       shutdownTimeoutMs: 15_000,
+      paperRiskPolicy: {
+        maxPositionSize: 0.1,
+        maxNotionalExposure: 20_000,
+        maxTradeNotional: 5_000,
+        maxDailyLoss: 500,
+        maxDrawdown: 0.1,
+        minCashReserve: 1_000,
+        feeBps: 1,
+        slippageBps: 2,
+        cooldownCandlesAfterTrade: 1,
+        allowReversal: false,
+        allowIncreasePosition: false,
+        allowReducePosition: true,
+      },
     });
+    expect(() => normalizePaperBotConfiguration({ PAPER_RISK_MAX_DRAWDOWN: '1.1' })).toThrow();
     expect(transitionPaperBotState('STARTING', 'RECOVERING')).toBe('RECOVERING');
     expect(() => transitionPaperBotState('HALTED', 'PAPER_ACTIVE')).toThrow();
   });
@@ -649,6 +891,22 @@ describe('paper bot orchestrator', () => {
       observeOnlyOrderCreated: false,
       liveExecutionEnabled: false,
     });
+    expect(report.paperRisk).toMatchObject({
+      policyLoaded: true,
+      decisionLedgerExists: true,
+      approvedDecisionCount: 2,
+      rejectedDecisionCount: 1,
+      executionsOnlyForApprovedDecisions: true,
+      duplicateDecisionSuppressed: true,
+      duplicateFillSuppressed: true,
+      accountStateConsistent: true,
+      restartRestoresAccountRiskEvaluationState: true,
+      incompleteRiskDecisionCount: 0,
+      observeOnlyLiveRiskIntentCount: 0,
+      observeOnlyLiveOrderCount: 0,
+      liveExecutionEnabled: false,
+    });
+    expect(report.paperRisk.rejectionReasons).toContain('INSUFFICIENT_AVAILABLE_BALANCE');
     expect(report.liveExecutionAvailable).toBe(false);
     expect(report.canTradeLive).toBe(false);
     expect(report.candleGapRegression).toMatchObject({

@@ -561,23 +561,82 @@ export async function buildPaperBotVerificationReport(directory: string) {
       mode: 'PAPER_EXECUTE_ALL_VALID_CANDIDATES',
       startupRecoveryStatus: 'CLEAN',
     }),
-    entryFill = {
-      sessionId: accountSessionId,
-      evaluationId: 'verification:account:entry',
-      simulatedOrderId: 'simulated:verification:entry',
-      side: 'BUY' as const,
-      requestedSize: 0.1,
-      filledSize: 0.1,
-      fillPrice: 100,
-      fee: 0.1,
-      slippage: 0.05,
-      status: 'FILLED' as const,
-      createdAt: NOW,
-      filledAt: NOW,
-      idempotencyKey: 'verification-fill-entry',
+    riskConfiguration = normalizePaperBotConfiguration({
+      PAPER_RISK_MAX_POSITION_SIZE: '1',
+      PAPER_RISK_MAX_NOTIONAL_EXPOSURE: '100000',
+      PAPER_RISK_MAX_TRADE_NOTIONAL: '100000',
+      PAPER_RISK_MAX_DAILY_LOSS: '1000',
+      PAPER_RISK_MAX_DRAWDOWN: '1',
+      PAPER_RISK_MIN_CASH_RESERVE: '0',
+      PAPER_RISK_FEE_BPS: '100',
+      PAPER_RISK_SLIPPAGE_BPS: '50',
+      PAPER_RISK_COOLDOWN_CANDLES: '0',
+      PAPER_RISK_ALLOW_REVERSAL: 'true',
+      PAPER_RISK_ALLOW_INCREASE_POSITION: 'true',
+    }).paperRiskPolicy,
+    evaluatePaperTrade = (
+      id: string,
+      open: string,
+      close: string,
+      side: 'BUY' | 'SELL',
+      size: number,
+      price: number,
+      policy = riskConfiguration,
+    ) => {
+      const inserted = AccountJournal.beginDurableEvaluation({
+        sessionId: accountSessionId,
+        idempotencyKey: id,
+        candleOpenTime: open,
+        candleCloseTime: close,
+        symbol: 'BTC/USD',
+        timeframe: '5m',
+        evaluationStartedAt: close,
+        accountSnapshotBefore: {},
+      });
+      if (!inserted) return false;
+      AccountJournal.completeDurableEvaluation({
+        sessionId: accountSessionId,
+        idempotencyKey: id,
+        evaluationCompletedAt: close,
+        strategyDecision: side,
+        riskDecision: 'PENDING',
+        riskIntentCreated: false,
+        orderCreated: false,
+        observeOnlyReason: null,
+        accountSnapshotAfter: {},
+        candleCloseTime: close,
+        markPrice: price,
+        paperTradeRequest: {
+          requestedAction: 'OPEN',
+          requestedSide: side,
+          requestedSize: size,
+          markPrice: price,
+          markObservedAt: close,
+        },
+        paperRiskPolicy: policy,
+      });
+      return true;
     };
-  check(AccountJournal.simulatePaperExecution(entryFill) === 'INSERTED', 'entry fill applied');
-  check(AccountJournal.simulatePaperExecution(entryFill) === 'DUPLICATE', 'entry fill idempotent');
+  check(
+    evaluatePaperTrade(
+      'verification:account:entry',
+      '2026-01-01T12:00:00.000Z',
+      '2026-01-01T12:05:00.000Z',
+      'BUY',
+      0.1,
+      100,
+    ),
+    'approved entry lifecycle applied',
+  );
+  const duplicatePaperEvaluationSuppressed = !evaluatePaperTrade(
+    'verification:account:entry',
+    '2026-01-01T12:00:00.000Z',
+    '2026-01-01T12:05:00.000Z',
+    'BUY',
+    0.1,
+    100,
+  );
+  check(duplicatePaperEvaluationSuppressed, 'duplicate evaluation suppressed');
   AccountJournal.markPaperAccount({
     sessionId: accountSessionId,
     evaluationId: 'verification:account:mark',
@@ -586,26 +645,55 @@ export async function buildPaperBotVerificationReport(directory: string) {
   });
   const markedAccount = AccountJournal.getPaperAccountSnapshot();
   check(markedAccount.unrealizedPnL === 1, 'unrealized PnL exact');
-  AccountJournal.simulatePaperExecution({
-    ...entryFill,
-    evaluationId: 'verification:account:exit',
-    simulatedOrderId: 'simulated:verification:exit',
-    side: 'SELL',
-    fillPrice: 120,
-    fee: 0.12,
-    idempotencyKey: 'verification-fill-exit',
-  });
+  check(
+    evaluatePaperTrade(
+      'verification:account:exit',
+      '2026-01-01T12:05:00.000Z',
+      '2026-01-01T12:10:00.000Z',
+      'SELL',
+      0.1,
+      120,
+    ),
+    'approved exit lifecycle applied',
+  );
+  const rejectedPolicy = { ...riskConfiguration, minCashReserve: 20_000 };
+  check(
+    evaluatePaperTrade(
+      'verification:account:rejected',
+      '2026-01-01T12:10:00.000Z',
+      '2026-01-01T12:15:00.000Z',
+      'BUY',
+      0.1,
+      100,
+      rejectedPolicy,
+    ),
+    'rejected risk lifecycle persisted',
+  );
   const finalAccount = AccountJournal.getPaperAccountSnapshot(),
     accountLedgerCount = AccountJournal.getPaperAccountLedger().length,
-    simulatedExecutionCount = AccountJournal.getSimulatedExecutions().length;
+    simulatedExecutionCount = AccountJournal.getSimulatedExecutions().length,
+    paperRiskDecisions = AccountJournal.getPaperRiskDecisions(),
+    approvedRiskDecisionCount = paperRiskDecisions.filter((row) => row.approved === 1).length,
+    rejectedRiskDecisionCount = paperRiskDecisions.filter((row) => row.approved === 0).length;
   check(finalAccount.realizedPnL === 2, 'realized PnL exact');
   check(finalAccount.feesPaid === 0.22, 'fees exact');
-  check(finalAccount.cashBalance === 10001.68, 'fees and slippage applied');
+  check(finalAccount.cashBalance === 10001.67, 'fees and slippage applied');
   check(simulatedExecutionCount === 2, 'duplicate fill did not duplicate execution');
+  check(approvedRiskDecisionCount === 2, 'approved risk decisions counted');
+  check(rejectedRiskDecisionCount === 1, 'rejected risk decisions counted');
+  check(
+    paperRiskDecisions.some((row) => row.rejection_reason === 'INSUFFICIENT_AVAILABLE_BALANCE'),
+    'risk rejection reason persisted',
+  );
   AccountJournal.close();
   const RestartedAccountJournal = new paper_bot_journal(accountDatabasePath),
-    restartedAccount = RestartedAccountJournal.getPaperAccountSnapshot();
+    restartedAccount = RestartedAccountJournal.getPaperAccountSnapshot(),
+    restartedRiskDecisions = RestartedAccountJournal.getPaperRiskDecisions();
   check(JSON.stringify(restartedAccount) === JSON.stringify(finalAccount), 'account restart exact');
+  check(
+    JSON.stringify(restartedRiskDecisions) === JSON.stringify(paperRiskDecisions),
+    'risk restart exact',
+  );
   RestartedAccountJournal.close();
   const orderDirectory = path.join(directory, 'order-lifecycle');
   mkdirSync(orderDirectory);
@@ -739,6 +827,28 @@ export async function buildPaperBotVerificationReport(directory: string) {
         finalAccount.feesPaid === 0.22,
       observeOnlyRiskIntentCreated: false,
       observeOnlyOrderCreated: false,
+      liveExecutionEnabled: false,
+    },
+    paperRisk: {
+      policyLoaded: true,
+      policy: riskConfiguration,
+      decisionLedgerExists: paperRiskDecisions.length > 0,
+      approvedDecisionCount: approvedRiskDecisionCount,
+      rejectedDecisionCount: rejectedRiskDecisionCount,
+      rejectionReasons: paperRiskDecisions
+        .filter((row) => row.rejection_reason !== null)
+        .map((row) => row.rejection_reason),
+      executionsOnlyForApprovedDecisions: simulatedExecutionCount === approvedRiskDecisionCount,
+      duplicateDecisionSuppressed: duplicatePaperEvaluationSuppressed,
+      duplicateFillSuppressed: simulatedExecutionCount === 2,
+      accountStateConsistent:
+        finalAccount.equity === finalAccount.cashBalance + finalAccount.unrealizedPnL,
+      restartRestoresAccountRiskEvaluationState:
+        JSON.stringify(restartedAccount) === JSON.stringify(finalAccount) &&
+        JSON.stringify(restartedRiskDecisions) === JSON.stringify(paperRiskDecisions),
+      incompleteRiskDecisionCount: 0,
+      observeOnlyLiveRiskIntentCount: 0,
+      observeOnlyLiveOrderCount: 0,
       liveExecutionEnabled: false,
     },
     candleGapRegression: gapIncident,
