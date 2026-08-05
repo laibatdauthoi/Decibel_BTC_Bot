@@ -70,7 +70,17 @@ export function diagnoseStrategyCandidate(input: {
 
   const current = candles.at(-1)!;
   const prior = candles.slice(-input.config.expansionLookbackBars - 1, -1);
-  const medianRange = median(prior.map((candle) => candle.high - candle.low));
+  const priorStart = candles.length - input.config.expansionLookbackBars - 1;
+  const medianRange = median(
+    prior.map((candle, index) => {
+      const previousClose = candles[priorStart + index - 1]?.close ?? candle.open;
+      return Math.max(
+        candle.high - candle.low,
+        Math.abs(candle.high - previousClose),
+        Math.abs(candle.low - previousClose),
+      );
+    }),
+  );
   const medianVolume = median(prior.map((candle) => candle.volume));
   if (medianRange === null || medianRange <= 0 || medianVolume === null || medianVolume <= 0) {
     return {
@@ -96,6 +106,10 @@ export function diagnoseStrategyCandidate(input: {
   const range = candles.slice(-input.config.breakoutRangeBars - 1, -1);
   const highestPriorHigh = Math.max(...range.map((candle) => candle.high));
   const lowestPriorLow = Math.min(...range.map((candle) => candle.low));
+  const breakoutRangeDistanceRatio = Math.max(
+    current.close / highestPriorHigh - 1,
+    lowestPriorLow / current.close - 1,
+  );
   const brokeRange = current.close > highestPriorHigh || current.close < lowestPriorLow;
   const expansionPassed =
     volatilityRatio >= input.config.expansionVolatilityRatio &&
@@ -109,6 +123,7 @@ export function diagnoseStrategyCandidate(input: {
     currentClose: current.close,
     highestPriorHigh,
     lowestPriorLow,
+    breakoutRangeDistanceRatio: roundEvidence(breakoutRangeDistanceRatio),
     volatilityRatio: roundEvidence(volatilityRatio),
     volumeRatio: roundEvidence(volumeRatio),
     thresholds: {
@@ -121,12 +136,13 @@ export function diagnoseStrategyCandidate(input: {
       expansionMinimumScore: input.config.expansionMinimumScore,
     },
     nearestMiss: {
-      rangeBreakDistance:
+      rangeBreakDistance: roundEvidence(
         current.close > highestPriorHigh
           ? 0
           : current.close < lowestPriorLow
             ? 0
             : Math.min(highestPriorHigh - current.close, current.close - lowestPriorLow),
+      ),
       breakoutVolumeDeficit: roundEvidence(
         Math.max(0, input.config.breakoutVolumeRatio - volumeRatio),
       ),
