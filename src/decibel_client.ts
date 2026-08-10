@@ -156,6 +156,10 @@ function isBTCUSDMarket(name: string): boolean {
   return /^BTC(?:[-/]USD|-PERP)$/i.test(name);
 }
 
+function isETHUSDMarket(name: string): boolean {
+  return /^ETH(?:[-/]USD|-PERP)$/i.test(name);
+}
+
 function normalizeChainUnits(value: number, decimals: number): number {
   return value / 10 ** decimals;
 }
@@ -219,6 +223,13 @@ export class decibel_client {
     }
 
     this.exchangeSymbol = market.market_name;
+    return this.normalizeMarket(market);
+  }
+
+  async getETHMarketMetadata(): Promise<BTC_market_metadata> {
+    const markets = z.array(SDKMarketSchema).parse(await this.reader.markets.getAll());
+    const market = markets.find((candidate) => isETHUSDMarket(candidate.market_name));
+    if (market === undefined) throw new Error('Decibel ETH/USD perpetual market was not found');
     return this.normalizeMarket(market);
   }
 
@@ -303,6 +314,72 @@ export class decibel_client {
         .map((candle) => ({
           ...this.normalizeCandlestick(candle),
         })),
+    };
+  }
+
+  async getETHCandlesticks(
+    interval: candle_interval,
+    startTime: Date,
+    endTime: Date,
+    now: Date = new Date(),
+  ): Promise<BTC_candlestick_history> {
+    const market = await this.getETHMarketMetadata();
+    const candles = await this.getCandlesticksForMarket(
+      market.exchangeSymbol,
+      interval,
+      startTime,
+      endTime,
+      now,
+      'ETH',
+    );
+    return {
+      ...candles,
+      exchangeSymbol: market.exchangeSymbol,
+      marketAddress: market.marketAddress,
+    };
+  }
+
+  private async getCandlesticksForMarket(
+    exchangeSymbol: string,
+    interval: candle_interval,
+    startTime: Date,
+    endTime: Date,
+    now: Date,
+    assetLabel: string,
+  ): Promise<BTC_candlestick_history> {
+    const startUnixMs = startTime.getTime(),
+      endUnixMs = endTime.getTime(),
+      nowUnixMs = now.getTime();
+    if (![startUnixMs, endUnixMs, nowUnixMs].every(Number.isSafeInteger))
+      throw new Error('Candlestick time range must contain valid dates');
+    if (startUnixMs >= endUnixMs) throw new Error('Candlestick start time must precede end time');
+    const candles = z.array(SDKCandlestickSchema).parse(
+      await this.reader.candlesticks.getByName({
+        marketName: exchangeSymbol,
+        interval,
+        startTime: startUnixMs,
+        endTime: endUnixMs,
+      }),
+    );
+    const timestamps = new Set<number>();
+    for (const candle of candles) {
+      if (candle.i !== interval)
+        throw new Error(`Decibel returned an unexpected candle interval: ${candle.i}`);
+      if (candle.t !== alignTimestamp(candle.t, interval))
+        throw new Error(`Decibel returned a misaligned ${interval} candle: ${candle.t}`);
+      if (timestamps.has(candle.t))
+        throw new Error(`Decibel returned duplicate ${assetLabel} candle timestamp: ${candle.t}`);
+      timestamps.add(candle.t);
+    }
+    return {
+      symbol: 'BTC/USD',
+      exchangeSymbol,
+      marketAddress: '',
+      interval,
+      candles: candles
+        .filter((candle) => getNextTimestamp(candle.t, interval) <= nowUnixMs)
+        .sort((left, right) => left.t - right.t)
+        .map((candle) => this.normalizeCandlestick(candle)),
     };
   }
 

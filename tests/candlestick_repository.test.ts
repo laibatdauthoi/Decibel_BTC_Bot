@@ -36,7 +36,7 @@ describe('candlestick_repository', () => {
   });
 
   it('creates and versions the schema automatically', () => {
-    expect(CandlestickRepository.getSchemaVersion()).toBe(1);
+    expect(CandlestickRepository.getSchemaVersion()).toBe(2);
     // SQLite memory databases cannot retain WAL files, but the pragma is still applied.
     expect(CandlestickRepository.getJournalMode()).toBe('memory');
   });

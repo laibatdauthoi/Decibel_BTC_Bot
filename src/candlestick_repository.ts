@@ -37,6 +37,14 @@ const migrations = [
       ) WITHOUT ROWID;
     `,
   },
+  {
+    version: 2,
+    sql: `CREATE TABLE candlestick_market_symbols (
+      symbol TEXT PRIMARY KEY,
+      market_address TEXT NOT NULL UNIQUE,
+      observed_at_ms INTEGER NOT NULL
+    );`,
+  },
 ] as const;
 
 type stored_candle_row = {
@@ -72,6 +80,21 @@ export class candlestick_repository {
     this.database.pragma('journal_mode = WAL');
     this.database.pragma('foreign_keys = ON');
     this.applyMigrations();
+  }
+
+  saveMarketSymbol(
+    symbol: 'BTC/USD' | 'ETH/USD',
+    marketAddress: string,
+    observedAt = new Date(),
+  ): void {
+    if (!marketAddress) throw new Error('Candlestick market address is required');
+    this.database
+      .prepare(
+        `INSERT INTO candlestick_market_symbols(symbol,market_address,observed_at_ms)
+         VALUES(?,?,?) ON CONFLICT(symbol) DO UPDATE SET
+         market_address=excluded.market_address,observed_at_ms=excluded.observed_at_ms`,
+      )
+      .run(symbol, marketAddress, observedAt.getTime());
   }
 
   saveCandlesticks(history: BTC_candlestick_history): candlestick_write_result {
