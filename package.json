@@ -41,7 +41,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "backfill:eth": "tsx src/backfill_eth.ts",
-    "research:pair:btc-eth": "tsx src/btc_eth_pair_command.ts"
+    "research:pair:btc-eth": "tsx src/btc_eth_pair_command.ts",
+    "research:pair:btc-eth:alpha-discovery": "tsx src/btc_eth_pair_alpha_discovery_command.ts"
   },
   "repository": {
     "type": "git",
