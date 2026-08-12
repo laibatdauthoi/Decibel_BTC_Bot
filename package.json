@@ -42,7 +42,17 @@
     "format:check": "prettier --check .",
     "backfill:eth": "tsx src/backfill_eth.ts",
     "research:pair:btc-eth": "tsx src/btc_eth_pair_command.ts",
-    "research:pair:btc-eth:alpha-discovery": "tsx src/btc_eth_pair_alpha_discovery_command.ts"
+    "research:pair:btc-eth:alpha-discovery": "tsx src/btc_eth_pair_alpha_discovery_command.ts",
+    "research:btc:5m-wick-rejection": "tsx src/btc_5m_wick_rejection_research_command.ts",
+    "research:btc:5m-impulse-continuation": "tsx src/btc_5m_impulse_continuation_research_command.ts",
+    "research:btc:5m-impulse-pullback": "tsx src/btc_5m_impulse_pullback_research_command.ts",
+    "research:btc:5m-impulse-pullback-2r": "tsx src/btc_5m_impulse_pullback_2r_research_command.ts",
+    "research:btc:5m-impulse-feasibility": "tsx src/btc_5m_impulse_pullback_feasibility_audit_command.ts",
+    "research:btc:5m-impulse-pullback-5x-cost": "tsx src/btc_5m_impulse_pullback_5x_cost_research_command.ts",
+    "research:btc:5m-compression-count": "tsx src/btc_5m_compression_breakout_retest_count_command.ts",
+    "research:btc:5m-compression-breakout-retest-5x-cost": "tsx src/btc_5m_compression_breakout_retest_5x_cost_research_command.ts",
+    "research:btc:5m-failed-breakout-reversal-5x-cost": "tsx src/btc_5m_failed_breakout_reversal_5x_cost_research_command.ts",
+    "research:btc:5m-failed-breakout-structure-diagnostic": "tsx src/btc_5m_failed_breakout_reversal_structure_diagnostic_command.ts"
   },
   "repository": {
     "type": "git",
