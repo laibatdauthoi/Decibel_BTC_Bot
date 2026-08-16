@@ -121,7 +121,11 @@
     "research:btc:previous-1h-break-5m-retest-2r-fast-invalidation": "tsx src/btc_previous_1h_break_5m_retest_2r_fast_invalidation_command.ts",
     "research:btc:5m-sr-rejection-retest-fixed-risk-2r-v2": "tsx src/btc_5m_sr_rejection_retest_fixed_risk_2r_v2_command.ts",
     "research:btc:5m-sr-rejection-retest-rejection-risk-2r-v3": "tsx src/btc_5m_sr_rejection_retest_rejection_risk_2r_v3_command.ts",
-    "research:btc:5m-sr-rejection-retest-full-structure-risk-2r-v4": "tsx src/btc_5m_sr_rejection_retest_full_structure_risk_2r_v4_command.ts"
+    "research:btc:5m-sr-rejection-retest-full-structure-risk-2r-v4": "tsx src/btc_5m_sr_rejection_retest_full_structure_risk_2r_v4_command.ts",
+    "research:btc:5m-sr-v4-structural-anchor-stop-diagnostic": "tsx src/btc_5m_sr_v4_structural_anchor_hard_stop_feasibility_diagnostic_command.ts",
+    "research:btc:5m-sr-v4-anchor-hard-stop-locked": "tsx src/btc_5m_sr_v4_structural_anchor_hard_stop_locked_cohort_command.ts",
+    "research:btc:5m-sr-v4-hard-stop-depth-v1": "tsx src/btc_5m_sr_v4_hard_stop_depth_1r_1p5r_2r_locked_cohort_v1_command.ts",
+    "research:btc:5m-sr-v4-hard-stop-2r-prospective-v1": "tsx src/btc_5m_sr_v4_hard_stop_2r_prospective_replay_v1_command.ts"
   },
   "repository": {
     "type": "git",
