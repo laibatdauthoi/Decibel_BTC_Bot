@@ -10,6 +10,7 @@ import {
   buildDecibelOperatorUiCanaryCaptureV1,
   classifyDecibelOperatorUiOrderPlacementLineageV1,
   deduplicateDecibelOperatorUiOrderRowsV1,
+  getDecibelUiCaptureUnrelatedOpenOrderIdsV1,
   getDecibelUiCaptureBaselineRangeV1,
   matchDecibelOperatorUiCanaryOrdersV1,
   type decibel_ui_order_v1,
@@ -265,6 +266,8 @@ try {
           handoff,
           order,
           transaction: transactions.get(order.transactionVersion) ?? null,
+          authenticatedQuerySubaccount: handoff.subaccount,
+          authenticatedQuerySucceeded: true,
         }),
       ),
     );
@@ -303,12 +306,12 @@ try {
       positions.filter((value) => value.tp_order_id !== null || value.sl_order_id !== null).length >
       0;
     const unexpectedOpenOrder =
-      open.items.filter(
-        (value) =>
-          !baselineOrderIds.has(value.order_id) &&
-          !provenNonPlacementOrderIds.has(value.order_id) &&
-          !matching.some((order) => order.orderId === value.order_id),
-      ).length > 0;
+      getDecibelUiCaptureUnrelatedOpenOrderIdsV1({
+        openOrderIds: open.items.map((value) => value.order_id),
+        baselineOrderIds,
+        provenNonPlacementOrderIds,
+        matchingOrderIds: new Set(matching.map((order) => order.orderId)),
+      }).length > 0;
     exclusivityFailures = Object.freeze(
       [
         result.lineageBlocker,

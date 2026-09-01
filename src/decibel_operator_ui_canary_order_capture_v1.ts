@@ -45,6 +45,9 @@ export type decibel_ui_order_placement_lineage_classification_v1 =
 export type decibel_ui_order_placement_lineage_v1 = Readonly<{
   orderId: string;
   clientOrderId: string;
+  venueOrderParent: string;
+  authenticatedQuerySubaccount: string;
+  authenticatedQuerySucceeded: boolean;
   transactionVersion: number;
   transactionHash: string | null;
   entryFunction: string | null;
@@ -85,8 +88,48 @@ const normalize = (value: unknown) =>
     : typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value)
       ? Number(value)
       : value;
+export function decodeDecibelMoveAddressV1(value: unknown): string | null {
+  const candidate =
+    typeof value === 'string'
+      ? value
+      : value !== null &&
+          typeof value === 'object' &&
+          Object.keys(value).length === 1 &&
+          'inner' in value &&
+          typeof value.inner === 'string'
+        ? value.inner
+        : null;
+  return candidate !== null && /^0x[0-9a-f]+$/i.test(candidate) ? candidate : null;
+}
+
+export function decodeDecibelMoveOptionalStringV1(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Object.keys(value).length !== 1 ||
+    !('vec' in value) ||
+    !Array.isArray(value.vec)
+  )
+    return null;
+  if (value.vec.length === 0) return null;
+  return value.vec.length === 1 && typeof value.vec[0] === 'string' ? value.vec[0] : null;
+}
+
+function isDecibelMoveOptionalStringEncodingV1(value: unknown): boolean {
+  if (typeof value === 'string') return true;
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Object.keys(value).length !== 1 ||
+    !('vec' in value) ||
+    !Array.isArray(value.vec)
+  )
+    return false;
+  return value.vec.length === 0 || (value.vec.length === 1 && typeof value.vec[0] === 'string');
+}
 const sameAddress = (left: unknown, right: string) =>
-  typeof left === 'string' && left.toLowerCase() === right.toLowerCase();
+  decodeDecibelMoveAddressV1(left)?.toLowerCase() === right.toLowerCase();
 const sameWireNumber = (wire: unknown, value: number | null, scale: number) => {
   const numeric = normalize(wire);
   const equal = (left: number, right: number) =>
@@ -105,12 +148,17 @@ export function classifyDecibelOperatorUiOrderPlacementLineageV1(input: {
   handoff: decibel_minimal_live_canary_operator_handoff_v1;
   order: decibel_ui_order_v1;
   transaction: decibel_ui_transaction_v1 | null;
+  authenticatedQuerySubaccount: string;
+  authenticatedQuerySucceeded: boolean;
 }): decibel_ui_order_placement_lineage_v1 {
   const { order, transaction } = input;
   if (transaction?.entryFunction === null || transaction === null)
     return Object.freeze({
       orderId: order.orderId,
       clientOrderId: order.clientOrderId,
+      venueOrderParent: order.parent,
+      authenticatedQuerySubaccount: input.authenticatedQuerySubaccount,
+      authenticatedQuerySucceeded: input.authenticatedQuerySucceeded,
       transactionVersion: order.transactionVersion,
       transactionHash: transaction?.hash ?? null,
       entryFunction: transaction?.entryFunction ?? null,
@@ -122,6 +170,9 @@ export function classifyDecibelOperatorUiOrderPlacementLineageV1(input: {
     return Object.freeze({
       orderId: order.orderId,
       clientOrderId: order.clientOrderId,
+      venueOrderParent: order.parent,
+      authenticatedQuerySubaccount: input.authenticatedQuerySubaccount,
+      authenticatedQuerySucceeded: input.authenticatedQuerySucceeded,
       transactionVersion: order.transactionVersion,
       transactionHash: transaction.hash,
       entryFunction: transaction.entryFunction,
@@ -131,11 +182,15 @@ export function classifyDecibelOperatorUiOrderPlacementLineageV1(input: {
     });
   const args = transaction.arguments;
   let contradiction: string | null = null;
-  if (transaction.version !== order.transactionVersion)
+  if (!input.authenticatedQuerySucceeded)
+    contradiction = 'AUTHENTICATED_ORDER_HISTORY_QUERY_UNPROVEN';
+  else if (!sameAddress(input.authenticatedQuerySubaccount, input.handoff.subaccount))
+    contradiction = 'AUTHENTICATED_QUERY_SUBACCOUNT_MISMATCH';
+  else if (transaction.version !== order.transactionVersion)
     contradiction = 'PLACEMENT_TRANSACTION_VERSION_MISMATCH';
   else if (!transaction.success) contradiction = 'PLACEMENT_TRANSACTION_NOT_SUCCESSFUL';
   else if (args.length < 7) contradiction = 'PLACEMENT_PAYLOAD_INSUFFICIENT';
-  else if (!sameAddress(args[0], order.parent) || !sameAddress(args[0], input.handoff.subaccount))
+  else if (!sameAddress(args[0], input.handoff.subaccount))
     contradiction = 'PLACEMENT_SUBACCOUNT_MISMATCH';
   else if (
     !sameAddress(args[1], order.market) ||
@@ -149,16 +204,20 @@ export function classifyDecibelOperatorUiOrderPlacementLineageV1(input: {
   else if (normalize(args[4]) !== order.isBuy) contradiction = 'PLACEMENT_SIDE_MISMATCH';
   else if (normalize(args[5]) !== 1 || order.orderType.toLowerCase() !== 'limit')
     contradiction = 'PLACEMENT_ORDER_TYPE_MISMATCH';
+  else if (args.length >= 8 && !isDecibelMoveOptionalStringEncodingV1(args[7]))
+    contradiction = 'PLACEMENT_CLIENT_ORDER_ID_UNPROVEN';
   else if (
     args.length >= 8 &&
-    typeof args[7] === 'string' &&
-    args[7].length > 0 &&
-    args[7] !== order.clientOrderId
+    decodeDecibelMoveOptionalStringV1(args[7]) !== null &&
+    decodeDecibelMoveOptionalStringV1(args[7]) !== order.clientOrderId
   )
     contradiction = 'PLACEMENT_CLIENT_ORDER_ID_MISMATCH';
   return Object.freeze({
     orderId: order.orderId,
     clientOrderId: order.clientOrderId,
+    venueOrderParent: order.parent,
+    authenticatedQuerySubaccount: input.authenticatedQuerySubaccount,
+    authenticatedQuerySucceeded: input.authenticatedQuerySucceeded,
     transactionVersion: order.transactionVersion,
     transactionHash: transaction.hash,
     entryFunction: transaction.entryFunction,
@@ -211,15 +270,13 @@ export function matchDecibelOperatorUiCanaryOrdersV1(input: {
     (order) => lineageByOrderId.get(order.orderId)?.classification === 'UNPROVEN',
   );
   const relevantUnprovenRows = unprovenLineageRows.filter(
-    (order) =>
-      order.parent === input.handoff.subaccount && order.market === input.handoff.marketAddress,
+    (order) => order.market === input.handoff.marketAddress,
   );
   const contradictions = (input.placementLineage ?? []).filter(
     (value) => value.contradiction !== null,
   );
   const matching = newOrders.filter(
     (order) =>
-      order.parent === input.handoff.subaccount &&
       order.market === input.handoff.marketAddress &&
       order.isBuy === (input.handoff.side === 'BUY') &&
       order.price !== null &&
@@ -233,10 +290,7 @@ export function matchDecibelOperatorUiCanaryOrdersV1(input: {
   const sole = newOrders.length === 1 ? newOrders[0]! : null;
   let mismatchReason: decibel_ui_capture_classification_v1 | null = null;
   if (sole !== null) {
-    if (!sole.parent || sole.parent !== input.handoff.subaccount)
-      mismatchReason = 'UI_CANARY_ACCOUNT_UNPROVEN';
-    else if (sole.market !== input.handoff.marketAddress)
-      mismatchReason = 'UI_CANARY_MARKET_MISMATCH';
+    if (sole.market !== input.handoff.marketAddress) mismatchReason = 'UI_CANARY_MARKET_MISMATCH';
     else if (sole.isBuy !== (input.handoff.side === 'BUY'))
       mismatchReason = 'UI_CANARY_SIDE_MISMATCH';
     else if (
@@ -271,12 +325,34 @@ export function matchDecibelOperatorUiCanaryOrdersV1(input: {
     mismatchReason,
   });
 }
+
+export function getDecibelUiCaptureUnrelatedOpenOrderIdsV1(input: {
+  openOrderIds: readonly string[];
+  baselineOrderIds: ReadonlySet<string>;
+  provenNonPlacementOrderIds: ReadonlySet<string>;
+  matchingOrderIds: ReadonlySet<string>;
+}): readonly string[] {
+  return Object.freeze(
+    input.openOrderIds.filter(
+      (orderId) =>
+        !input.baselineOrderIds.has(orderId) &&
+        !input.provenNonPlacementOrderIds.has(orderId) &&
+        !input.matchingOrderIds.has(orderId),
+    ),
+  );
+}
 export function verifyDecibelOperatorUiTransactionIntentV1(input: {
   handoff: decibel_minimal_live_canary_operator_handoff_v1;
   transaction: decibel_ui_transaction_v1;
+  order?: decibel_ui_order_v1;
 }) {
   const args = input.transaction.arguments.map(normalize);
   if (input.transaction.entryFunction === null || args.length < 7) return 'UNPROVEN' as const;
+  if (args.length >= 8 && !isDecibelMoveOptionalStringEncodingV1(args[7]))
+    return 'UNPROVEN' as const;
+  const transactionClientOrderId =
+    args.length >= 8 ? decodeDecibelMoveOptionalStringV1(args[7]) : null;
+  if (transactionClientOrderId !== null && input.order === undefined) return 'UNPROVEN' as const;
   return input.transaction.entryFunction === input.handoff.entryFunction &&
     sameAddress(args[0], input.handoff.subaccount) &&
     sameAddress(args[1], input.handoff.marketAddress) &&
@@ -284,7 +360,8 @@ export function verifyDecibelOperatorUiTransactionIntentV1(input: {
     sameWireNumber(args[3], input.handoff.quantity, DECIBEL_SIZE_WIRE_SCALE) &&
     args[4] === (input.handoff.side === 'BUY') &&
     args[5] === 1 &&
-    args[6] === false
+    args[6] === false &&
+    (transactionClientOrderId === null || transactionClientOrderId === input.order?.clientOrderId)
     ? ('YES' as const)
     : ('NO' as const);
 }
@@ -316,6 +393,7 @@ export function buildDecibelOperatorUiCanaryCaptureV1(input: {
       : verifyDecibelOperatorUiTransactionIntentV1({
           handoff: input.handoff,
           transaction: input.transaction,
+          ...(order === null ? {} : { order }),
         });
   let classification: decibel_ui_capture_classification_v1;
   if (input.exclusivityFailures?.includes('ORDER_HISTORY_TRANSACTION_CONTRADICTION'))

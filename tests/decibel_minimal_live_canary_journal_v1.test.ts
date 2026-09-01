@@ -202,7 +202,7 @@ describe('Decibel Minimal Live Canary durable journal V1', () => {
     journal.close();
   });
 
-  it('does not rebound a failed UI capture handoff', () => {
+  it('does not auto-select a failed capture but permits an explicit same-handoff retry', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'decibel-canary-')), 'journal.sqlite');
     const value = fixture();
     const journal = new decibel_minimal_live_canary_journal_v1(path);
@@ -228,6 +228,12 @@ describe('Decibel Minimal Live Canary durable journal V1', () => {
     expect(journal.getOperatorHandoff(handoff.handoffPackageHash)?.state).toBe(
       'UI_ORDER_CAPTURE_FAILED',
     );
+    journal.recordHandoffState({
+      handoffPackageHash: handoff.handoffPackageHash,
+      state: 'UI_ORDER_CAPTURE_WAITING',
+      recordedAt: 4,
+    });
+    expect(journal.listUiCaptureEligibleHandoffs()).toEqual([handoff]);
     journal.close();
   });
 });

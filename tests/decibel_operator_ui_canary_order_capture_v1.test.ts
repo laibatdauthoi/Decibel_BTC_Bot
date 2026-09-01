@@ -1,10 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { decibel_minimal_live_canary_operator_handoff_v1 } from '../src/decibel_minimal_live_canary_operator_handoff_v1.js';
 import {
   DECIBEL_MAX_HISTORY_RANGE_MS,
   buildDecibelOperatorUiCanaryCaptureV1,
   classifyDecibelOperatorUiOrderPlacementLineageV1,
+  decodeDecibelMoveAddressV1,
+  decodeDecibelMoveOptionalStringV1,
+  getDecibelUiCaptureUnrelatedOpenOrderIdsV1,
   getDecibelUiCaptureBaselineRangeV1,
   matchDecibelOperatorUiCanaryOrdersV1,
   verifyDecibelOperatorUiTransactionIntentV1,
@@ -25,7 +29,7 @@ const handoff = {
   createdAt: 10,
   clientOrderId: 'planned',
   entryFunction: '0x3::m::f',
-} as never;
+} as unknown as decibel_minimal_live_canary_operator_handoff_v1;
 const order: decibel_ui_order_v1 = {
   parent: '0x1',
   market: '0x2',
@@ -58,7 +62,25 @@ const transaction = (
   arguments: args,
   timestamp: 12,
 });
+const authenticatedScope = {
+  authenticatedQuerySubaccount: '0x1',
+  authenticatedQuerySucceeded: true,
+} as const;
 describe('Decibel operator UI canary capture V1', () => {
+  it('strictly decodes primitive and wrapped Move addresses', () => {
+    expect(decodeDecibelMoveAddressV1('0xabc')).toBe('0xabc');
+    expect(decodeDecibelMoveAddressV1({ inner: '0xabc' })).toBe('0xabc');
+    expect(decodeDecibelMoveAddressV1({ inner: 123 })).toBeNull();
+    expect(decodeDecibelMoveAddressV1({ inner: '0xabc', extra: true })).toBeNull();
+  });
+
+  it('strictly decodes Move optional-vector client order IDs', () => {
+    expect(decodeDecibelMoveOptionalStringV1('client')).toBe('client');
+    expect(decodeDecibelMoveOptionalStringV1({ vec: ['client'] })).toBe('client');
+    expect(decodeDecibelMoveOptionalStringV1({ vec: [] })).toBeNull();
+    expect(decodeDecibelMoveOptionalStringV1({ vec: ['a', 'b'] })).toBeNull();
+    expect(decodeDecibelMoveOptionalStringV1({ vec: [123] })).toBeNull();
+  });
   it('bounds the immutable baseline at the handoff timestamp within Decibel history limits', () => {
     const createdAt = 1_788_291_394_650;
     const range = getDecibelUiCaptureBaselineRangeV1(createdAt);
@@ -126,7 +148,6 @@ describe('Decibel operator UI canary capture V1', () => {
       }).matching,
     ).toHaveLength(0));
   it.each([
-    ['parent', 'wrong'],
     ['market', 'wrong'],
     ['isBuy', false],
     ['price', 99.9],
@@ -218,11 +239,13 @@ describe('Decibel operator UI canary capture V1', () => {
     const validOrder = { ...order, orderId: 'valid-row', transactionVersion: 7035508419 };
     const placementLineage = [
       classifyDecibelOperatorUiOrderPlacementLineageV1({
+        ...authenticatedScope,
         handoff,
         order: adminOrder,
         transaction: transaction(7035507148, adminFunction),
       }),
       classifyDecibelOperatorUiOrderPlacementLineageV1({
+        ...authenticatedScope,
         handoff,
         order: validOrder,
         transaction: transaction(7035508419, placementFunction),
@@ -257,9 +280,112 @@ describe('Decibel operator UI canary capture V1', () => {
     expect(result.lineageBlocker).toBeNull();
   });
 
+  it('proves account scope from the authenticated query and transaction, not order.parent', () => {
+    const currentHandoff = {
+      ...handoff,
+      price: 76_916.9,
+      quantity: 0.00027,
+      entryFunction: placementFunction,
+    };
+    const differentlyParentedOrder = {
+      ...order,
+      orderId: '170141599249866108485528702512416161792',
+      clientOrderId: '64585957f9134b3e8d6ee952e9122535',
+      parent: 'venue-parent-is-not-subaccount',
+      price: 76_916.9,
+      origSize: 0.00027,
+      remainingSize: 0.00027,
+      transactionVersion: 7036650897,
+    };
+    const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...authenticatedScope,
+      handoff: currentHandoff,
+      order: differentlyParentedOrder,
+      transaction: transaction(7036650897, placementFunction, [
+        { inner: '0x1' },
+        { inner: '0x2' },
+        '76916900000',
+        '27000',
+        true,
+        1,
+        false,
+        { vec: ['64585957f9134b3e8d6ee952e9122535'] },
+      ]),
+    });
+    const result = matchDecibelOperatorUiCanaryOrdersV1({
+      handoff: currentHandoff,
+      baselineOrderIds: new Set(),
+      orders: [differentlyParentedOrder],
+      tickSize: 0.1,
+      lotSize: 0.00001,
+      placementLineage: [lineage],
+    });
+    expect(lineage).toMatchObject({
+      classification: 'PROVEN_OPERATOR_PLACEMENT',
+      contradiction: null,
+      venueOrderParent: 'venue-parent-is-not-subaccount',
+      authenticatedQuerySubaccount: '0x1',
+      authenticatedQuerySucceeded: true,
+    });
+    expect(result.matching).toEqual([differentlyParentedOrder]);
+    expect(
+      verifyDecibelOperatorUiTransactionIntentV1({
+        handoff: currentHandoff,
+        order: differentlyParentedOrder,
+        transaction: transaction(7036650897, placementFunction, [
+          { inner: '0x1' },
+          { inner: '0x2' },
+          '76916900000',
+          '27000',
+          true,
+          1,
+          false,
+          { vec: ['64585957f9134b3e8d6ee952e9122535'] },
+        ]),
+      }),
+    ).toBe('YES');
+  });
+
+  it.each([
+    ['unproven query', { authenticatedQuerySubaccount: '0x1', authenticatedQuerySucceeded: false }],
+    [
+      'wrong query subaccount',
+      { authenticatedQuerySubaccount: 'wrong', authenticatedQuerySucceeded: true },
+    ],
+  ] as const)('fails closed for %s scope', (_name, scope) => {
+    const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...scope,
+      handoff,
+      order,
+      transaction: transaction(7, placementFunction),
+    });
+    expect(lineage.classification).toBe('UNPROVEN');
+    expect(lineage.contradiction).not.toBeNull();
+  });
+
+  it('does not flag the matched canary open order but retains a genuine second open order', () => {
+    expect(
+      getDecibelUiCaptureUnrelatedOpenOrderIdsV1({
+        openOrderIds: ['o'],
+        baselineOrderIds: new Set(),
+        provenNonPlacementOrderIds: new Set(),
+        matchingOrderIds: new Set(['o']),
+      }),
+    ).toEqual([]);
+    expect(
+      getDecibelUiCaptureUnrelatedOpenOrderIdsV1({
+        openOrderIds: ['o', 'unrelated'],
+        baselineOrderIds: new Set(),
+        provenNonPlacementOrderIds: new Set(),
+        matchingOrderIds: new Set(['o']),
+      }),
+    ).toEqual(['unrelated']);
+  });
+
   it('deduplicates lifecycle rows before lineage-filtered exclusivity', () => {
     const duplicate = { ...order, status: 'Filled', unixMs: 12 };
     const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...authenticatedScope,
       handoff,
       order,
       transaction: transaction(7, placementFunction),
@@ -288,11 +414,13 @@ describe('Decibel operator UI canary capture V1', () => {
       lotSize: 0.01,
       placementLineage: [
         classifyDecibelOperatorUiOrderPlacementLineageV1({
+          ...authenticatedScope,
           handoff,
           order,
           transaction: transaction(7, placementFunction),
         }),
         classifyDecibelOperatorUiOrderPlacementLineageV1({
+          ...authenticatedScope,
           handoff,
           order: second,
           transaction: transaction(7, placementFunction, [
@@ -314,6 +442,7 @@ describe('Decibel operator UI canary capture V1', () => {
 
   it('fails closed when relevant placement lineage is unproven', () => {
     const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...authenticatedScope,
       handoff,
       order,
       transaction: null,
@@ -332,13 +461,15 @@ describe('Decibel operator UI canary capture V1', () => {
   });
 
   it.each([
-    ['subaccount', ['wrong', '0x2', 100_000_000, 1_000_000, true, 1, false]],
-    ['market', ['0x1', 'wrong', 100_000_000, 1_000_000, true, 1, false]],
+    ['subaccount', [{ inner: '0x999' }, { inner: '0x2' }, '100000000', '1000000', true, 1, false]],
+    ['market', [{ inner: '0x1' }, { inner: '0x999' }, '100000000', '1000000', true, 1, false]],
     ['price', ['0x1', '0x2', 99_000_000, 1_000_000, true, 1, false]],
     ['quantity', ['0x1', '0x2', 100_000_000, 2_000_000, true, 1, false]],
     ['side', ['0x1', '0x2', 100_000_000, 1_000_000, false, 1, false]],
+    ['limit wire type', ['0x1', '0x2', 100_000_000, 1_000_000, true, 2, false]],
   ] as const)('fails closed on order-history transaction %s contradiction', (_field, args) => {
     const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...authenticatedScope,
       handoff,
       order,
       transaction: transaction(7, placementFunction, args),
@@ -357,9 +488,46 @@ describe('Decibel operator UI canary capture V1', () => {
     expect(result.activityExclusivity).toBe(false);
   });
 
+  it('fails closed for an ambiguous multi-element client-order vector', () => {
+    const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...authenticatedScope,
+      handoff,
+      order,
+      transaction: transaction(7, placementFunction, [
+        { inner: '0x1' },
+        { inner: '0x2' },
+        '100000000',
+        '1000000',
+        true,
+        1,
+        false,
+        { vec: ['a', 'b'] },
+      ]),
+    });
+    expect(lineage).toMatchObject({
+      classification: 'UNPROVEN',
+      contradiction: 'PLACEMENT_CLIENT_ORDER_ID_UNPROVEN',
+    });
+  });
+
+  it('fails closed when the authoritative placement transaction failed', () => {
+    const failedTransaction = { ...transaction(7, placementFunction), success: false };
+    const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...authenticatedScope,
+      handoff,
+      order,
+      transaction: failedTransaction,
+    });
+    expect(lineage).toMatchObject({
+      classification: 'UNPROVEN',
+      contradiction: 'PLACEMENT_TRANSACTION_NOT_SUCCESSFUL',
+    });
+  });
+
   it('includes non-placement diagnostics and zero mutation counters in the capture artifact', () => {
     const adminOrder = { ...order, orderId: 'admin-row', transactionVersion: 7035507148 };
     const lineage = classifyDecibelOperatorUiOrderPlacementLineageV1({
+      ...authenticatedScope,
       handoff,
       order: adminOrder,
       transaction: transaction(7035507148, adminFunction),
