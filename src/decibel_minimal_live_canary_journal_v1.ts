@@ -8,6 +8,15 @@ import type {
 } from './decibel_minimal_live_canary_v1.js';
 import { assertDecibelDeterministicCanarySideIdentityV1 } from './decibel_minimal_live_canary_v1.js';
 import type { DecibelMinimalLiveCanaryExecutionPackageV1 } from './decibel_minimal_live_canary_execution_package_v1.js';
+import type { decibel_minimal_live_canary_operator_handoff_v1 } from './decibel_minimal_live_canary_operator_handoff_v1.js';
+
+export type decibel_minimal_live_canary_handoff_state_v1 =
+  | 'HANDOFF_PREPARED'
+  | 'HANDOFF_READY_FOR_OPERATOR'
+  | 'OPERATOR_TRANSACTION_OBSERVED'
+  | 'TRANSACTION_FINALIZED'
+  | 'CANARY_RECONCILED'
+  | 'CANARY_UNRESOLVED';
 
 export type decibel_minimal_live_canary_journal_record_v1 = Readonly<{
   canaryId: string;
@@ -70,7 +79,91 @@ export class decibel_minimal_live_canary_journal_v1 {
         live_execution_enabled INTEGER NOT NULL CHECK(live_execution_enabled = 0),
         FOREIGN KEY(canary_id) REFERENCES decibel_minimal_live_canary_journal_v1(canary_id)
       );
+      CREATE TABLE IF NOT EXISTS decibel_minimal_live_canary_handoffs_v1 (
+        handoff_package_hash TEXT PRIMARY KEY,
+        canary_id TEXT NOT NULL,
+        handoff_json TEXT NOT NULL,
+        state TEXT NOT NULL,
+        operator_transaction_hash TEXT,
+        reconciliation_json TEXT,
+        updated_at INTEGER NOT NULL,
+        live_execution_enabled INTEGER NOT NULL CHECK(live_execution_enabled = 0)
+      );
     `);
+  }
+
+  public recordOperatorHandoff(value: decibel_minimal_live_canary_operator_handoff_v1): void {
+    this.requireIdentity(value.canaryId, value.configHash);
+    const existing = this.getOperatorHandoff(value.handoffPackageHash);
+    if (existing !== null) {
+      if (JSON.stringify(existing.handoff) !== JSON.stringify(value))
+        throw new Error('CANARY_HANDOFF_IDENTITY_CONFLICT');
+      return;
+    }
+    this.database
+      .prepare(`INSERT INTO decibel_minimal_live_canary_handoffs_v1 VALUES (?,?,?,?,NULL,NULL,?,0)`)
+      .run(
+        value.handoffPackageHash,
+        value.canaryId,
+        JSON.stringify(value),
+        value.journalStatus,
+        value.createdAt,
+      );
+  }
+
+  public getOperatorHandoff(handoffPackageHash: string): Readonly<{
+    handoff: decibel_minimal_live_canary_operator_handoff_v1;
+    state: decibel_minimal_live_canary_handoff_state_v1;
+    operatorTransactionHash: string | null;
+  }> | null {
+    const row = this.database
+      .prepare(
+        `SELECT handoff_json AS handoffJson, state, operator_transaction_hash AS operatorTransactionHash FROM decibel_minimal_live_canary_handoffs_v1 WHERE handoff_package_hash = ?`,
+      )
+      .get(handoffPackageHash) as
+      | {
+          handoffJson: string;
+          state: decibel_minimal_live_canary_handoff_state_v1;
+          operatorTransactionHash: string | null;
+        }
+      | undefined;
+    return row === undefined
+      ? null
+      : Object.freeze({
+          handoff: JSON.parse(row.handoffJson) as decibel_minimal_live_canary_operator_handoff_v1,
+          state: row.state,
+          operatorTransactionHash: row.operatorTransactionHash,
+        });
+  }
+
+  public recordHandoffState(input: {
+    handoffPackageHash: string;
+    state: decibel_minimal_live_canary_handoff_state_v1;
+    transactionHash?: string;
+    reconciliation?: unknown;
+    recordedAt: number;
+  }): void {
+    const prior = this.getOperatorHandoff(input.handoffPackageHash);
+    if (prior === null) throw new Error('CANARY_HANDOFF_NOT_FOUND');
+    if (input.transactionHash !== undefined && !/^0x[0-9a-f]{64}$/i.test(input.transactionHash))
+      throw new Error('CANARY_TRANSACTION_HASH_INVALID');
+    if (
+      prior.operatorTransactionHash !== null &&
+      input.transactionHash !== undefined &&
+      prior.operatorTransactionHash !== input.transactionHash
+    )
+      throw new Error('CANARY_TRANSACTION_HASH_CONFLICT');
+    this.database
+      .prepare(
+        `UPDATE decibel_minimal_live_canary_handoffs_v1 SET state=?, operator_transaction_hash=COALESCE(operator_transaction_hash,?), reconciliation_json=COALESCE(?,reconciliation_json), updated_at=? WHERE handoff_package_hash=?`,
+      )
+      .run(
+        input.state,
+        input.transactionHash ?? null,
+        input.reconciliation === undefined ? null : JSON.stringify(input.reconciliation),
+        input.recordedAt,
+        input.handoffPackageHash,
+      );
   }
 
   public recordExecutionPackage(value: DecibelMinimalLiveCanaryExecutionPackageV1): void {
@@ -110,7 +203,7 @@ export class decibel_minimal_live_canary_journal_v1 {
         ...value.transaction,
         payload: { ...value.transaction.payload, functionArguments: args },
       },
-    } as DecibelMinimalLiveCanaryExecutionPackageV1;
+    } as unknown as DecibelMinimalLiveCanaryExecutionPackageV1;
   }
 
   public prepare(input: {
@@ -272,6 +365,47 @@ export class decibel_minimal_live_canary_journal_v1 {
       canaryCount: counts.canaryCount,
       liveExecutionEnabled: false,
     });
+  }
+
+  public retireUnsubmittedPrepared(input: { recordedAt: number }): number {
+    if (!Number.isSafeInteger(input.recordedAt)) throw new Error('CANARY_RECORDED_AT_INVALID');
+    const result = this.database
+      .prepare(
+        `UPDATE decibel_minimal_live_canary_journal_v1
+         SET state = 'COMPLETE', updated_at = ?
+         WHERE state = 'PREPARED' AND place_transaction_hash IS NULL`,
+      )
+      .run(input.recordedAt);
+    return result.changes;
+  }
+
+  public listReconciliationEligibleHandoffs(): readonly Readonly<{
+    handoff: decibel_minimal_live_canary_operator_handoff_v1;
+    state: decibel_minimal_live_canary_handoff_state_v1;
+    operatorTransactionHash: string | null;
+  }>[] {
+    const rows = this.database
+      .prepare(
+        `SELECT handoff_json AS handoffJson, state,
+          operator_transaction_hash AS operatorTransactionHash
+         FROM decibel_minimal_live_canary_handoffs_v1
+         WHERE state IN ('HANDOFF_READY_FOR_OPERATOR','OPERATOR_TRANSACTION_OBSERVED')
+         ORDER BY updated_at, handoff_package_hash`,
+      )
+      .all() as readonly {
+      handoffJson: string;
+      state: decibel_minimal_live_canary_handoff_state_v1;
+      operatorTransactionHash: string | null;
+    }[];
+    return Object.freeze(
+      rows.map((row) =>
+        Object.freeze({
+          handoff: JSON.parse(row.handoffJson) as decibel_minimal_live_canary_operator_handoff_v1,
+          state: row.state,
+          operatorTransactionHash: row.operatorTransactionHash,
+        }),
+      ),
+    );
   }
 
   private requireIdentity(canaryId: string, canaryConfigHash: string) {
