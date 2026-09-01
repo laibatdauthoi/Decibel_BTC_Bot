@@ -23,15 +23,26 @@ export type decibel_canary_authenticated_fill_v1 = Readonly<{
   isRebate: boolean;
 }>;
 
+export type decibel_canary_actual_order_identity_v1 = Readonly<{
+  venueOrderId: string;
+  venueClientOrderId: string;
+  transactionVersion: number;
+  transactionHash: string;
+}>;
+
 export function reconcileDecibelMinimalLiveCanaryPostExecutionV1(input: {
   handoff: decibel_minimal_live_canary_operator_handoff_v1;
+  actualOrderIdentity: decibel_canary_actual_order_identity_v1;
   providedTransactionHash: string;
   finality: Readonly<{
     status: 'PENDING' | 'NOT_FOUND' | 'FINALIZED_SUCCESS' | 'FINALIZED_FAILURE';
     transactionVersion?: number;
     vmStatus?: string;
   }>;
-  transactionIdentityMatch: boolean;
+  captureIdentityMatch: boolean;
+  canonicalTransactionIntentMatch: boolean;
+  orderIdentityMatch: boolean;
+  openOrderIdentityMatch: boolean;
   fills: readonly decibel_canary_authenticated_fill_v1[];
   makerStatusProven: boolean;
   openOrderState: 'ABSENT' | 'OPEN_UNFILLED' | 'OPEN_PARTIALLY_FILLED' | 'UNKNOWN';
@@ -47,9 +58,21 @@ export function reconcileDecibelMinimalLiveCanaryPostExecutionV1(input: {
   if (!/^0x[0-9a-f]{64}$/i.test(input.providedTransactionHash))
     throw new Error('TRANSACTION_HASH_REQUIRED');
   const unique = new Map<string, decibel_canary_authenticated_fill_v1>();
-  let identityConflict = !input.transactionIdentityMatch;
+  let identityConflict =
+    !input.captureIdentityMatch ||
+    !input.canonicalTransactionIntentMatch ||
+    !input.orderIdentityMatch ||
+    !input.openOrderIdentityMatch ||
+    input.providedTransactionHash.toLowerCase() !==
+      input.actualOrderIdentity.transactionHash.toLowerCase() ||
+    (input.finality.transactionVersion !== undefined &&
+      input.finality.transactionVersion !== input.actualOrderIdentity.transactionVersion);
   for (const fill of input.fills) {
-    if (fill.source !== 'OrderFill' || fill.clientOrderId !== input.handoff.clientOrderId)
+    if (
+      fill.source !== 'OrderFill' ||
+      fill.orderId !== input.actualOrderIdentity.venueOrderId ||
+      fill.clientOrderId !== input.actualOrderIdentity.venueClientOrderId
+    )
       identityConflict = true;
     const prior = unique.get(fill.tradeId);
     if (prior !== undefined && JSON.stringify(prior) !== JSON.stringify(fill))
@@ -94,12 +117,20 @@ export function reconcileDecibelMinimalLiveCanaryPostExecutionV1(input: {
     executionSessionId: input.handoff.executionSessionId,
     providedTransactionHash: input.providedTransactionHash,
     precommittedTransactionHash: input.handoff.precommittedTransactionHash,
+    plannedClientOrderId: input.handoff.clientOrderId,
+    venueClientOrderId: input.actualOrderIdentity.venueClientOrderId,
+    venueOrderId: input.actualOrderIdentity.venueOrderId,
+    capturedTransactionVersion: input.actualOrderIdentity.transactionVersion,
+    capturedTransactionHash: input.actualOrderIdentity.transactionHash,
+    captureIdentityMatch: input.captureIdentityMatch,
+    canonicalTransactionIntentMatch: input.canonicalTransactionIntentMatch,
+    orderIdentityMatch: input.orderIdentityMatch,
+    openOrderIdentityMatch: input.openOrderIdentityMatch,
     transactionIdentityMatch: !identityConflict,
     transactionFinality: input.finality.status,
     transactionVersion: input.finality.transactionVersion ?? null,
     transactionSuccess: input.finality.status === 'FINALIZED_SUCCESS',
     vmStatus: input.finality.vmStatus ?? null,
-    clientOrderId: input.handoff.clientOrderId,
     side: input.handoff.side,
     orderPrice: input.handoff.price,
     orderQuantity: input.handoff.quantity,

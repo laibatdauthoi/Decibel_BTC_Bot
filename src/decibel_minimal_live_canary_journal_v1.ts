@@ -497,6 +497,52 @@ export class decibel_minimal_live_canary_journal_v1 {
     });
   }
 
+  public getUiOrderCaptureByHandoffPackageHash(handoffPackageHash: string): Readonly<{
+    handoffPackageHash: string;
+    canaryId: string;
+    executionSessionId: string;
+    executionPackageHash: string;
+    plannedClientOrderId: string;
+    venueOrderId: string;
+    venueClientOrderId: string;
+    transactionVersion: number;
+    transactionHash: string;
+    capturedAt: number;
+    captureEvidenceHash: string;
+  }> | null {
+    const rows = this.database
+      .prepare(
+        `SELECT handoff_package_hash AS handoffPackageHash,
+          canary_id AS canaryId,
+          execution_session_id AS executionSessionId,
+          execution_package_hash AS executionPackageHash,
+          planned_client_order_id AS plannedClientOrderId,
+          venue_order_id AS venueOrderId,
+          venue_client_order_id AS venueClientOrderId,
+          transaction_version AS transactionVersion,
+          transaction_hash AS transactionHash,
+          captured_at AS capturedAt,
+          capture_evidence_hash AS captureEvidenceHash
+         FROM decibel_operator_ui_canary_capture_v1
+         WHERE handoff_package_hash=?`,
+      )
+      .all(handoffPackageHash) as readonly {
+      handoffPackageHash: string;
+      canaryId: string;
+      executionSessionId: string;
+      executionPackageHash: string;
+      plannedClientOrderId: string;
+      venueOrderId: string;
+      venueClientOrderId: string;
+      transactionVersion: number;
+      transactionHash: string;
+      capturedAt: number;
+      captureEvidenceHash: string;
+    }[];
+    if (rows.length > 1) throw new Error('UI_CANARY_CAPTURE_IDENTITY_CONFLICT');
+    return rows[0] === undefined ? null : Object.freeze(rows[0]);
+  }
+
   private requireIdentity(canaryId: string, canaryConfigHash: string) {
     const record = this.get(canaryId);
     if (record === null) throw new Error('CANARY_JOURNAL_NOT_FOUND');

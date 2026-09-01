@@ -199,6 +199,29 @@ describe('Decibel Minimal Live Canary durable journal V1', () => {
       handoff,
       state: 'UI_ORDER_CAPTURE_WAITING',
     });
+    journal.recordUiOrderCapture({
+      handoff,
+      venueOrderId: 'venue-order',
+      venueClientOrderId: 'venue-client-order',
+      transactionVersion: 7,
+      transactionHash: `0x${'c'.repeat(64)}`,
+      capturedAt: 4,
+      captureEvidenceHash: 'capture-evidence',
+    });
+    expect(journal.getUiOrderCaptureByHandoffPackageHash(handoff.handoffPackageHash)).toEqual({
+      handoffPackageHash: handoff.handoffPackageHash,
+      canaryId: handoff.canaryId,
+      executionSessionId: handoff.executionSessionId,
+      executionPackageHash: handoff.executionPackageHash,
+      plannedClientOrderId: handoff.clientOrderId,
+      venueOrderId: 'venue-order',
+      venueClientOrderId: 'venue-client-order',
+      transactionVersion: 7,
+      transactionHash: `0x${'c'.repeat(64)}`,
+      capturedAt: 4,
+      captureEvidenceHash: 'capture-evidence',
+    });
+    expect(journal.getUiOrderCaptureByHandoffPackageHash('missing')).toBeNull();
     journal.close();
   });
 

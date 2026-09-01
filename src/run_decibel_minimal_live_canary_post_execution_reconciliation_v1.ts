@@ -7,6 +7,11 @@ import { loadConfig } from './config.js';
 import { decibel_minimal_live_canary_journal_v1 } from './decibel_minimal_live_canary_journal_v1.js';
 import type { decibel_minimal_live_canary_operator_handoff_v1 } from './decibel_minimal_live_canary_operator_handoff_v1.js';
 import {
+  verifyDecibelOperatorUiTransactionIntentV1,
+  type decibel_ui_order_v1,
+  type decibel_ui_transaction_v1,
+} from './decibel_operator_ui_canary_order_capture_v1.js';
+import {
   reconcileDecibelMinimalLiveCanaryPostExecutionV1,
   type decibel_canary_authenticated_fill_v1,
 } from './decibel_minimal_live_canary_post_execution_reconciliation_v1.js';
@@ -67,6 +72,21 @@ if (supplied !== undefined) {
   if (match === undefined) throw new Error('HANDOFF_ARTIFACT_NOT_FOUND');
   handoffArtifactPath = resolve('data', match);
 }
+const capture = Journal.getUiOrderCaptureByHandoffPackageHash(handoff.handoffPackageHash);
+if (capture === null) {
+  Journal.close();
+  throw new Error('CANARY_UI_CAPTURE_REQUIRED');
+}
+const captureIdentityMatch =
+  capture.canaryId === handoff.canaryId &&
+  capture.executionSessionId === handoff.executionSessionId &&
+  capture.executionPackageHash === handoff.executionPackageHash &&
+  capture.plannedClientOrderId === handoff.clientOrderId &&
+  capture.transactionHash.toLowerCase() === txHash.toLowerCase();
+if (!captureIdentityMatch) {
+  Journal.close();
+  throw new Error('CANARY_CAPTURE_HANDOFF_IDENTITY_CONFLICT');
+}
 Journal.recordHandoffState({
   handoffPackageHash: handoff.handoffPackageHash,
   state: 'OPERATOR_TRANSACTION_OBSERVED',
@@ -126,19 +146,6 @@ const finality: Readonly<{
             transactionVersion: Number(transaction.version),
             ...(transaction.vm_status === undefined ? {} : { vmStatus: transaction.vm_status }),
           };
-const normalize = (value: unknown) =>
-  value === null
-    ? undefined
-    : typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value)
-      ? Number(value)
-      : value;
-const observedArguments = transaction?.payload?.arguments?.map(normalize) ?? [];
-const expectedArguments = handoff.entryArguments.map(normalize);
-const transactionIdentityMatch =
-  transaction !== null &&
-  transaction.hash?.toLowerCase() === txHash.toLowerCase() &&
-  transaction.payload?.function === handoff.entryFunction &&
-  JSON.stringify(observedArguments) === JSON.stringify(expectedArguments);
 const Reader = new DecibelReadDex(
   MAINNET_CONFIG,
   config.nodeApiKey === undefined ? {} : { nodeApiKey: config.nodeApiKey },
@@ -171,40 +178,86 @@ const [history, orders, openResponse, positions, twaps, bulkRows] = await Promis
   Reader.userActiveTwaps.getByAddr({ subAddr: handoff.subaccount }),
   Reader.userBulkOrders.getByAddr({ subAddr: handoff.subaccount, market: handoff.marketAddress }),
 ]);
-const exactOrders = orders.items.filter(
-  (order) =>
-    order.client_order_id === handoff.clientOrderId && order.market === handoff.marketAddress,
-);
-const orderId =
-  exactOrders[0]?.order_id ??
-  openResponse.items.find((order) => order.client_order_id === handoff.clientOrderId)?.order_id ??
-  null;
+const exactOrders = orders.items.filter((order) => order.order_id === capture.venueOrderId);
+const exactOrder = exactOrders[0] ?? null;
+const normalizedExactOrder: decibel_ui_order_v1 | null =
+  exactOrder === null
+    ? null
+    : {
+        parent: exactOrder.parent,
+        market: exactOrder.market,
+        clientOrderId: exactOrder.client_order_id,
+        orderId: exactOrder.order_id,
+        status: exactOrder.status,
+        orderType: exactOrder.order_type,
+        isBuy: exactOrder.is_buy,
+        origSize: exactOrder.orig_size,
+        remainingSize: exactOrder.remaining_size,
+        price: exactOrder.price,
+        transactionVersion: exactOrder.transaction_version,
+        unixMs: exactOrder.unix_ms,
+      };
+const observedTransaction: decibel_ui_transaction_v1 | null =
+  transaction === null || typeof transaction.hash !== 'string'
+    ? null
+    : {
+        hash: transaction.hash,
+        version: Number(transaction.version),
+        success: transaction.success === true,
+        vmStatus: transaction.vm_status ?? null,
+        sender: transaction.sender ?? null,
+        entryFunction: transaction.payload?.function ?? null,
+        arguments: transaction.payload?.arguments ?? [],
+        timestamp:
+          transaction.timestamp === undefined
+            ? null
+            : Number(BigInt(transaction.timestamp) / 1000n),
+      };
+const canonicalTransactionIntentMatch =
+  observedTransaction !== null &&
+  normalizedExactOrder !== null &&
+  observedTransaction.hash.toLowerCase() === capture.transactionHash.toLowerCase() &&
+  observedTransaction.version === capture.transactionVersion &&
+  verifyDecibelOperatorUiTransactionIntentV1({
+    handoff,
+    transaction: observedTransaction,
+    order: normalizedExactOrder,
+  }) === 'YES';
+const orderIdentityMatch =
+  exactOrders.length > 0 &&
+  exactOrder !== null &&
+  exactOrders.every(
+    (order) =>
+      order.client_order_id === capture.venueClientOrderId &&
+      order.market === handoff.marketAddress &&
+      order.is_buy === (handoff.side === 'BUY') &&
+      order.price === handoff.price &&
+      order.orig_size === handoff.quantity &&
+      order.order_type.toLowerCase() === 'limit',
+  );
 const relevant = history.items.filter(
-  (row) =>
-    row.source === 'OrderFill' &&
-    (row.client_order_id === handoff.clientOrderId ||
-      (orderId !== null && row.order_id === orderId)),
+  (row) => row.source === 'OrderFill' && row.order_id === capture.venueOrderId,
 );
 const fills: decibel_canary_authenticated_fill_v1[] = relevant.map((row) => ({
   source: 'OrderFill',
   tradeId: row.trade_id,
   orderId: row.order_id,
-  clientOrderId: row.client_order_id ?? handoff.clientOrderId,
+  clientOrderId: row.client_order_id ?? capture.venueClientOrderId,
   size: row.size,
   price: row.price,
   transactionVersion: row.transaction_version,
   feeAmount: row.fee_amount,
   isRebate: row.is_rebate,
 }));
-const canaryOpen = openResponse.items.find(
-  (order) => order.client_order_id === handoff.clientOrderId,
-);
+const canaryOpen = openResponse.items.find((order) => order.order_id === capture.venueOrderId);
+const openOrderIdentityMatch =
+  canaryOpen === undefined || canaryOpen.client_order_id === capture.venueClientOrderId;
 const filled = fills.reduce((sum, value) => sum + value.size, 0);
 const remaining = canaryOpen?.remaining_size ?? Math.max(0, handoff.quantity - filled);
 const openOrderState =
   canaryOpen === undefined ? 'ABSENT' : filled === 0 ? 'OPEN_UNFILLED' : 'OPEN_PARTIALLY_FILLED';
 const unknownOrders = openResponse.items.filter(
-  (order) => order.client_order_id !== handoff.clientOrderId,
+  (order) => order.order_id !== capture.venueOrderId,
 ).length;
 const unknownFills = history.items.filter(
   (row) => row.source === 'OrderFill' && !relevant.some((known) => known.trade_id === row.trade_id),
@@ -218,16 +271,27 @@ const bulk = resolveDecibelBulkOrderActivityV1({
 const endingPosition = positions[0]?.size ?? 0;
 const expectedPosition = handoff.side === 'BUY' ? filled : -filled;
 const makerStatusProven =
-  transactionIdentityMatch &&
+  captureIdentityMatch &&
+  canonicalTransactionIntentMatch &&
   handoff.postOnly &&
-  handoff.entryArguments[5] === 1 &&
-  (exactOrders.length === 1 ||
-    relevant.some((row) => row.client_order_id === handoff.clientOrderId));
+  orderIdentityMatch &&
+  relevant.every(
+    (row) => row.client_order_id === null || row.client_order_id === capture.venueClientOrderId,
+  );
 const report = reconcileDecibelMinimalLiveCanaryPostExecutionV1({
   handoff,
+  actualOrderIdentity: {
+    venueOrderId: capture.venueOrderId,
+    venueClientOrderId: capture.venueClientOrderId,
+    transactionVersion: capture.transactionVersion,
+    transactionHash: capture.transactionHash,
+  },
   providedTransactionHash: txHash,
   finality,
-  transactionIdentityMatch,
+  captureIdentityMatch,
+  canonicalTransactionIntentMatch,
+  orderIdentityMatch,
+  openOrderIdentityMatch,
   fills,
   makerStatusProven,
   openOrderState,
@@ -265,7 +329,7 @@ writeFileSync(
   { flag: 'wx' },
 );
 console.log(`CLASSIFICATION=${report.classification}`);
-console.log(`CANARY_TRANSACTION_IDENTITY_MATCH=${transactionIdentityMatch ? 'YES' : 'NO'}`);
+console.log(`CANARY_TRANSACTION_IDENTITY_MATCH=${report.transactionIdentityMatch ? 'YES' : 'NO'}`);
 console.log(`CANARY_RECONCILED=${report.canaryReconciled ? 'YES' : 'NO'}`);
 console.log('LIVE_EXECUTION_ENABLED=false');
 console.log('VENUE_MUTATION_ENABLED=false');
