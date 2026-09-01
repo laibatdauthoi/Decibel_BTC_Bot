@@ -16,7 +16,10 @@ export type decibel_minimal_live_canary_handoff_state_v1 =
   | 'OPERATOR_TRANSACTION_OBSERVED'
   | 'TRANSACTION_FINALIZED'
   | 'CANARY_RECONCILED'
-  | 'CANARY_UNRESOLVED';
+  | 'CANARY_UNRESOLVED'
+  | 'UI_ORDER_CAPTURE_WAITING'
+  | 'UI_ORDER_CAPTURED'
+  | 'UI_ORDER_CAPTURE_FAILED';
 
 export type decibel_minimal_live_canary_journal_record_v1 = Readonly<{
   canaryId: string;
@@ -87,6 +90,20 @@ export class decibel_minimal_live_canary_journal_v1 {
         operator_transaction_hash TEXT,
         reconciliation_json TEXT,
         updated_at INTEGER NOT NULL,
+        live_execution_enabled INTEGER NOT NULL CHECK(live_execution_enabled = 0)
+      );
+      CREATE TABLE IF NOT EXISTS decibel_operator_ui_canary_capture_v1 (
+        handoff_package_hash TEXT PRIMARY KEY,
+        canary_id TEXT NOT NULL UNIQUE,
+        execution_session_id TEXT NOT NULL UNIQUE,
+        execution_package_hash TEXT NOT NULL,
+        planned_client_order_id TEXT NOT NULL,
+        venue_order_id TEXT NOT NULL UNIQUE,
+        venue_client_order_id TEXT NOT NULL,
+        transaction_version INTEGER NOT NULL,
+        transaction_hash TEXT NOT NULL UNIQUE,
+        captured_at INTEGER NOT NULL,
+        capture_evidence_hash TEXT NOT NULL UNIQUE,
         live_execution_enabled INTEGER NOT NULL CHECK(live_execution_enabled = 0)
       );
     `);
@@ -389,7 +406,7 @@ export class decibel_minimal_live_canary_journal_v1 {
         `SELECT handoff_json AS handoffJson, state,
           operator_transaction_hash AS operatorTransactionHash
          FROM decibel_minimal_live_canary_handoffs_v1
-         WHERE state IN ('HANDOFF_READY_FOR_OPERATOR','OPERATOR_TRANSACTION_OBSERVED')
+         WHERE state IN ('HANDOFF_READY_FOR_OPERATOR','OPERATOR_TRANSACTION_OBSERVED','UI_ORDER_CAPTURED')
          ORDER BY updated_at, handoff_package_hash`,
       )
       .all() as readonly {
@@ -406,6 +423,78 @@ export class decibel_minimal_live_canary_journal_v1 {
         }),
       ),
     );
+  }
+
+  public listUiCaptureEligibleHandoffs(): readonly decibel_minimal_live_canary_operator_handoff_v1[] {
+    const rows = this.database
+      .prepare(
+        `SELECT handoff_json AS handoffJson FROM decibel_minimal_live_canary_handoffs_v1 WHERE state IN ('HANDOFF_READY_FOR_OPERATOR','UI_ORDER_CAPTURE_WAITING') ORDER BY updated_at, handoff_package_hash`,
+      )
+      .all() as readonly { handoffJson: string }[];
+    return Object.freeze(
+      rows.map(
+        (row) => JSON.parse(row.handoffJson) as decibel_minimal_live_canary_operator_handoff_v1,
+      ),
+    );
+  }
+
+  public recordUiOrderCapture(input: {
+    handoff: decibel_minimal_live_canary_operator_handoff_v1;
+    venueOrderId: string;
+    venueClientOrderId: string;
+    transactionVersion: number;
+    transactionHash: string;
+    capturedAt: number;
+    captureEvidenceHash: string;
+  }): void {
+    this.requireIdentity(input.handoff.canaryId, input.handoff.configHash);
+    if (
+      !input.venueOrderId ||
+      !input.venueClientOrderId ||
+      !Number.isSafeInteger(input.transactionVersion) ||
+      !/^0x[0-9a-f]{64}$/i.test(input.transactionHash) ||
+      !input.captureEvidenceHash
+    )
+      throw new Error('UI_CANARY_CAPTURE_IDENTITY_INVALID');
+    const existing = this.database
+      .prepare(
+        `SELECT handoff_package_hash AS handoffPackageHash, venue_order_id AS venueOrderId, transaction_hash AS transactionHash FROM decibel_operator_ui_canary_capture_v1 WHERE handoff_package_hash=? OR venue_order_id=?`,
+      )
+      .all(input.handoff.handoffPackageHash, input.venueOrderId) as readonly {
+      handoffPackageHash: string;
+      venueOrderId: string;
+      transactionHash: string;
+    }[];
+    if (existing.length > 0) {
+      const exact =
+        existing.length === 1 &&
+        existing[0]!.handoffPackageHash === input.handoff.handoffPackageHash &&
+        existing[0]!.venueOrderId === input.venueOrderId &&
+        existing[0]!.transactionHash === input.transactionHash;
+      if (!exact) throw new Error('UI_CANARY_CAPTURE_IDENTITY_CONFLICT');
+      return;
+    }
+    this.database
+      .prepare(`INSERT INTO decibel_operator_ui_canary_capture_v1 VALUES (?,?,?,?,?,?,?,?,?,?,?,0)`)
+      .run(
+        input.handoff.handoffPackageHash,
+        input.handoff.canaryId,
+        input.handoff.executionSessionId,
+        input.handoff.executionPackageHash,
+        input.handoff.clientOrderId,
+        input.venueOrderId,
+        input.venueClientOrderId,
+        input.transactionVersion,
+        input.transactionHash,
+        input.capturedAt,
+        input.captureEvidenceHash,
+      );
+    this.recordHandoffState({
+      handoffPackageHash: input.handoff.handoffPackageHash,
+      state: 'UI_ORDER_CAPTURED',
+      transactionHash: input.transactionHash,
+      recordedAt: input.capturedAt,
+    });
   }
 
   private requireIdentity(canaryId: string, canaryConfigHash: string) {
