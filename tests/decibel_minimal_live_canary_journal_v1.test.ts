@@ -6,6 +6,10 @@ import { describe, expect, it } from 'vitest';
 
 import { decibel_minimal_live_canary_journal_v1 } from '../src/decibel_minimal_live_canary_journal_v1.js';
 import {
+  DECIBEL_MINIMAL_LIVE_CANARY_OPERATOR_HANDOFF_V1,
+  type decibel_minimal_live_canary_operator_handoff_v1,
+} from '../src/decibel_minimal_live_canary_operator_handoff_v1.js';
+import {
   DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
   createDecibelMinimalLiveCanaryConfigurationV1,
   planDecibelMinimalLiveCanaryV1,
@@ -118,6 +122,108 @@ describe('Decibel Minimal Live Canary durable journal V1', () => {
         recordedAt: 3,
       }),
     ).toThrow('CANARY_TRANSACTION_HASH_CONFLICT');
+    journal.close();
+  });
+
+  it('keeps UI_ORDER_CAPTURE_WAITING resumable with the same handoff identity', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'decibel-canary-')), 'journal.sqlite');
+    const value = fixture();
+    const journal = new decibel_minimal_live_canary_journal_v1(path);
+    journal.prepare({ ...value, preparedAt: 1 });
+    const handoff: decibel_minimal_live_canary_operator_handoff_v1 = {
+      schemaVersion: DECIBEL_MINIMAL_LIVE_CANARY_OPERATOR_HANDOFF_V1,
+      strategyIdentity: 'DECIBEL_MARKET_MAKER_V1',
+      handoffPackageHash: 'same-handoff-package',
+      canaryId: value.configuration.canaryId,
+      executionSessionId: value.configuration.executionSessionId,
+      configHash: value.configuration.configHash,
+      journalStatus: 'HANDOFF_READY_FOR_OPERATOR',
+      createdAt: 2,
+      network: 'mainnet',
+      subaccount: '0xcanary',
+      market: 'BTC/USD',
+      marketAddress: '0xmarket',
+      side: 'BUY',
+      price: 100,
+      quantity: 0.001,
+      orderType: 'LIMIT',
+      postOnly: true,
+      bestBid: 100,
+      bestAsk: 100.5,
+      tickSize: 0.5,
+      lotSize: 0.001,
+      minimumSize: 0.001,
+      marketObservedAt: 1,
+      marketReceiptAt: 1,
+      clientOrderId: 'same-client-order',
+      executionPackageHash: 'same-execution-package',
+      entryFunction: '0x1::orders::place',
+      entryArguments: [],
+      precommittedTransactionHash: null,
+      positionState: 'FLAT',
+      openOrderCount: 0,
+      activeTwapCount: 0,
+      activeTpSlCount: 0,
+      activeBulkExposure: 0,
+      unknownVenueOrders: 0,
+      unresolvedExecutionPlans: 0,
+      transactionIntentMatch: true,
+      handoffPackageFresh: true,
+      liveExecutionEnabled: false,
+      venueMutationEnabled: false,
+      signerEnabled: false,
+      transactionSubmissionEnabled: false,
+      operatorHandoffReady: true,
+      blockers: [],
+      mutationCounters: {
+        signedTransactions: 0,
+        submittedTransactions: 0,
+        placedOrders: 0,
+        cancelledOrders: 0,
+        replacedOrders: 0,
+        venueMutations: 0,
+      },
+    };
+    journal.recordOperatorHandoff(handoff);
+    journal.recordHandoffState({
+      handoffPackageHash: handoff.handoffPackageHash,
+      state: 'UI_ORDER_CAPTURE_WAITING',
+      recordedAt: 3,
+    });
+    expect(journal.listUiCaptureEligibleHandoffs()).toEqual([handoff]);
+    expect(journal.getOperatorHandoff(handoff.handoffPackageHash)).toMatchObject({
+      handoff,
+      state: 'UI_ORDER_CAPTURE_WAITING',
+    });
+    journal.close();
+  });
+
+  it('does not rebound a failed UI capture handoff', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'decibel-canary-')), 'journal.sqlite');
+    const value = fixture();
+    const journal = new decibel_minimal_live_canary_journal_v1(path);
+    journal.prepare({ ...value, preparedAt: 1 });
+    const handoff = {
+      schemaVersion: DECIBEL_MINIMAL_LIVE_CANARY_OPERATOR_HANDOFF_V1,
+      strategyIdentity: 'DECIBEL_MARKET_MAKER_V1',
+      handoffPackageHash: 'failed-handoff-package',
+      canaryId: value.configuration.canaryId,
+      executionSessionId: value.configuration.executionSessionId,
+      configHash: value.configuration.configHash,
+      journalStatus: 'HANDOFF_READY_FOR_OPERATOR',
+      createdAt: 2,
+      liveExecutionEnabled: false,
+    } as decibel_minimal_live_canary_operator_handoff_v1;
+    journal.recordOperatorHandoff(handoff);
+    journal.recordHandoffState({
+      handoffPackageHash: handoff.handoffPackageHash,
+      state: 'UI_ORDER_CAPTURE_FAILED',
+      recordedAt: 3,
+    });
+    expect(journal.listUiCaptureEligibleHandoffs()).toEqual([]);
+    expect(journal.getOperatorHandoff(handoff.handoffPackageHash)?.state).toBe(
+      'UI_ORDER_CAPTURE_FAILED',
+    );
     journal.close();
   });
 });
