@@ -14,6 +14,10 @@ function fixture() {
     selectedSide: 'BUY',
     price: 100,
     quantity: 0.01,
+    notionalUsd: 1,
+    venueMinimumNotionalUsd: 1,
+    targetNotionalUsd: 1,
+    maximumNotionalUsd: 100,
     orderType: 'LIMIT',
     timeInForce: 'PostOnly',
     postOnly: true,
@@ -66,7 +70,8 @@ describe('operator handoff', () => {
     expect(result.operatorHandoffReady).toBe(true);
     expect(result.handoffPackageFresh).toBe(true);
     expect(result.price).toBe(snapshot.bestBid);
-    expect(result.quantity).toBe(snapshot.minimumSize);
+    expect(result.quantity).toBe(pkg.quantity);
+    expect(result.notionalUsd).toBe(pkg.notionalUsd);
     expect(result.mutationCounters.venueMutations).toBe(0);
   });
 

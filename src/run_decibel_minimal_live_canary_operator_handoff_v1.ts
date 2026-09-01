@@ -29,6 +29,9 @@ const config = loadConfig();
 if (config.network !== 'mainnet') throw new Error('OPERATOR_HANDOFF_MAINNET_REQUIRED');
 const subaccount = process.env.DECIBEL_SUBACCOUNT_ADDRESS?.trim() ?? '';
 if (!subaccount) throw new Error('CANARY_SUBACCOUNT_REQUIRED');
+const configuredMinimumNotionalUsd = Number(process.env.DECIBEL_CANARY_MIN_NOTIONAL_USD ?? '10');
+const configuredTargetNotionalUsd = Number(process.env.DECIBEL_CANARY_TARGET_NOTIONAL_USD ?? '20');
+const configuredMaximumNotionalUsd = Number(process.env.DECIBEL_CANARY_MAX_NOTIONAL_USD ?? '100');
 const Reader = new DecibelReadDex(
   MAINNET_CONFIG,
   config.nodeApiKey === undefined ? {} : { nodeApiKey: config.nodeApiKey },
@@ -142,6 +145,9 @@ const plan = planDecibelMinimalLiveCanaryV1({
   },
   placementTransactionCount: 0,
   venueOrderCount: 0,
+  configuredMinimumNotionalUsd,
+  configuredTargetNotionalUsd,
+  configuredMaximumNotionalUsd,
 });
 const executionPackage = buildDecibelMinimalLiveCanaryExecutionPackageV1({
   configuration,
@@ -153,7 +159,7 @@ const executionPackage = buildDecibelMinimalLiveCanaryExecutionPackageV1({
   tickSize: construction.tickSize,
   lotSize: construction.lotSize,
   minimumQuantity: construction.minimumSize,
-  notionalCapUsd: Number(process.env.DECIBEL_CANARY_MAX_NOTIONAL_USD ?? '100'),
+  notionalCapUsd: plan.maximumNotionalUsd,
   finalPreflightReady: true,
   journal: Journal,
   timestamp,
@@ -185,6 +191,10 @@ for (const [key, value] of Object.entries({
   SIDE: handoff.side,
   PRICE: handoff.price,
   QUANTITY: handoff.quantity,
+  NOTIONAL_USD: handoff.notionalUsd,
+  VENUE_MIN_NOTIONAL_USD: handoff.venueMinimumNotionalUsd,
+  TARGET_NOTIONAL_USD: handoff.targetNotionalUsd,
+  MAX_NOTIONAL_USD: handoff.maximumNotionalUsd,
   TYPE: 'LIMIT',
   POST_ONLY: true,
   CLIENT_ORDER_ID: handoff.clientOrderId,

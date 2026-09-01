@@ -42,6 +42,10 @@ export type decibel_minimal_live_canary_operator_handoff_v1 = Readonly<{
   side: 'BUY' | 'SELL';
   price: number;
   quantity: number;
+  notionalUsd: number;
+  venueMinimumNotionalUsd: number;
+  targetNotionalUsd: number;
+  maximumNotionalUsd: number;
   orderType: 'LIMIT';
   postOnly: true;
   bestBid: number;
@@ -126,7 +130,10 @@ export function buildDecibelMinimalLiveCanaryOperatorHandoffV1(input: {
   require(pkg.symbol === 'BTC/USD', 'PACKAGE_MARKET_REQUIRED');
   require(pkg.orderType === 'LIMIT', 'PACKAGE_LIMIT_REQUIRED');
   require(pkg.postOnly && pkg.timeInForce === 'PostOnly', 'PACKAGE_POST_ONLY_REQUIRED');
-  require(pkg.quantity === initial.minimumSize, 'PACKAGE_MINIMUM_QUANTITY_MISMATCH');
+  require(pkg.quantity >= initial.minimumSize, 'PACKAGE_MINIMUM_QUANTITY_MISMATCH');
+  require(pkg.notionalUsd === pkg.price * pkg.quantity, 'PACKAGE_NOTIONAL_MISMATCH');
+  require(pkg.notionalUsd >= pkg.targetNotionalUsd &&
+    pkg.notionalUsd <= pkg.maximumNotionalUsd, 'PACKAGE_NOTIONAL_BOUNDS_INVALID');
   require(pkg.price ===
     (pkg.selectedSide === 'BUY' ? initial.bestBid : initial.bestAsk), 'PACKAGE_PRICE_MISMATCH');
   require(pkg.transactionIntentMatch, 'TRANSACTION_INTENT_MISMATCH');
@@ -153,6 +160,10 @@ export function buildDecibelMinimalLiveCanaryOperatorHandoffV1(input: {
     side: pkg.selectedSide,
     price: pkg.price,
     quantity: pkg.quantity,
+    notionalUsd: pkg.notionalUsd,
+    venueMinimumNotionalUsd: pkg.venueMinimumNotionalUsd,
+    targetNotionalUsd: pkg.targetNotionalUsd,
+    maximumNotionalUsd: pkg.maximumNotionalUsd,
     orderType: 'LIMIT' as const,
     postOnly: true as const,
     bestBid: final.bestBid,

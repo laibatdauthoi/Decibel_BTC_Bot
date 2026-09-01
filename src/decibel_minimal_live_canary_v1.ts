@@ -10,6 +10,9 @@ export const LIVE_EXECUTION_ENABLED = false as const;
 export const KNOWN_VENUE_CONTRACT_LIMITATION =
   'SUCCESSFUL_CANCEL_POSTCONDITION_NOT_PUBLICLY_PROVABLE' as const;
 export const DECIBEL_CANARY_SIDE_SELECTION_MODE_V1 = 'AUTO_DETERMINISTIC_CANARY_V1' as const;
+export const DECIBEL_CANARY_DEFAULT_MIN_NOTIONAL_USD = 10 as const;
+export const DECIBEL_CANARY_DEFAULT_TARGET_NOTIONAL_USD = 20 as const;
+export const DECIBEL_CANARY_DEFAULT_MAX_NOTIONAL_USD = 100 as const;
 
 function normalizeCanaryAddress(value: string): string {
   const normalized = value.trim().toLowerCase();
@@ -88,7 +91,7 @@ export type DecibelMinimalLiveCanaryConfigurationV1 = Readonly<{
   sideSelectionVersion: 1;
   sideSeedHash: string;
   manualSideOverrideAllowed: false;
-  quantityPolicy: 'MINIMUM_METADATA_VALID_QUANTITY';
+  quantityPolicy: 'BUFFERED_NOTIONAL_TARGET';
   orderType: 'LIMIT';
   timeInForce: 'PostOnly';
   postOnlyRequired: true;
@@ -181,7 +184,7 @@ export function createDecibelMinimalLiveCanaryConfigurationV1(
   const unhashed = Object.freeze({
     specification: DECIBEL_MINIMAL_LIVE_CANARY_V1,
     ...input,
-    quantityPolicy: 'MINIMUM_METADATA_VALID_QUANTITY' as const,
+    quantityPolicy: 'BUFFERED_NOTIONAL_TARGET' as const,
     orderType: 'LIMIT' as const,
     timeInForce: 'PostOnly' as const,
     postOnlyRequired: true as const,
@@ -261,6 +264,7 @@ export type decibel_minimal_live_canary_preflight_v1 = Readonly<{
   lotSize: number;
   minimumOrderSize: number;
   minimumMetadataValidQuantity: number;
+  authoritativeVenueMinimumNotionalUsd?: number;
   bestBid: number;
   bestAsk: number;
   exactMarketIdentity: boolean;
@@ -285,6 +289,10 @@ export type decibel_minimal_live_canary_plan_v1 = Readonly<{
   side: 'BUY' | 'SELL';
   price: number;
   quantity: number;
+  notionalUsd: number;
+  venueMinimumNotionalUsd: number;
+  targetNotionalUsd: number;
+  maximumNotionalUsd: number;
   orderType: 'LIMIT';
   timeInForce: 'PostOnly';
   postOnly: true;
@@ -301,6 +309,74 @@ function isTickAligned(value: number, increment: number): boolean {
   return Number.isFinite(quotient) && Math.abs(quotient - Math.round(quotient)) < 1e-8;
 }
 
+export function calculateDecibelMinimalLiveCanaryBufferedQuantityV1(input: {
+  frozenOrderPrice: number;
+  lotSize: number;
+  metadataMinimumQuantity: number;
+  authoritativeVenueMinimumNotionalUsd?: number;
+  configuredMinimumNotionalUsd?: number;
+  configuredTargetNotionalUsd?: number;
+  configuredMaximumNotionalUsd?: number;
+}): Readonly<{
+  effectiveMinimumNotionalUsd: number;
+  effectiveTargetNotionalUsd: number;
+  maximumNotionalUsd: number;
+  targetQuantity: number;
+  selectedCanaryQuantity: number;
+  selectedCanaryNotionalUsd: number;
+}> {
+  const configuredMinimumNotionalUsd =
+    input.configuredMinimumNotionalUsd ?? DECIBEL_CANARY_DEFAULT_MIN_NOTIONAL_USD;
+  const configuredTargetNotionalUsd =
+    input.configuredTargetNotionalUsd ?? DECIBEL_CANARY_DEFAULT_TARGET_NOTIONAL_USD;
+  const maximumNotionalUsd =
+    input.configuredMaximumNotionalUsd ?? DECIBEL_CANARY_DEFAULT_MAX_NOTIONAL_USD;
+  const authoritativeVenueMinimumNotionalUsd = input.authoritativeVenueMinimumNotionalUsd ?? 0;
+  if (
+    !(input.frozenOrderPrice > 0) ||
+    !(input.lotSize > 0) ||
+    !(input.metadataMinimumQuantity > 0) ||
+    !(configuredMinimumNotionalUsd > 0) ||
+    !(configuredTargetNotionalUsd > 0) ||
+    !(maximumNotionalUsd > 0) ||
+    !(authoritativeVenueMinimumNotionalUsd >= 0)
+  )
+    throw new Error('CANARY_NOTIONAL_CONFIGURATION_INVALID');
+  const effectiveMinimumNotionalUsd = Math.max(
+    authoritativeVenueMinimumNotionalUsd,
+    configuredMinimumNotionalUsd,
+  );
+  const effectiveTargetNotionalUsd = Math.max(
+    effectiveMinimumNotionalUsd,
+    configuredTargetNotionalUsd,
+  );
+  if (
+    effectiveMinimumNotionalUsd > effectiveTargetNotionalUsd ||
+    effectiveTargetNotionalUsd > maximumNotionalUsd
+  )
+    throw new Error('CANARY_NOTIONAL_BOUNDS_UNSATISFIABLE');
+  const targetLotSteps = Math.ceil(
+    effectiveTargetNotionalUsd / input.frozenOrderPrice / input.lotSize,
+  );
+  const targetQuantity = Number((targetLotSteps * input.lotSize).toPrecision(15));
+  const selectedCanaryQuantity = Math.max(input.metadataMinimumQuantity, targetQuantity);
+  const selectedCanaryNotionalUsd = selectedCanaryQuantity * input.frozenOrderPrice;
+  if (
+    !isTickAligned(selectedCanaryQuantity, input.lotSize) ||
+    selectedCanaryNotionalUsd < effectiveTargetNotionalUsd ||
+    selectedCanaryNotionalUsd > maximumNotionalUsd
+  )
+    throw new Error('CANARY_NOTIONAL_BOUNDS_UNSATISFIABLE');
+  return Object.freeze({
+    effectiveMinimumNotionalUsd,
+    effectiveTargetNotionalUsd,
+    maximumNotionalUsd,
+    targetQuantity,
+    selectedCanaryQuantity,
+    selectedCanaryNotionalUsd,
+  });
+}
+
 export function planDecibelMinimalLiveCanaryV1(input: {
   configuration: DecibelMinimalLiveCanaryConfigurationV1;
   persistedConfigHash: string | null;
@@ -309,6 +385,9 @@ export function planDecibelMinimalLiveCanaryV1(input: {
   requestedOrderType?: string;
   requestedTimeInForce?: string;
   requestedPrice?: number;
+  configuredMinimumNotionalUsd?: number;
+  configuredTargetNotionalUsd?: number;
+  configuredMaximumNotionalUsd?: number;
   placementTransactionCount: number;
   venueOrderCount: number;
 }): decibel_minimal_live_canary_plan_v1 {
@@ -354,9 +433,6 @@ export function planDecibelMinimalLiveCanaryV1(input: {
     !preflight.journalHealthy
   )
     throw new Error('CANARY_PREFLIGHT_FAILED');
-  const quantity = input.requestedQuantity ?? preflight.minimumMetadataValidQuantity;
-  if (quantity !== preflight.minimumMetadataValidQuantity)
-    throw new Error('CANARY_MINIMUM_QUANTITY_REQUIRED');
   if ((input.requestedOrderType ?? 'LIMIT') !== 'LIMIT')
     throw new Error('CANARY_LIMIT_ORDER_REQUIRED');
   if ((input.requestedTimeInForce ?? 'PostOnly') !== 'PostOnly')
@@ -373,6 +449,26 @@ export function planDecibelMinimalLiveCanaryV1(input: {
     (configuration.side === 'SELL' && price <= preflight.bestBid)
   )
     throw new Error('CANARY_CROSSING_RISK');
+  const sizing = calculateDecibelMinimalLiveCanaryBufferedQuantityV1({
+    frozenOrderPrice: price,
+    lotSize: preflight.lotSize,
+    metadataMinimumQuantity: preflight.minimumMetadataValidQuantity,
+    ...(preflight.authoritativeVenueMinimumNotionalUsd === undefined
+      ? {}
+      : { authoritativeVenueMinimumNotionalUsd: preflight.authoritativeVenueMinimumNotionalUsd }),
+    ...(input.configuredMinimumNotionalUsd === undefined
+      ? {}
+      : { configuredMinimumNotionalUsd: input.configuredMinimumNotionalUsd }),
+    ...(input.configuredTargetNotionalUsd === undefined
+      ? {}
+      : { configuredTargetNotionalUsd: input.configuredTargetNotionalUsd }),
+    ...(input.configuredMaximumNotionalUsd === undefined
+      ? {}
+      : { configuredMaximumNotionalUsd: input.configuredMaximumNotionalUsd }),
+  });
+  const quantity = input.requestedQuantity ?? sizing.selectedCanaryQuantity;
+  if (quantity !== sizing.selectedCanaryQuantity)
+    throw new Error('CANARY_BUFFERED_QUANTITY_REQUIRED');
   return Object.freeze({
     canaryId: configuration.canaryId,
     executionSessionId: configuration.executionSessionId,
@@ -389,6 +485,10 @@ export function planDecibelMinimalLiveCanaryV1(input: {
     side: configuration.side,
     price,
     quantity,
+    notionalUsd: sizing.selectedCanaryNotionalUsd,
+    venueMinimumNotionalUsd: sizing.effectiveMinimumNotionalUsd,
+    targetNotionalUsd: sizing.effectiveTargetNotionalUsd,
+    maximumNotionalUsd: sizing.maximumNotionalUsd,
     orderType: 'LIMIT',
     timeInForce: 'PostOnly',
     postOnly: true,

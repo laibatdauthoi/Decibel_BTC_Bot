@@ -57,6 +57,9 @@ export type DecibelMinimalLiveCanaryExecutionPackageV1 = Readonly<{
   price: number;
   quantity: number;
   notionalUsd: number;
+  venueMinimumNotionalUsd: number;
+  targetNotionalUsd: number;
+  maximumNotionalUsd: number;
   orderType: 'LIMIT';
   timeInForce: 'PostOnly';
   postOnly: true;
@@ -81,7 +84,7 @@ export type DecibelMinimalLiveCanaryExecutionPackageV1 = Readonly<{
   }>;
   riskChecks: Readonly<{
     freshFinalPreflight: true;
-    exactMinimumQuantity: true;
+    bufferedQuantityTargetMet: true;
     tickAligned: true;
     lotAligned: true;
     nonCrossing: true;
@@ -243,7 +246,12 @@ export function buildDecibelMinimalLiveCanaryExecutionPackageV1(input: {
   const expectedPrice = input.plan.side === 'BUY' ? input.bestBid : input.bestAsk;
   const notionalUsd = input.plan.price * input.plan.quantity;
   if (
-    input.plan.quantity !== input.minimumQuantity ||
+    input.plan.quantity < input.minimumQuantity ||
+    input.plan.notionalUsd !== notionalUsd ||
+    input.plan.venueMinimumNotionalUsd > input.plan.targetNotionalUsd ||
+    input.plan.targetNotionalUsd > input.plan.maximumNotionalUsd ||
+    input.plan.maximumNotionalUsd !== input.notionalCapUsd ||
+    notionalUsd < input.plan.targetNotionalUsd ||
     input.plan.price !== expectedPrice ||
     !aligned(input.plan.price, input.tickSize) ||
     !aligned(input.plan.quantity, input.lotSize) ||
@@ -300,6 +308,9 @@ export function buildDecibelMinimalLiveCanaryExecutionPackageV1(input: {
     price: input.plan.price,
     quantity: input.plan.quantity,
     notionalUsd,
+    venueMinimumNotionalUsd: input.plan.venueMinimumNotionalUsd,
+    targetNotionalUsd: input.plan.targetNotionalUsd,
+    maximumNotionalUsd: input.plan.maximumNotionalUsd,
     orderType: 'LIMIT',
     timeInForce: 'PostOnly',
     postOnly: true,
@@ -324,7 +335,7 @@ export function buildDecibelMinimalLiveCanaryExecutionPackageV1(input: {
     }),
     riskChecks: Object.freeze({
       freshFinalPreflight: true,
-      exactMinimumQuantity: true,
+      bufferedQuantityTargetMet: true,
       tickAligned: true,
       lotAligned: true,
       nonCrossing: true,

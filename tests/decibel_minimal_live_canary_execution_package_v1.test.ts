@@ -82,7 +82,7 @@ function build(overrides: Record<string, unknown> = {}) {
     tickSize: 0.5,
     lotSize: 0.001,
     minimumQuantity: 0.001,
-    notionalCapUsd: 10,
+    notionalCapUsd: 100,
     finalPreflightReady: true,
     journal,
     timestamp: 1001,
@@ -151,7 +151,7 @@ describe('Decibel Minimal Live Canary Execution Package V1', () => {
       tickSize: 0.5,
       lotSize: 0.001,
       minimumQuantity: 0.001,
-      notionalCapUsd: 10,
+      notionalCapUsd: 100,
       finalPreflightReady: true,
       timestamp: 2,
     };
@@ -165,7 +165,7 @@ describe('Decibel Minimal Live Canary Execution Package V1', () => {
     expect(() =>
       buildDecibelMinimalLiveCanaryExecutionPackageV1({
         ...base,
-        minimumQuantity: 0.002,
+        minimumQuantity: 0.3,
         journal: makeJournal(),
       }),
     ).toThrow('CANARY_FINAL_ORDER_PLAN_INVALID');
