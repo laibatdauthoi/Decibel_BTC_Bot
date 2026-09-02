@@ -27,6 +27,7 @@ export type decibel_authenticated_recycling_fill_v1 = Readonly<{
 export type decibel_authenticated_recycling_open_order_v1 = Readonly<{
   orderId: string;
   clientOrderId: string;
+  marketAddress: string;
   side: 'BUY' | 'SELL';
   knownRecyclingOrder: boolean;
 }>;
@@ -132,6 +133,13 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
   activeTwapCount: number;
   activeTpSlCount: number;
   activeBulkOrderCount: number;
+  lineageBlockers?: readonly string[];
+  diagnostics?: Readonly<{
+    foreignMarketFillIds: readonly string[];
+    knownRecyclingVenueOrderIds: readonly string[];
+    unexplainedBtcFillIds?: readonly string[];
+    unprovenFillIds?: readonly string[];
+  }>;
   book: Readonly<{ bestBid: number; bestAsk: number; observedAt: number }>;
   metadata: Readonly<{
     marketAddress: string;
@@ -166,12 +174,23 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
     input.metadata.minimumSize > 0 &&
     input.metadata.minimumNotionalUsd > 0 &&
     input.metadata.maximumConfiguredNotionalUsd > 0, 'AUTHENTICATED_RECYCLING_METADATA_INVALID');
-  require(input.activeTwapCount === 0, 'AUTHENTICATED_RECYCLING_STATE_UNEXPLAINED_ACTIVITY');
-  require(input.activeTpSlCount === 0, 'AUTHENTICATED_RECYCLING_STATE_UNEXPLAINED_ACTIVITY');
-  require(input.activeBulkOrderCount === 0, 'AUTHENTICATED_RECYCLING_STATE_UNEXPLAINED_ACTIVITY');
-  const unexplainedOpenOrders = input.openOrders.filter((order) => !order.knownRecyclingOrder);
+  require(input.activeTwapCount === 0, 'AUTHENTICATED_RECYCLING_ACTIVE_TWAP');
+  require(input.activeTpSlCount === 0, 'AUTHENTICATED_RECYCLING_ACTIVE_TP_SL');
+  require(input.activeBulkOrderCount === 0, 'AUTHENTICATED_RECYCLING_ACTIVE_BULK_ORDER');
+  for (const blocker of input.lineageBlockers ?? []) require(false, blocker);
+  const btcOpenOrders = input.openOrders.filter(
+    (order) => order.marketAddress.toLowerCase() === input.metadata.marketAddress.toLowerCase(),
+  );
+  const foreignMarketOpenOrders = input.openOrders.filter(
+    (order) => order.marketAddress.toLowerCase() !== input.metadata.marketAddress.toLowerCase(),
+  );
+  const unexplainedOpenOrders = btcOpenOrders.filter((order) => !order.knownRecyclingOrder);
   require(unexplainedOpenOrders.length === 0 &&
-    input.openOrders.length <= 1, 'AUTHENTICATED_RECYCLING_STATE_UNEXPLAINED_ACTIVITY');
+    btcOpenOrders.length <= 1, 'AUTHENTICATED_RECYCLING_UNEXPLAINED_BTC_OPEN_ORDER');
+  // V1 preserves strict account-wide open-order exclusivity, but foreign-market
+  // activity is diagnosed explicitly and is never inserted into the BTC ledger.
+  require(foreignMarketOpenOrders.length ===
+    0, 'AUTHENTICATED_RECYCLING_UNRELATED_MARKET_OPEN_ORDER');
 
   const unique = new Map<string, decibel_authenticated_recycling_fill_v1>();
   for (const fill of input.fills) {
@@ -203,7 +222,7 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
   ) &&
     frozen.fillIds.every((id) =>
       fills.some((fill) => fill.tradeId === id),
-    ), 'AUTHENTICATED_RECYCLING_STATE_UNEXPLAINED_ACTIVITY');
+    ), 'AUTHENTICATED_RECYCLING_UNEXPLAINED_BTC_FILL');
   const venueOrderId = string(identity.venueOrderId, 'AUTHENTICATED_CANARY_VENUE_ORDER_REQUIRED');
   const venueClientOrderId = string(
     identity.venueClientOrderId,
@@ -280,7 +299,7 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
         .maximumConfiguredNotionalUsd, 'AUTHENTICATED_RECYCLING_NOTIONAL_ABOVE_MAXIMUM');
   }
   if (blockers.length > 0) inventoryState = 'BLOCKED';
-  const knownOrder = input.openOrders[0] ?? null;
+  const knownOrder = btcOpenOrders[0] ?? null;
   const intent =
     blockers.length > 0 || eligibleSide === null || price === null || knownOrder !== null
       ? null
@@ -311,7 +330,18 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
     knownActiveRecyclingOrder: knownOrder,
     intent,
     book: Object.freeze({ ...input.book }),
-    openOrderSafetyPassed: unexplainedOpenOrders.length === 0 && input.openOrders.length <= 1,
+    btcOpenOrderIds: Object.freeze(btcOpenOrders.map((order) => order.orderId)),
+    foreignMarketOpenOrderIds: Object.freeze(foreignMarketOpenOrders.map((order) => order.orderId)),
+    foreignMarketFillIds: Object.freeze([...(input.diagnostics?.foreignMarketFillIds ?? [])]),
+    unexplainedBtcFillIds: Object.freeze([...(input.diagnostics?.unexplainedBtcFillIds ?? [])]),
+    unprovenFillIds: Object.freeze([...(input.diagnostics?.unprovenFillIds ?? [])]),
+    knownRecyclingVenueOrderIds: Object.freeze([
+      ...(input.diagnostics?.knownRecyclingVenueOrderIds ?? []),
+    ]),
+    openOrderSafetyPassed:
+      unexplainedOpenOrders.length === 0 &&
+      btcOpenOrders.length <= 1 &&
+      foreignMarketOpenOrders.length === 0,
     positionConservationPassed: preciseEqual(ledgerInventory, input.currentPositionBase),
     blockers: Object.freeze([...new Set(blockers)]),
     externalCounterpartyRequired: true as const,

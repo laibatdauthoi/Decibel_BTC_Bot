@@ -5,6 +5,8 @@ import type { deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1 } from './de
 
 export const DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_OPERATOR_HANDOFF_V1 =
   'DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_OPERATOR_HANDOFF_V1' as const;
+export const DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_HANDOFF_BLOCKED_V1 =
+  'DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_HANDOFF_BLOCKED_V1' as const;
 type live_state = ReturnType<typeof deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1>;
 
 function hash(value: unknown): string {
@@ -22,6 +24,42 @@ function sameAccountState(left: live_state, right: live_state): boolean {
     left.openOrderSafetyPassed === right.openOrderSafetyPassed &&
     JSON.stringify(left.blockers) === JSON.stringify(right.blockers)
   );
+}
+
+export function buildDecibelAuthenticatedPassiveRecyclingHandoffBlockedV1(input: {
+  observedAt: number;
+  blocker: string;
+  state: live_state | null;
+  diagnostics?: Readonly<Record<string, unknown>>;
+}) {
+  return Object.freeze({
+    schemaVersion: DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_HANDOFF_BLOCKED_V1,
+    observedAt: input.observedAt,
+    blocker: input.blocker,
+    authenticatedPositionBase: input.state?.authenticatedPositionBase ?? null,
+    inventoryState: input.state?.inventoryState ?? null,
+    book: input.state?.book ?? null,
+    btcFillIds: input.state?.authenticatedFillIds ?? Object.freeze([]),
+    foreignMarketFillIds: input.state?.foreignMarketFillIds ?? Object.freeze([]),
+    unexplainedBtcFillIds: input.state?.unexplainedBtcFillIds ?? Object.freeze([]),
+    unprovenFillIds: input.state?.unprovenFillIds ?? Object.freeze([]),
+    knownRecyclingVenueOrderIds: input.state?.knownRecyclingVenueOrderIds ?? Object.freeze([]),
+    btcOpenOrderIds: input.state?.btcOpenOrderIds ?? Object.freeze([]),
+    foreignMarketOpenOrderIds: input.state?.foreignMarketOpenOrderIds ?? Object.freeze([]),
+    positionConservationPassed: input.state?.positionConservationPassed ?? false,
+    blockers: input.state?.blockers ?? Object.freeze([input.blocker]),
+    diagnostics: Object.freeze({ ...(input.diagnostics ?? {}) }),
+    liveExecutionEnabled: false as const,
+    venueMutationEnabled: false as const,
+    mutationCounters: Object.freeze({
+      signedTransactions: 0 as const,
+      submittedTransactions: 0 as const,
+      placedOrders: 0 as const,
+      cancelledOrders: 0 as const,
+      replacedOrders: 0 as const,
+      venueMutations: 0 as const,
+    }),
+  });
 }
 
 export function buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1(input: {

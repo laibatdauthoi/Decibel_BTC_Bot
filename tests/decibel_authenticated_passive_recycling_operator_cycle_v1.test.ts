@@ -7,7 +7,10 @@ import {
   deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1,
   FROZEN_CANARY_MANIFEST_SHA256,
 } from '../src/decibel_authenticated_passive_recycling_live_state_v1.js';
-import { buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1 } from '../src/decibel_authenticated_passive_recycling_operator_handoff_v1.js';
+import {
+  buildDecibelAuthenticatedPassiveRecyclingHandoffBlockedV1,
+  buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1,
+} from '../src/decibel_authenticated_passive_recycling_operator_handoff_v1.js';
 import {
   captureDecibelAuthenticatedPassiveRecyclingUiOrderV1,
   verifyDecibelAuthenticatedRecyclingPlacementV1,
@@ -141,7 +144,13 @@ describe('authenticated passive recycling operator cycle', () => {
       { book: { bestBid: 79_999.9, bestAsk: 80_000, observedAt: now - 5_001 } },
       {
         openOrders: [
-          { orderId: 'x', clientOrderId: 'x', side: 'SELL', knownRecyclingOrder: false },
+          {
+            orderId: 'x',
+            clientOrderId: 'x',
+            marketAddress: '0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861',
+            side: 'SELL',
+            knownRecyclingOrder: false,
+          },
         ],
       },
       { activeTwapCount: 1 },
@@ -327,6 +336,28 @@ describe('authenticated passive recycling operator cycle', () => {
     expect(h).toMatchObject({
       externalCounterpartyRequired: true,
       selfTradePermitted: false,
+      mutationCounters: {
+        signedTransactions: 0,
+        submittedTransactions: 0,
+        placedOrders: 0,
+        cancelledOrders: 0,
+        replacedOrders: 0,
+        venueMutations: 0,
+      },
+    });
+  });
+  it('builds a durable fail-closed diagnostic with zero venue mutations', () => {
+    const blockedState = state({ activeBulkOrderCount: 1 });
+    const blocked = buildDecibelAuthenticatedPassiveRecyclingHandoffBlockedV1({
+      observedAt: now,
+      blocker: 'AUTHENTICATED_RECYCLING_ACTIVE_BULK_ORDER',
+      state: blockedState,
+      diagnostics: { bulkClassification: 'ACTIVE' },
+    });
+    expect(blocked).toMatchObject({
+      blocker: 'AUTHENTICATED_RECYCLING_ACTIVE_BULK_ORDER',
+      liveExecutionEnabled: false,
+      venueMutationEnabled: false,
       mutationCounters: {
         signedTransactions: 0,
         submittedTransactions: 0,

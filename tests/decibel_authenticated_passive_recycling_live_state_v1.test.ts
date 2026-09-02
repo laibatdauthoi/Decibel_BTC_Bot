@@ -122,10 +122,16 @@ describe('DECIBEL AUTHENTICATED PASSIVE RECYCLING LIVE-STATE BRIDGE V1', () => {
   it('blocks unexplained open orders and emits no second intent', () => {
     const state = derive({
       openOrders: [
-        { orderId: 'unknown', clientOrderId: 'manual', side: 'SELL', knownRecyclingOrder: false },
+        {
+          orderId: 'unknown',
+          clientOrderId: 'manual',
+          marketAddress: '0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861',
+          side: 'SELL',
+          knownRecyclingOrder: false,
+        },
       ],
     });
-    expect(state.blockers).toContain('AUTHENTICATED_RECYCLING_STATE_UNEXPLAINED_ACTIVITY');
+    expect(state.blockers).toContain('AUTHENTICATED_RECYCLING_UNEXPLAINED_BTC_OPEN_ORDER');
     expect(state.intent).toBeNull();
   });
 
@@ -135,6 +141,7 @@ describe('DECIBEL AUTHENTICATED PASSIVE RECYCLING LIVE-STATE BRIDGE V1', () => {
         {
           orderId: 'known',
           clientOrderId: 'dpvr1-s-0-id',
+          marketAddress: '0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861',
           side: 'SELL',
           knownRecyclingOrder: true,
         },
@@ -146,10 +153,38 @@ describe('DECIBEL AUTHENTICATED PASSIVE RECYCLING LIVE-STATE BRIDGE V1', () => {
     expect(state.operatorActionRequired).toBe(false);
   });
 
+  it('keeps foreign-market open orders out of the BTC ledger and blocks under strict account-wide exclusivity', () => {
+    const state = derive({
+      openOrders: [
+        {
+          orderId: 'foreign',
+          clientOrderId: 'foreign-client',
+          marketAddress: '0xdell',
+          side: 'BUY',
+          knownRecyclingOrder: false,
+        },
+      ],
+    });
+    expect(state.btcOpenOrderIds).toEqual([]);
+    expect(state.foreignMarketOpenOrderIds).toEqual(['foreign']);
+    expect(state.blockers).toContain('AUTHENTICATED_RECYCLING_UNRELATED_MARKET_OPEN_ORDER');
+  });
+
+  it('reports granular authenticated activity blockers', () => {
+    const state = derive({ activeTwapCount: 1, activeTpSlCount: 1, activeBulkOrderCount: 1 });
+    expect(state.blockers).toEqual(
+      expect.arrayContaining([
+        'AUTHENTICATED_RECYCLING_ACTIVE_TWAP',
+        'AUTHENTICATED_RECYCLING_ACTIVE_TP_SL',
+        'AUTHENTICATED_RECYCLING_ACTIVE_BULK_ORDER',
+      ]),
+    );
+  });
+
   it('blocks unexplained fills and position conservation mismatches', () => {
     const extra = { ...canaryFill, tradeId: 'unexplained', orderId: 'other', size: 0.00001 };
     expect(derive({ fills: [canaryFill, extra], currentPositionBase: 0.00028 }).blockers).toContain(
-      'AUTHENTICATED_RECYCLING_STATE_UNEXPLAINED_ACTIVITY',
+      'AUTHENTICATED_RECYCLING_UNEXPLAINED_BTC_FILL',
     );
     expect(() => derive({ currentPositionBase: 0 })).not.toThrow();
     expect(derive({ currentPositionBase: 0 }).blockers).toContain(
