@@ -229,6 +229,28 @@ describe('DECIBEL AUTHENTICATED PASSIVE RECYCLING LIVE-STATE BRIDGE V1', () => {
     expect(state.authenticatedMakerVolumeUsd).toBeCloseTo(42.367563, 12);
   });
 
+  it('uses an authenticated zero-anchor resync without claiming the interrupted cycle completed', () => {
+    const state = derive({
+      currentPositionBase: 0,
+      resyncCheckpoint: {
+        checkpointBodyHashSha256: 'checkpoint-hash',
+        allAccountFillIds: [canaryFill.tradeId, 'external-fill'],
+        currentPositionBase: 0,
+        cycleDisposition: 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY',
+      },
+    });
+    expect(state).toMatchObject({
+      ready: true,
+      inventoryState: 'FLAT',
+      currentCycleInventoryBase: 0,
+      completedRecycleCycles: 0,
+      cycleCompleted: false,
+      cycleDisposition: 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY',
+      authenticatedMakerVolumeUsd: 20.767563,
+      intent: null,
+    });
+  });
+
   it('fails closed when the immutable manifest hash is wrong', () => {
     expect(() =>
       validateDecibelAuthenticatedLiveCanaryManifestV1({

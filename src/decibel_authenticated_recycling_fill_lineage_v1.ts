@@ -17,6 +17,7 @@ export function resolveDecibelAuthenticatedRecyclingFillLineageV1(input: {
     marketAddress: string;
   }>;
   knownRecyclingOrders: readonly recycling_order_lineage_v1[];
+  attributedAccountFillIds?: readonly string[];
   orderHistory: readonly Readonly<{ orderId: string; marketAddress: string }>[];
   tradeHistory: readonly Readonly<{
     tradeId: string;
@@ -30,6 +31,7 @@ export function resolveDecibelAuthenticatedRecyclingFillLineageV1(input: {
 }) {
   const btcMarketAddress = input.btcMarketAddress.toLowerCase();
   const frozenFillIds = new Set(input.frozen.fillIds);
+  const attributedAccountFillIds = new Set(input.attributedAccountFillIds ?? []);
   const knownByOrderId = new Map(input.knownRecyclingOrders.map((order) => [order.orderId, order]));
   const marketByOrderId = new Map(
     input.orderHistory.map((order) => [order.orderId, order.marketAddress]),
@@ -41,6 +43,7 @@ export function resolveDecibelAuthenticatedRecyclingFillLineageV1(input: {
   const lineageBlockers: string[] = [];
   for (const row of input.tradeHistory) {
     if (row.source !== 'OrderFill') continue;
+    if (attributedAccountFillIds.has(row.tradeId)) continue;
     const knownOrder = knownByOrderId.get(row.orderId);
     const isExactFrozenIdentity =
       frozenFillIds.has(row.tradeId) &&

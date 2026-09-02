@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { DecibelReadDex, MAINNET_CONFIG } from '@decibeltrade/sdk';
 
 import { resolveDecibelBulkOrderActivityV1 } from './decibel_bulk_order_activity_resolution_v1.js';
+import { validateDecibelAuthenticatedBtcResyncCheckpointV1 } from './decibel_authenticated_btc_activity_resync_v1.js';
 import type { application_config } from './config.js';
 import { deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1 } from './decibel_authenticated_passive_recycling_live_state_v1.js';
 import {
@@ -21,6 +23,24 @@ export async function readDecibelAuthenticatedPassiveRecyclingLiveStateV1(input:
 }) {
   const manifestBytes = readFileSync(input.manifestPath);
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as Record<string, unknown>;
+  const checkpointPath = resolve('research/decibel_authenticated_btc_resync_checkpoint_v1.json');
+  const checkpoint = existsSync(checkpointPath)
+    ? (validateDecibelAuthenticatedBtcResyncCheckpointV1(
+        JSON.parse(readFileSync(checkpointPath, 'utf8')),
+      ) as {
+        priorFrozenManifestBodyHash: string;
+        checkpointBodyHashSha256: string;
+        allAccountFillIds: string[];
+        outOfBandFillIds: string[];
+        currentPositionBase: 0;
+        cycleDisposition: 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY';
+      })
+    : null;
+  if (
+    checkpoint !== null &&
+    checkpoint.priorFrozenManifestBodyHash !== manifest.manifestBodyHashSha256
+  )
+    throw new Error('AUTHENTICATED_RECYCLING_RESYNC_CHECKPOINT_MANIFEST_MISMATCH');
   const sourceArtifacts = manifest.sourceArtifacts as {
     handoff?: { path?: unknown; handoffArtifactSha256?: unknown };
   };
@@ -110,6 +130,7 @@ export async function readDecibelAuthenticatedPassiveRecyclingLiveStateV1(input:
       marketAddress: identity.marketAddress,
     },
     knownRecyclingOrders: input.knownRecyclingOrders ?? [],
+    attributedAccountFillIds: checkpoint?.outOfBandFillIds ?? [],
     orderHistory: orderHistory.items.map((order) => ({
       orderId: order.order_id,
       marketAddress: order.market,
@@ -152,6 +173,16 @@ export async function readDecibelAuthenticatedPassiveRecyclingLiveStateV1(input:
     ).length,
     activeBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,
     lineageBlockers: resolvedFills.lineageBlockers,
+    ...(checkpoint === null
+      ? {}
+      : {
+          resyncCheckpoint: {
+            checkpointBodyHashSha256: checkpoint.checkpointBodyHashSha256,
+            allAccountFillIds: checkpoint.allAccountFillIds,
+            currentPositionBase: checkpoint.currentPositionBase,
+            cycleDisposition: checkpoint.cycleDisposition,
+          },
+        }),
     diagnostics: {
       foreignMarketFillIds: resolvedFills.foreignMarketFillIds,
       knownRecyclingVenueOrderIds: [...known.keys()],

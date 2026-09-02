@@ -134,6 +134,12 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
   activeTpSlCount: number;
   activeBulkOrderCount: number;
   lineageBlockers?: readonly string[];
+  resyncCheckpoint?: Readonly<{
+    checkpointBodyHashSha256: string;
+    allAccountFillIds: readonly string[];
+    currentPositionBase: 0;
+    cycleDisposition: 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY';
+  }>;
   diagnostics?: Readonly<{
     foreignMarketFillIds: readonly string[];
     knownRecyclingVenueOrderIds: readonly string[];
@@ -236,16 +242,18 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
       (!frozenFillIds.has(fill.tradeId) && knownRecyclingOrderIds.has(fill.orderId)),
   ), 'AUTHENTICATED_RECYCLING_FILL_LINEAGE_MISMATCH');
 
-  let ledgerInventory = 0;
+  const resyncedFillIds = new Set(input.resyncCheckpoint?.allAccountFillIds ?? []);
+  let ledgerInventory = input.resyncCheckpoint?.currentPositionBase ?? 0;
   let completedRecycleCycles = 0;
   let cycleOpen = false;
   let authenticatedMakerFilledBase = 0;
   let authenticatedMakerVolumeUsd = 0;
   for (const fill of fills) {
-    const before = ledgerInventory;
-    ledgerInventory += fill.side === 'BUY' ? fill.size : -fill.size;
     authenticatedMakerFilledBase += fill.size;
     authenticatedMakerVolumeUsd += Math.abs(fill.size * fill.price);
+    if (resyncedFillIds.has(fill.tradeId)) continue;
+    const before = ledgerInventory;
+    ledgerInventory += fill.side === 'BUY' ? fill.size : -fill.size;
     if (before === 0 && ledgerInventory !== 0) cycleOpen = true;
     if (cycleOpen && ledgerInventory === 0) {
       completedRecycleCycles += 1;
@@ -321,8 +329,12 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
     authenticatedMakerFilledBase,
     authenticatedMakerVolumeUsd,
     completedRecycleCycles,
-    cycleStarted: fills.length > 0,
+    cycleStarted: fills.some((fill) => !resyncedFillIds.has(fill.tradeId)),
     cycleCompleted: completedRecycleCycles > 0,
+    cycleDisposition:
+      input.resyncCheckpoint?.cycleDisposition ??
+      (completedRecycleCycles > 0 ? ('CYCLE_COMPLETED' as const) : ('CYCLE_ACTIVE' as const)),
+    resyncCheckpointBodyHash: input.resyncCheckpoint?.checkpointBodyHashSha256 ?? null,
     currentCycleInventoryBase: ledgerInventory,
     eligibleSide: blockers.length === 0 ? eligibleSide : null,
     buySuppressed: ledgerInventory > 0,
