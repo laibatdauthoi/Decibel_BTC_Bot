@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { dirname, join } from 'node:path';
 export interface DecibelMcpTransportV1 {
   start(): Promise<void>;
   listTools(): Promise<unknown>;
@@ -33,6 +34,39 @@ export function classifyDecibelMcpProcessExitV1(
   signal: string | null,
 ): string {
   return `${initializeResponse ? 'MCP_PROCESS_EXITED' : 'MCP_PROCESS_EXIT_BEFORE_INITIALIZE'}:${exitCode ?? 'UNKNOWN'}:${signal ?? 'NONE'}`;
+}
+
+export function resolveDecibelMcpLauncherV1(environment: NodeJS.ProcessEnv): {
+  executable: string;
+  arguments: string[];
+  sidecar: boolean;
+} {
+  const configuredNode = environment.DECIBEL_MCP_NODE_EXECUTABLE;
+  if (configuredNode) {
+    return {
+      executable: configuredNode,
+      arguments: [
+        join(dirname(configuredNode), 'node_modules', 'npm', 'bin', 'npx-cli.js'),
+        '-y',
+        '-p',
+        '@decibeltrade/cli',
+        'decibel-mcp',
+      ],
+      sidecar: true,
+    };
+  }
+  const windows = process.platform === 'win32';
+  return windows
+    ? {
+        executable: process.env.ComSpec ?? 'cmd.exe',
+        arguments: ['/d', '/s', '/c', 'npx -y -p @decibeltrade/cli decibel-mcp'],
+        sidecar: false,
+      }
+    : {
+        executable: 'npx',
+        arguments: ['-y', '-p', '@decibeltrade/cli', 'decibel-mcp'],
+        sidecar: false,
+      };
 }
 
 export class decibel_mcp_stdout_framer_v1 {
@@ -179,12 +213,8 @@ export class decibel_stdio_mcp_transport_v1 implements DecibelMcpTransportV1 {
 
   async start(): Promise<void> {
     if (this.process !== null) return;
-    const windows = process.platform === 'win32';
-    const executable = windows ? (process.env.ComSpec ?? 'cmd.exe') : 'npx';
-    const arguments_ = windows
-      ? ['/d', '/s', '/c', 'npx -y -p @decibeltrade/cli decibel-mcp']
-      : ['-y', '-p', '@decibeltrade/cli', 'decibel-mcp'];
-    const child = spawn(executable, arguments_, {
+    const launcher = resolveDecibelMcpLauncherV1(this.Environment);
+    const child = spawn(launcher.executable, launcher.arguments, {
       env: this.Environment,
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
