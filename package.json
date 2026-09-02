@@ -39,6 +39,7 @@
     "decibel:recycling:flat-entry-handoff-v1": "tsx src/run_decibel_authenticated_passive_recycling_flat_entry_v1.ts",
     "decibel:mcp:probe-v1": "tsx src/run_decibel_mcp_capability_probe_v1.ts",
     "decibel:mcp:shadow-strategy-v1": "tsx src/run_decibel_mcp_mainnet_shadow_strategy_v1.ts",
+    "decibel:mcp:shadow-live-v1": "tsx src/run_decibel_mcp_mainnet_continuous_shadow_v1.ts",
     "collect:data": "tsx src/collect_data.ts",
     "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build:research-dataset": "tsx src/build_research_dataset.ts",
