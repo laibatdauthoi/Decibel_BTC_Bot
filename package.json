@@ -36,6 +36,7 @@
     "decibel:recycling:reconcile-v1": "tsx src/run_decibel_authenticated_passive_recycling_reconciliation_v1.ts",
     "decibel:recycling:retire-unsubmitted-handoff-v1": "tsx src/run_decibel_authenticated_passive_recycling_retire_unsubmitted_handoff_v1.ts",
     "decibel:recycling:attribute-and-resync-v1": "tsx src/run_decibel_authenticated_btc_activity_resync_v1.ts",
+    "decibel:recycling:flat-entry-handoff-v1": "tsx src/run_decibel_authenticated_passive_recycling_flat_entry_v1.ts",
     "collect:data": "tsx src/collect_data.ts",
     "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build:research-dataset": "tsx src/build_research_dataset.ts",

@@ -1,12 +1,12 @@
 import type { decibel_recycling_retirement_evidence_v1 } from './decibel_authenticated_passive_recycling_journal_v1.js';
-import type { buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1 } from './decibel_authenticated_passive_recycling_operator_handoff_v1.js';
 import {
   verifyDecibelAuthenticatedRecyclingPlacementV1,
+  type decibel_recycling_operator_handoff_contract_v1,
   type decibel_recycling_ui_order_v1,
   type decibel_recycling_ui_transaction_v1,
 } from './decibel_authenticated_passive_recycling_ui_order_capture_v1.js';
 
-type handoff = ReturnType<typeof buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1>;
+type handoff = decibel_recycling_operator_handoff_contract_v1;
 
 function semanticallyMatchesOrder(handoff: handoff, order: decibel_recycling_ui_order_v1) {
   return (

@@ -134,11 +134,14 @@ const result = reconcileDecibelAuthenticatedPassiveRecyclingV1({
 const journalState =
   result.classification === 'RECYCLING_CYCLE_FULLY_RECONCILED'
     ? 'CYCLE_COMPLETED'
-    : result.classification === 'RECYCLING_ORDER_PARTIALLY_FILLED'
-      ? 'PARTIAL_FILL'
-      : result.classification === 'RECYCLING_ORDER_OPEN_UNFILLED'
-        ? 'ORDER_OPEN'
-        : 'BLOCKED';
+    : result.classification === 'RECYCLING_ENTRY_FULLY_FILLED'
+      ? 'FULL_FILL_RECONCILED'
+      : result.classification === 'RECYCLING_ORDER_PARTIALLY_FILLED' ||
+          result.classification === 'RECYCLING_ENTRY_PARTIALLY_FILLED'
+        ? 'PARTIAL_FILL'
+        : result.classification === 'RECYCLING_ORDER_OPEN_UNFILLED'
+          ? 'ORDER_OPEN'
+          : 'BLOCKED';
 Journal.recordState({
   recyclingHandoffId: handoff.recyclingHandoffId,
   state: journalState,

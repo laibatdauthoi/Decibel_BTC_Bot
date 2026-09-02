@@ -1,7 +1,9 @@
-import type { buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1 } from './decibel_authenticated_passive_recycling_operator_handoff_v1.js';
-import type { captureDecibelAuthenticatedPassiveRecyclingUiOrderV1 } from './decibel_authenticated_passive_recycling_ui_order_capture_v1.js';
+import type {
+  captureDecibelAuthenticatedPassiveRecyclingUiOrderV1,
+  decibel_recycling_operator_handoff_contract_v1,
+} from './decibel_authenticated_passive_recycling_ui_order_capture_v1.js';
 
-type handoff = ReturnType<typeof buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1>;
+type handoff = decibel_recycling_operator_handoff_contract_v1;
 type capture = ReturnType<typeof captureDecibelAuthenticatedPassiveRecyclingUiOrderV1>;
 export type decibel_recycling_authenticated_fill_v1 = Readonly<{
   source: 'OrderFill';
@@ -17,6 +19,8 @@ export type decibel_recycling_authenticated_fill_v1 = Readonly<{
 export type decibel_recycling_classification_v1 =
   | 'RECYCLING_ORDER_OPEN_UNFILLED'
   | 'RECYCLING_ORDER_PARTIALLY_FILLED'
+  | 'RECYCLING_ENTRY_PARTIALLY_FILLED'
+  | 'RECYCLING_ENTRY_FULLY_FILLED'
   | 'RECYCLING_CYCLE_FULLY_RECONCILED'
   | 'RECYCLING_STATE_AMBIGUOUS'
   | 'RECYCLING_TRANSACTION_FAILED'
@@ -80,7 +84,18 @@ export function reconcileDecibelAuthenticatedPassiveRecyclingV1(input: {
   else if (filledBase === 0 && input.openOrderState === 'OPEN_UNFILLED')
     classification = 'RECYCLING_ORDER_OPEN_UNFILLED';
   else if (filledBase > 0 && filledBase < input.handoff.quantity)
-    classification = 'RECYCLING_ORDER_PARTIALLY_FILLED';
+    classification =
+      input.handoff.executionState === 'AUTHENTICATED_FLAT_ENTRY'
+        ? 'RECYCLING_ENTRY_PARTIALLY_FILLED'
+        : 'RECYCLING_ORDER_PARTIALLY_FILLED';
+  else if (
+    input.handoff.executionState === 'AUTHENTICATED_FLAT_ENTRY' &&
+    filledBase === input.handoff.quantity &&
+    remainingBase === 0 &&
+    input.openOrderState === 'ABSENT' &&
+    positionConservation
+  )
+    classification = 'RECYCLING_ENTRY_FULLY_FILLED';
   else if (
     filledBase === input.handoff.quantity &&
     remainingBase === 0 &&
@@ -91,7 +106,7 @@ export function reconcileDecibelAuthenticatedPassiveRecyclingV1(input: {
     classification = 'RECYCLING_CYCLE_FULLY_RECONCILED';
   else classification = 'RECYCLING_RECONCILIATION_FAILED';
   const sellMakerVolume = fills.reduce((sum, fill) => sum + Math.abs(fill.size * fill.price), 0);
-  const initialMakerVolume = 20.767563;
+  const initialMakerVolume = input.handoff.sourceAuthenticatedMakerVolumeUsd ?? 20.767563;
   const authenticatedMakerVolumeUsd = Number((initialMakerVolume + sellMakerVolume).toFixed(12));
   return Object.freeze({
     recyclingHandoffId: input.handoff.recyclingHandoffId,
@@ -102,7 +117,7 @@ export function reconcileDecibelAuthenticatedPassiveRecyclingV1(input: {
     transactionHash: input.capture.transactionHash,
     authenticatedFillIds: Object.freeze(fills.map((fill) => fill.tradeId)),
     authenticatedRecycleFilledBase: filledBase,
-    authenticatedMakerFilledBase: 0.00027 + filledBase,
+    authenticatedMakerFilledBase: Math.abs(input.handoff.sourcePositionBase) + filledBase,
     authenticatedMakerVolumeUsd,
     cycleMakerVolumeUsd: authenticatedMakerVolumeUsd,
     currentCycleInventoryBase: input.currentAuthenticatedPositionBase,

@@ -177,6 +177,14 @@ export class decibel_authenticated_passive_recycling_journal_v1 {
       .get() as { count: number };
     return row.count;
   }
+  completedCycleCount(): number {
+    const row = this.database
+      .prepare(
+        "SELECT COUNT(*) count FROM recycling_operator_cycle_v1 WHERE state='CYCLE_COMPLETED'",
+      )
+      .get() as { count: number };
+    return row.count;
+  }
   list() {
     const rows = this.database
       .prepare('SELECT * FROM recycling_operator_cycle_v1 ORDER BY updated_at,recycling_handoff_id')

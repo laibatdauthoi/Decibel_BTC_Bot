@@ -209,6 +209,13 @@ export async function readDecibelAuthenticatedPassiveRecyclingLiveStateV1(input:
     state,
     manifest,
     handoff,
+    marketMetadata: Object.freeze({
+      marketAddress: metadata.marketAddress,
+      tickSize: metadata.tickSize,
+      lotSize: metadata.lotSize,
+      minimumSize: metadata.minimumSize,
+      mode: metadata.mode,
+    }),
     observedAt: receivedAt,
     diagnostics: Object.freeze({
       foreignMarketFillIds: resolvedFills.foreignMarketFillIds,

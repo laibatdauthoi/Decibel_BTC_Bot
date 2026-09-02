@@ -2,9 +2,23 @@ import {
   decodeDecibelMoveAddressV1,
   decodeDecibelMoveOptionalStringV1,
 } from './decibel_operator_ui_canary_order_capture_v1.js';
-import type { buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1 } from './decibel_authenticated_passive_recycling_operator_handoff_v1.js';
+export type decibel_recycling_operator_handoff_contract_v1 = Readonly<{
+  recyclingHandoffId: string;
+  handoffPackageHash: string;
+  plannedClientOrderId: string;
+  subaccount: string;
+  marketAddress: string;
+  side: 'BUY' | 'SELL';
+  price: number;
+  quantity: number;
+  handoffCreatedAt: number;
+  sourcePositionBase: number;
+  executionState?: 'AUTHENTICATED_FLAT_ENTRY';
+  cycleSequence?: number;
+  sourceAuthenticatedMakerVolumeUsd?: number;
+}>;
 
-type handoff = ReturnType<typeof buildDecibelAuthenticatedPassiveRecyclingOperatorHandoffV1>;
+type handoff = decibel_recycling_operator_handoff_contract_v1;
 export type decibel_recycling_ui_order_v1 = Readonly<{
   parent: string;
   market: string;
