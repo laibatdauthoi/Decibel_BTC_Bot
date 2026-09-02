@@ -1,0 +1,622 @@
+{
+  "identity": "DECIBEL_MCP_MAINNET_SHADOW_EXECUTION_V1",
+  "network": "mainnet",
+  "server": {
+    "name": "decibel-cli",
+    "version": "1.0.0"
+  },
+  "observedAt": 1788359478604,
+  "observedToolNames": [
+    "cancel_all_orders",
+    "cancel_order",
+    "cancel_tp_sl",
+    "cancel_twap_order",
+    "close_position",
+    "get_active_twaps",
+    "get_balances",
+    "get_funding_history",
+    "get_markets",
+    "get_order_history",
+    "get_orderbook",
+    "get_orders",
+    "get_positions",
+    "get_price",
+    "get_tp_sl",
+    "get_trade_history",
+    "get_twap_history",
+    "place_limit_order",
+    "place_market_order",
+    "place_stop_limit_order",
+    "place_stop_market_order",
+    "place_tp_sl",
+    "place_twap_order",
+    "set_leverage",
+    "set_margin_type"
+  ],
+  "tools": [
+    {
+      "name": "place_limit_order",
+      "description": "Place a limit order on Decibel DEX. Returns order ID and transaction hash on success.",
+      "required": [
+        "side",
+        "size",
+        "symbol",
+        "price"
+      ],
+      "fields": {
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "long",
+            "short"
+          ]
+        },
+        "size": {
+          "type": "number",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "price": {
+          "type": "number",
+          "enum": null
+        },
+        "timeInForce": {
+          "type": "string",
+          "enum": [
+            "gtc",
+            "post-only",
+            "ioc"
+          ]
+        },
+        "reduceOnly": {
+          "type": "boolean",
+          "enum": null
+        },
+        "clientOrderId": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "place_market_order",
+      "description": "Place a market order on Decibel DEX. Executes immediately at current price with slippage tolerance.",
+      "required": [
+        "side",
+        "size",
+        "symbol"
+      ],
+      "fields": {
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "long",
+            "short"
+          ]
+        },
+        "size": {
+          "type": "number",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "slippage": {
+          "type": "number",
+          "enum": null
+        },
+        "reduceOnly": {
+          "type": "boolean",
+          "enum": null
+        },
+        "clientOrderId": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "place_stop_limit_order",
+      "description": "Place a stop limit order. The order triggers when the market reaches the stop price, then posts as a limit order at the specified price.",
+      "required": [
+        "side",
+        "size",
+        "symbol",
+        "price",
+        "stopPrice"
+      ],
+      "fields": {
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "long",
+            "short"
+          ]
+        },
+        "size": {
+          "type": "number",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "price": {
+          "type": "number",
+          "enum": null
+        },
+        "stopPrice": {
+          "type": "number",
+          "enum": null
+        },
+        "timeInForce": {
+          "type": "string",
+          "enum": [
+            "gtc",
+            "post-only",
+            "ioc"
+          ]
+        },
+        "reduceOnly": {
+          "type": "boolean",
+          "enum": null
+        },
+        "clientOrderId": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "place_stop_market_order",
+      "description": "Place a stop market order. The order triggers when the market reaches the stop price, then executes immediately with slippage tolerance.",
+      "required": [
+        "side",
+        "size",
+        "symbol",
+        "stopPrice"
+      ],
+      "fields": {
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "long",
+            "short"
+          ]
+        },
+        "size": {
+          "type": "number",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "stopPrice": {
+          "type": "number",
+          "enum": null
+        },
+        "slippage": {
+          "type": "number",
+          "enum": null
+        },
+        "reduceOnly": {
+          "type": "boolean",
+          "enum": null
+        },
+        "clientOrderId": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "place_twap_order",
+      "description": "Place a TWAP (Time-Weighted Average Price) order. Splits execution across a duration at regular intervals.",
+      "required": [
+        "side",
+        "size",
+        "symbol",
+        "duration",
+        "frequency"
+      ],
+      "fields": {
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell",
+            "long",
+            "short"
+          ]
+        },
+        "size": {
+          "type": "number",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "duration": {
+          "type": "number",
+          "enum": null
+        },
+        "frequency": {
+          "type": "number",
+          "enum": null
+        },
+        "reduceOnly": {
+          "type": "boolean",
+          "enum": null
+        },
+        "clientOrderId": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "close_position",
+      "description": "Close an open position. Places a reduce-only market order in the opposite direction. Supports partial closes.",
+      "required": [
+        "symbol"
+      ],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "slippage": {
+          "type": "number",
+          "enum": null
+        },
+        "size": {
+          "type": "number",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "cancel_order",
+      "description": "Cancel an open order by order ID.",
+      "required": [
+        "orderId",
+        "symbol"
+      ],
+      "fields": {
+        "orderId": {
+          "type": "string",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "cancel_all_orders",
+      "description": "Cancel all open orders. Optionally filter by market symbol.",
+      "required": [],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "cancel_twap_order",
+      "description": "Cancel an active TWAP order by order ID.",
+      "required": [
+        "orderId",
+        "symbol"
+      ],
+      "fields": {
+        "orderId": {
+          "type": "string",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "place_tp_sl",
+      "description": "Set take-profit and/or stop-loss for an existing position. Specify trigger and limit prices. Omit size fields to apply to the full position.",
+      "required": [
+        "symbol"
+      ],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "tpTriggerPrice": {
+          "type": "number",
+          "enum": null
+        },
+        "tpLimitPrice": {
+          "type": "number",
+          "enum": null
+        },
+        "tpSize": {
+          "type": "number",
+          "enum": null
+        },
+        "slTriggerPrice": {
+          "type": "number",
+          "enum": null
+        },
+        "slLimitPrice": {
+          "type": "number",
+          "enum": null
+        },
+        "slSize": {
+          "type": "number",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "cancel_tp_sl",
+      "description": "Cancel a TP/SL order for a position by order ID.",
+      "required": [
+        "orderId",
+        "symbol"
+      ],
+      "fields": {
+        "orderId": {
+          "type": "string",
+          "enum": null
+        },
+        "symbol": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "get_tp_sl",
+      "description": "Get all TP/SL orders for a market position, including position-level and fixed-size TP/SL orders.",
+      "required": [
+        "symbol"
+      ],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "set_leverage",
+      "description": "Set leverage for a market.",
+      "required": [
+        "symbol",
+        "leverage"
+      ],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "leverage": {
+          "type": "number",
+          "enum": null
+        },
+        "marginType": {
+          "type": "string",
+          "enum": [
+            "cross",
+            "isolated"
+          ]
+        }
+      }
+    },
+    {
+      "name": "set_margin_type",
+      "description": "Switch margin type for a market between cross and isolated. Preserves current leverage.",
+      "required": [
+        "symbol",
+        "marginType"
+      ],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "marginType": {
+          "type": "string",
+          "enum": [
+            "cross",
+            "isolated"
+          ]
+        }
+      }
+    },
+    {
+      "name": "get_positions",
+      "description": "Get all open positions for the account.",
+      "required": [],
+      "fields": {}
+    },
+    {
+      "name": "get_orders",
+      "description": "Get all open orders for the account.",
+      "required": [],
+      "fields": {}
+    },
+    {
+      "name": "get_trade_history",
+      "description": "Get recent trade history for the account.",
+      "required": [],
+      "fields": {
+        "limit": {
+          "type": "number",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "get_active_twaps",
+      "description": "Get all active TWAP orders for the account.",
+      "required": [],
+      "fields": {}
+    },
+    {
+      "name": "get_order_history",
+      "description": "Get order history for the account (all order states including filled, cancelled, etc.).",
+      "required": [],
+      "fields": {
+        "limit": {
+          "type": "number",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "get_twap_history",
+      "description": "Get TWAP order history for the account (completed and cancelled TWAPs).",
+      "required": [],
+      "fields": {
+        "limit": {
+          "type": "number",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "get_funding_history",
+      "description": "Get funding rate payment history for the account.",
+      "required": [],
+      "fields": {
+        "limit": {
+          "type": "number",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "get_markets",
+      "description": "List all available markets on Decibel DEX with their configurations.",
+      "required": [],
+      "fields": {}
+    },
+    {
+      "name": "get_price",
+      "description": "Get current price, funding rate, and open interest for a market.",
+      "required": [
+        "symbol"
+      ],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "get_orderbook",
+      "description": "Get order book (bids and asks) for a market. Fetches a snapshot via WebSocket.",
+      "required": [
+        "symbol"
+      ],
+      "fields": {
+        "symbol": {
+          "type": "string",
+          "enum": null
+        },
+        "depth": {
+          "type": "number",
+          "enum": null
+        }
+      }
+    },
+    {
+      "name": "get_balances",
+      "description": "Get account balances including wallet USDC, trading account value, and margin info.",
+      "required": [],
+      "fields": {}
+    }
+  ],
+  "placeLimitOrderSchema": {
+    "required": [
+      "side",
+      "size",
+      "symbol",
+      "price"
+    ],
+    "fields": {
+      "side": {
+        "type": "string",
+        "enum": [
+          "buy",
+          "sell",
+          "long",
+          "short"
+        ]
+      },
+      "size": {
+        "type": "number",
+        "enum": null
+      },
+      "symbol": {
+        "type": "string",
+        "enum": null
+      },
+      "price": {
+        "type": "number",
+        "enum": null
+      },
+      "timeInForce": {
+        "type": "string",
+        "enum": [
+          "gtc",
+          "post-only",
+          "ioc"
+        ]
+      },
+      "reduceOnly": {
+        "type": "boolean",
+        "enum": null
+      },
+      "clientOrderId": {
+        "type": "string",
+        "enum": null
+      }
+    }
+  },
+  "cancelOrderSchema": {
+    "required": [
+      "orderId",
+      "symbol"
+    ],
+    "fields": {
+      "orderId": {
+        "type": "string",
+        "enum": null
+      },
+      "symbol": {
+        "type": "string",
+        "enum": null
+      }
+    }
+  },
+  "capabilityHash": "65a089c6cfeca5d7066a7e26b81a25a57fd49ce2d024d04e8ca884b4f69df5b0"
+}
