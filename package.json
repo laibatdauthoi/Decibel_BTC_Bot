@@ -30,6 +30,7 @@
     "decibel:canary:reconcile-v1": "tsx src/run_decibel_minimal_live_canary_post_execution_reconciliation_v1.ts",
     "decibel:canary:capture-ui-order-v1": "tsx src/run_decibel_operator_ui_canary_order_capture_v1.ts",
     "decibel:canary:freeze-success-v1": "tsx src/run_decibel_authenticated_live_canary_success_freeze_v1.ts",
+    "decibel:recycling:authenticated-state-v1": "tsx src/run_decibel_authenticated_passive_recycling_live_state_v1.ts",
     "collect:data": "tsx src/collect_data.ts",
     "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build:research-dataset": "tsx src/build_research_dataset.ts",
