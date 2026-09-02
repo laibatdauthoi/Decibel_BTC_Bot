@@ -23,6 +23,16 @@ const handoffPath = resolve(process.argv[index + 1]!);
 const handoff = JSON.parse(readFileSync(handoffPath, 'utf8')) as Parameters<
   typeof captureDecibelAuthenticatedPassiveRecyclingUiOrderV1
 >[0]['handoff'];
+const journalPath = resolve(
+  process.env.DECIBEL_RECYCLING_OPERATOR_JOURNAL_PATH ??
+    'data/decibel_authenticated_passive_recycling_operator_cycle_v1.sqlite',
+);
+const Journal = new decibel_authenticated_passive_recycling_journal_v1(journalPath);
+const journalRow = Journal.get(handoff.recyclingHandoffId);
+if (journalRow?.state === 'RETIRED_UNSUBMITTED') {
+  Journal.close();
+  throw new Error('RECYCLING_HANDOFF_RETIRED');
+}
 const config = loadConfig();
 const Reader = new DecibelReadDex(
   MAINNET_CONFIG,
@@ -82,12 +92,6 @@ const capture = captureDecibelAuthenticatedPassiveRecyclingUiOrderV1({
   authenticatedQuerySubaccount: handoff.subaccount,
   capturedAt: Date.now(),
 });
-const Journal = new decibel_authenticated_passive_recycling_journal_v1(
-  resolve(
-    process.env.DECIBEL_RECYCLING_OPERATOR_JOURNAL_PATH ??
-      'data/decibel_authenticated_passive_recycling_operator_cycle_v1.sqlite',
-  ),
-);
 Journal.recordState({
   recyclingHandoffId: handoff.recyclingHandoffId,
   state: 'UI_ORDER_CAPTURED',

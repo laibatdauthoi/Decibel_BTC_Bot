@@ -36,6 +36,10 @@ const Journal = new decibel_authenticated_passive_recycling_journal_v1(
   ),
 );
 const row = Journal.get(handoff.recyclingHandoffId);
+if (row?.state === 'RETIRED_UNSUBMITTED') {
+  Journal.close();
+  throw new Error('RECYCLING_HANDOFF_RETIRED');
+}
 if (row?.captureJson === null || row === null) {
   Journal.close();
   throw new Error('RECYCLING_UI_CAPTURE_REQUIRED');
