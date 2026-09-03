@@ -54,6 +54,22 @@ describe('Decibel lifecycle crash recovery V1', () => {
       journal.close();
     },
   );
+  it.each(['PREPARED', 'SUBMITTING', 'SUBMIT_UNKNOWN'] as const)(
+    'does not supersede real %s recovery state without the dry-run marker',
+    (status) => {
+      const journal = new decibel_execution_lifecycle_journal_v1(
+        join(mkdtempSync(join(tmpdir(), 'recover-real-')), 'j.sqlite'),
+      );
+      const value = intent();
+      journal.prepare(value);
+      if (status !== 'PREPARED') journal.transition(value.intentId, status, 2);
+      expect(journal.supersedeDryRunOnlyPrepared(3)).toBe(0);
+      expect(journal.nonTerminal()).toEqual([
+        { intentId: value.intentId, status, venueOrderId: null },
+      ]);
+      journal.close();
+    },
+  );
   it('full BUY then SELL authenticated maker fills conserve inventory and complete one cycle', () => {
     const journal = new decibel_execution_lifecycle_journal_v1(
       join(mkdtempSync(join(tmpdir(), 'cycle-')), 'j.sqlite'),

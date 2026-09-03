@@ -136,6 +136,23 @@ export class decibel_execution_lifecycle_journal_v1 {
       venueOrderId: string | null;
     }>;
   }
+  supersedeDryRunOnlyPrepared(at: number): number {
+    const rows = this.Database.prepare(
+      `SELECT i.intent_id intentId
+       FROM execution_intents i
+       WHERE i.status='PREPARED'
+         AND EXISTS (
+           SELECT 1 FROM lifecycle_blockers b
+           WHERE b.intent_id=i.intent_id AND b.blocker='PRODUCTION_DRY_RUN_MUTATION_BLOCKED'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM mutation_attempts a WHERE a.intent_id=i.intent_id
+         )
+       ORDER BY i.created_at,i.intent_id`,
+    ).all() as Array<{ intentId: string }>;
+    for (const row of rows) this.transition(row.intentId, 'SUPERSEDED', at);
+    return rows.length;
+  }
   hasOtherKnownLiveOrder(intentId: string): boolean {
     const row = this.Database.prepare(
       "SELECT 1 FROM execution_intents WHERE intent_id<>? AND venue_order_id IS NOT NULL AND status IN ('ACKNOWLEDGED','RECONCILING') LIMIT 1",

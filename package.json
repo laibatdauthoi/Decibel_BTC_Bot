@@ -48,6 +48,7 @@
     "decibel:mcp:pinned-probe-v1": "tsx src/run_decibel_pinned_mcp_runtime_probe_v1.ts",
     "decibel:execution:production-handoff-v1": "tsx src/run_decibel_production_executor_handoff_v1.ts",
     "decibel:production:v1": "tsx src/run_decibel_production_execution_v1.ts",
+    "decibel:production:live-v1": "tsx src/run_decibel_production_live_v1.ts",
     "decibel:sdk:preflight-v1": "tsx src/run_decibel_sdk_preflight_v1.ts",
     "decibel:production:runtime-readiness-v1": "tsx src/run_decibel_production_executor_runtime_readiness_v1.ts",
     "decibel:production:runtime-readiness-v2": "tsx src/run_decibel_production_executor_runtime_readiness_v2.ts",
