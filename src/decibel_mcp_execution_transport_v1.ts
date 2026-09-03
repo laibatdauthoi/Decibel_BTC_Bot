@@ -10,6 +10,7 @@ export interface DecibelMcpTransportV1 {
 }
 
 export type decibel_mcp_transport_diagnostics_v1 = Readonly<{
+  processRunning: boolean;
   processStarted: boolean;
   processExited: boolean;
   exitCode: number | null;
@@ -165,6 +166,7 @@ export class decibel_mock_mcp_transport_v1 implements DecibelMcpTransportV1 {
 
   getDiagnostics(): decibel_mcp_transport_diagnostics_v1 {
     return {
+      processRunning: this.started && !this.closed,
       processStarted: this.started,
       processExited: this.closed,
       exitCode: null,
@@ -299,6 +301,7 @@ export class decibel_stdio_mcp_transport_v1 implements DecibelMcpTransportV1 {
   getDiagnostics(): decibel_mcp_transport_diagnostics_v1 {
     const server = asRecord(this.serverIdentity);
     return Object.freeze({
+      processRunning: this.process !== null,
       processStarted: this.processStarted,
       processExited: this.processExited,
       exitCode: this.exitCode,

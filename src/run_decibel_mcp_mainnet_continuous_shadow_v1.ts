@@ -6,10 +6,12 @@ import { resolve } from 'node:path';
 import { buildDecibelMcpMainnetReadOnlyEnvironmentV1 } from './decibel_mcp_execution_adapter_v1.js';
 import {
   evaluateDecibelMcpContinuousShadowV1,
+  buildDecibelMcpShadowReadFailureV1,
   summarizeDecibelMcpContinuousShadowV1,
   type decibel_continuous_shadow_config_v1,
   type decibel_continuous_shadow_evaluation_v1,
   type decibel_continuous_shadow_order_v1,
+  type decibel_mcp_shadow_read_failure_v1,
 } from './decibel_mcp_mainnet_continuous_shadow_v1.js';
 import { readDecibelMcpMainnetShadowStateV1 } from './decibel_mcp_mainnet_shadow_state_v1.js';
 import { decibel_stdio_mcp_transport_v1 } from './decibel_mcp_execution_transport_v1.js';
@@ -38,6 +40,13 @@ function normalizeConfig(input: {
   raw: Record<string, unknown>;
   schema: decibel_continuous_shadow_config_v1['schema'];
 }): decibel_continuous_shadow_config_v1 {
+  const requestedPolicy = input.environment.DECIBEL_SHADOW_REPRICE_POLICY;
+  if (
+    requestedPolicy !== undefined &&
+    requestedPolicy !== 'BASELINE_IMMEDIATE' &&
+    requestedPolicy !== 'BEHIND_5_TICKS'
+  )
+    throw new Error('MCP_SHADOW_REPRICE_POLICY_INVALID');
   const priceDecimals = numeric(input.raw.priceDecimals ?? input.raw.price_decimals);
   const sizeDecimals = numeric(input.raw.sizeDecimals ?? input.raw.size_decimals);
   const rawTick = numeric(input.raw.tickSize ?? input.raw.tick_size);
@@ -64,6 +73,7 @@ function normalizeConfig(input: {
     minimumNotionalUsd: Number(input.environment.DECIBEL_RECYCLING_MIN_NOTIONAL_USD ?? 10),
     targetNotionalUsd: Number(input.environment.DECIBEL_RECYCLING_TARGET_NOTIONAL_USD ?? 21),
     maximumNotionalUsd: Number(input.environment.DECIBEL_RECYCLING_MAX_NOTIONAL_USD ?? 25),
+    repricePolicy: requestedPolicy ?? 'BASELINE_IMMEDIATE',
     schema: input.schema,
   });
 }
@@ -103,12 +113,19 @@ export async function runDecibelMcpMainnetContinuousShadowV1(input: {
   const summaryPath = resolve(
     `data/decibel_mcp_mainnet_continuous_shadow_summary_v1_${sessionId}.json`,
   );
+  const failureEvidencePath = resolve(
+    `data/decibel_mcp_mainnet_continuous_shadow_failures_v1_${sessionId}.jsonl`,
+  );
   const transport = new decibel_stdio_mcp_transport_v1(
     buildDecibelMcpMainnetReadOnlyEnvironmentV1(input.environment),
   );
   const evaluations: decibel_continuous_shadow_evaluation_v1[] = [];
   let previousOrder: decibel_continuous_shadow_order_v1 | null = null;
   let readFailureCount = 0;
+  let evaluationAttempts = 0;
+  let currentConsecutiveReadFailures = 0;
+  let maxConsecutiveReadFailures = 0;
+  const readFailures: decibel_mcp_shadow_read_failure_v1[] = [];
   let unhandledExceptionCount = 0;
   let stopping = false;
   const stop = () => {
@@ -119,6 +136,7 @@ export async function runDecibelMcpMainnetContinuousShadowV1(input: {
   try {
     while (!stopping && (duration === null || now() - startedAt < duration * 1_000)) {
       const evaluationStartedAt = now();
+      evaluationAttempts += 1;
       try {
         const state = await readDecibelMcpMainnetShadowStateV1({ transport, now });
         const config = normalizeConfig({
@@ -135,6 +153,7 @@ export async function runDecibelMcpMainnetContinuousShadowV1(input: {
           timestamp: now(),
         });
         evaluations.push(evaluation);
+        currentConsecutiveReadFailures = 0;
         previousOrder = evaluation.shadowOrderAfter;
         appendFileSync(jsonlPath, `${JSON.stringify(evaluation)}\n`, 'utf8');
         console.log(
@@ -142,7 +161,25 @@ export async function runDecibelMcpMainnetContinuousShadowV1(input: {
         );
       } catch (error) {
         readFailureCount += 1;
-        console.error(`SHADOW_READ_FAILURE=${error instanceof Error ? error.message : 'UNKNOWN'}`);
+        currentConsecutiveReadFailures += 1;
+        maxConsecutiveReadFailures = Math.max(
+          maxConsecutiveReadFailures,
+          currentConsecutiveReadFailures,
+        );
+        const failure = buildDecibelMcpShadowReadFailureV1({
+          error,
+          environment: input.environment,
+          timestamp: now(),
+          evaluationAttempt: evaluationAttempts,
+          elapsedMs: now() - evaluationStartedAt,
+          diagnostics: transport.getDiagnostics(),
+        });
+        readFailures.push(failure);
+        appendFileSync(failureEvidencePath, `${JSON.stringify(failure)}\n`, 'utf8');
+        console.error('SHADOW_READ_FAILURE=YES');
+        console.error(`FAILURE_CLASS=${failure.failureClass}`);
+        console.error(`FAILURE_MESSAGE=${failure.message}`);
+        console.error(`FAILURE_EVIDENCE=${failureEvidencePath}`);
       }
       const remaining = intervalMs - (now() - evaluationStartedAt);
       if (!stopping && remaining > 0) await wait(remaining);
@@ -161,6 +198,10 @@ export async function runDecibelMcpMainnetContinuousShadowV1(input: {
     evaluations,
     readFailureCount,
     unhandledExceptionCount,
+    readFailures,
+    evaluationAttempts,
+    maxConsecutiveReadFailures,
+    failureEvidencePath,
   });
   writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
   console.log(`MAINNET_SHADOW_RUNTIME_READY=${summary.mainnetShadowRuntimeReady ? 'YES' : 'NO'}`);
