@@ -48,6 +48,8 @@
     "decibel:mcp:pinned-probe-v1": "tsx src/run_decibel_pinned_mcp_runtime_probe_v1.ts",
     "decibel:execution:production-handoff-v1": "tsx src/run_decibel_production_executor_handoff_v1.ts",
     "decibel:production:v1": "tsx src/run_decibel_production_execution_v1.ts",
+    "decibel:sdk:preflight-v1": "tsx src/run_decibel_sdk_preflight_v1.ts",
+    "decibel:production:runtime-readiness-v1": "tsx src/run_decibel_production_executor_runtime_readiness_v1.ts",
     "collect:data": "tsx src/collect_data.ts",
     "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build:research-dataset": "tsx src/build_research_dataset.ts",
@@ -229,7 +231,7 @@
   "homepage": "https://github.com/laibatdauthoi/Decibel_BTC_Bot#readme",
   "dependencies": {
     "@aptos-labs/ts-sdk": "^5.2.1",
-    "@decibeltrade/sdk": "^0.7.0",
+    "@decibeltrade/sdk": "0.7.0",
     "better-sqlite3": "13.0.2",
     "dotenv": "^17.4.2",
     "pino": "^10.3.1",
