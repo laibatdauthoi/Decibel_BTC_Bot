@@ -47,6 +47,7 @@
     "decibel:execution:lifecycle-shadow-v1": "tsx src/run_decibel_mainnet_execution_lifecycle_shadow_v1.ts",
     "decibel:mcp:pinned-probe-v1": "tsx src/run_decibel_pinned_mcp_runtime_probe_v1.ts",
     "decibel:execution:production-handoff-v1": "tsx src/run_decibel_production_executor_handoff_v1.ts",
+    "decibel:production:v1": "tsx src/run_decibel_production_execution_v1.ts",
     "collect:data": "tsx src/collect_data.ts",
     "analyze:microstructure-quality": "tsx src/analyze_microstructure_quality.ts",
     "build:research-dataset": "tsx src/build_research_dataset.ts",
