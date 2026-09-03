@@ -1,0 +1,55 @@
+{
+  "identity": "DECIBEL_MAINNET_EXECUTION_LIFECYCLE_INTEGRATION_SHADOW_V1",
+  "trustLabel": "DECIBEL_MAINNET_EXECUTION_LIFECYCLE_SHADOW_READY",
+  "shadowReadinessManifestHash": "f0d18c345355a89055aec1d4c2c8afa5ec37a52cfe2996663dee5d5a9e886a68",
+  "mockLifecycleManifestHash": "2e1486f8a42a9d267437a8cdc771a057afefced99dd25c22d62627c3f3b783b7",
+  "sessionId": "lifecycle-shadow-1788422195435",
+  "journalHash": "552283fefef668faeea89761effa60fc524c338add67922e0320ee33ef24216f",
+  "evaluationMetrics": {
+    "evaluationAttempts": 895,
+    "successfulEvaluations": 895,
+    "readFailureCount": 0,
+    "blockedEvaluations": 0,
+    "distinctPreparedIntents": 1,
+    "idempotentIntentHolds": 339,
+    "wouldPlaceCount": 1,
+    "wouldCancelCount": 0,
+    "wouldReplaceCount": 555,
+    "stateChangeBeforeIntentCount": 0,
+    "realBtcOrderBlockCount": 0,
+    "foreignOrderBlockCount": 0,
+    "authenticatedBtcFillObservations": 10,
+    "outOfBandBtcFillObservations": 10,
+    "finalBtcPositionBase": 0,
+    "finalInventoryState": "FLAT",
+    "finalAccountStateAuthenticated": true,
+    "mcpMutationCalls": 0,
+    "venueMutations": 0,
+    "mainnetSignedTransactions": 0
+  },
+  "intentIdempotencyEvidence": {
+    "duplicateSemanticIntentsSuppressed": true
+  },
+  "reconciliationEvidence": {
+    "authenticatedDoubleRead": true,
+    "noFillInference": true
+  },
+  "readReliabilityEvidence": {
+    "attempts": 895,
+    "successes": 895,
+    "failures": 0
+  },
+  "finalAccountState": {
+    "btcPositionBase": 0,
+    "inventoryState": "FLAT"
+  },
+  "safetyBoundary": {
+    "liveExecutionReadyClaimed": false,
+    "autonomousMainnetReadyClaimed": false,
+    "liveExecutionEnabled": false
+  },
+  "mcpMutationCalls": 0,
+  "venueMutations": 0,
+  "mainnetSignedTransactions": 0,
+  "manifestBodyHashSha256": "c348c9c68ddcb951673af2ca7183cf66f9d148f236245984499c9573109ebae2"
+}

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { dirname, join } from 'node:path';
+import { validateDecibelPinnedMcpRuntimeV1 } from './decibel_pinned_mcp_runtime_v1.js';
 export interface DecibelMcpTransportV1 {
   start(): Promise<void>;
   listTools(): Promise<unknown>;
@@ -41,7 +42,19 @@ export function resolveDecibelMcpLauncherV1(environment: NodeJS.ProcessEnv): {
   executable: string;
   arguments: string[];
   sidecar: boolean;
+  launchMode: 'PINNED_LOCAL_ENTRYPOINT' | 'NPX_LEGACY';
+  npxUsed: boolean;
 } {
+  if (environment.DECIBEL_MCP_ENTRYPOINT) {
+    const pinned = validateDecibelPinnedMcpRuntimeV1(environment);
+    return {
+      executable: pinned.nodeExecutable,
+      arguments: [pinned.entrypoint],
+      sidecar: true,
+      launchMode: 'PINNED_LOCAL_ENTRYPOINT',
+      npxUsed: false,
+    };
+  }
   const configuredNode = environment.DECIBEL_MCP_NODE_EXECUTABLE;
   if (configuredNode) {
     return {
@@ -54,6 +67,8 @@ export function resolveDecibelMcpLauncherV1(environment: NodeJS.ProcessEnv): {
         'decibel-mcp',
       ],
       sidecar: true,
+      launchMode: 'NPX_LEGACY',
+      npxUsed: true,
     };
   }
   const windows = process.platform === 'win32';
@@ -62,11 +77,15 @@ export function resolveDecibelMcpLauncherV1(environment: NodeJS.ProcessEnv): {
         executable: process.env.ComSpec ?? 'cmd.exe',
         arguments: ['/d', '/s', '/c', 'npx -y -p @decibeltrade/cli decibel-mcp'],
         sidecar: false,
+        launchMode: 'NPX_LEGACY',
+        npxUsed: true,
       }
     : {
         executable: 'npx',
         arguments: ['-y', '-p', '@decibeltrade/cli', 'decibel-mcp'],
         sidecar: false,
+        launchMode: 'NPX_LEGACY',
+        npxUsed: true,
       };
 }
 

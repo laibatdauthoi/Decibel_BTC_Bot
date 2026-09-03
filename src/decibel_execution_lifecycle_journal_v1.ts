@@ -16,6 +16,7 @@ export class decibel_execution_lifecycle_journal_v1 {
       CREATE TABLE IF NOT EXISTS mutation_attempts(id INTEGER PRIMARY KEY AUTOINCREMENT, intent_id TEXT NOT NULL, attempted_at INTEGER NOT NULL, outcome TEXT);
       CREATE TABLE IF NOT EXISTS executor_outcomes(id INTEGER PRIMARY KEY AUTOINCREMENT, intent_id TEXT NOT NULL, outcome_json TEXT NOT NULL, observed_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS reconciliation_observations(id INTEGER PRIMARY KEY AUTOINCREMENT, intent_id TEXT NOT NULL, state TEXT NOT NULL, venue_order_id TEXT, observed_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS mainnet_reconciliation_observations(id INTEGER PRIMARY KEY AUTOINCREMENT, observed_at INTEGER NOT NULL, market_address TEXT NOT NULL, btc_position_base REAL NOT NULL, btc_open_order_ids_json TEXT NOT NULL, btc_authenticated_fill_ids_json TEXT NOT NULL, foreign_open_order_ids_json TEXT NOT NULL, inventory_state TEXT NOT NULL, source_snapshot_hash TEXT NOT NULL UNIQUE);
       CREATE TABLE IF NOT EXISTS authenticated_fills(fill_id TEXT PRIMARY KEY, intent_id TEXT, side TEXT NOT NULL, quantity REAL NOT NULL, price REAL NOT NULL, strategy_lineage INTEGER NOT NULL, maker_proven INTEGER NOT NULL, external_counterparty INTEGER NOT NULL, observed_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS lifecycle_transitions(id INTEGER PRIMARY KEY AUTOINCREMENT, intent_id TEXT NOT NULL, from_state TEXT, to_state TEXT NOT NULL, observed_at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS lifecycle_blockers(id INTEGER PRIMARY KEY AUTOINCREMENT, intent_id TEXT, blocker TEXT NOT NULL, observed_at INTEGER NOT NULL);
@@ -82,6 +83,37 @@ export class decibel_execution_lifecycle_journal_v1 {
     this.Database.prepare(
       'INSERT INTO lifecycle_blockers(intent_id,blocker,observed_at) VALUES(?,?,?)',
     ).run(intentId, blocker, at);
+  }
+  recordMainnetReconciliation(input: {
+    timestamp: number;
+    marketAddress: string;
+    btcPositionBase: number;
+    btcOpenOrderIds: readonly string[];
+    btcAuthenticatedFillIds: readonly string[];
+    foreignOpenOrderIds: readonly string[];
+    inventoryState: 'FLAT' | 'LONG_RECYCLE' | 'SHORT_RECYCLE';
+    sourceSnapshotHash: string;
+  }): { duplicate: boolean } {
+    const result = this.Database.prepare(
+      'INSERT OR IGNORE INTO mainnet_reconciliation_observations VALUES(NULL,?,?,?,?,?,?,?,?)',
+    ).run(
+      input.timestamp,
+      input.marketAddress,
+      input.btcPositionBase,
+      JSON.stringify(input.btcOpenOrderIds),
+      JSON.stringify(input.btcAuthenticatedFillIds),
+      JSON.stringify(input.foreignOpenOrderIds),
+      input.inventoryState,
+      input.sourceSnapshotHash,
+    );
+    return { duplicate: result.changes === 0 };
+  }
+  countIntents(): number {
+    return (
+      this.Database.prepare('SELECT COUNT(*) count FROM execution_intents').get() as {
+        count: number;
+      }
+    ).count;
   }
   get(intentId: string) {
     const row = this.Database.prepare('SELECT * FROM execution_intents WHERE intent_id=?').get(
