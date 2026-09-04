@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": [
+    "src/run_decibel_production_live_v1.ts",
+    "src/run_decibel_authenticated_btc_activity_resync_v1.ts",
+    "src/run_decibel_execution_journal_resolve_pre_submission_failure_v1.ts",
+    "src/decibel_external_production_executor_v1.ts"
+  ]
+}

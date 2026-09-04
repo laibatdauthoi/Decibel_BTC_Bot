@@ -4,9 +4,30 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildDecibelExecutionIntentV1 } from '../src/decibel_execution_intent_v1.js';
 import { decibel_execution_lifecycle_journal_v1 } from '../src/decibel_execution_lifecycle_journal_v1.js';
-import { decibel_execution_lifecycle_v1 } from '../src/decibel_execution_lifecycle_v1.js';
-import { decibel_mock_lifecycle_executor_v1 } from '../src/decibel_mock_lifecycle_executor_v1.js';
-import { buildDecibelExecutionLifecycleMockManifestV1 } from '../src/run_decibel_mock_execution_lifecycle_v1.js';
+import {
+  decibel_execution_lifecycle_v1,
+  type DecibelExecutionExecutorV1,
+  type execution_result_v1,
+} from '../src/decibel_execution_lifecycle_v1.js';
+
+class decibel_mock_lifecycle_executor_v1 implements DecibelExecutionExecutorV1 {
+  readonly mcpMutationCalls = 0;
+  readonly venueMutations = 0;
+  mockMutationAttempts = 0;
+  constructor(private readonly Script: execution_result_v1[]) {}
+  private next(): execution_result_v1 {
+    this.mockMutationAttempts += 1;
+    const result = this.Script.shift();
+    if (result === undefined) throw new Error('MOCK_LIFECYCLE_SCRIPT_EXHAUSTED');
+    return result;
+  }
+  placePostOnlyLimit(): Promise<execution_result_v1> {
+    return Promise.resolve(this.next());
+  }
+  cancelExactOrder(): Promise<execution_result_v1> {
+    return Promise.resolve(this.next());
+  }
+}
 
 const intent = () =>
   buildDecibelExecutionIntentV1({
@@ -70,6 +91,57 @@ describe('Decibel lifecycle crash recovery V1', () => {
       journal.close();
     },
   );
+  it('closes a confirmed pre-submission ABI failure without deleting journal history', () => {
+    const journal = new decibel_execution_lifecycle_journal_v1(
+      join(mkdtempSync(join(tmpdir(), 'recover-abi-')), 'j.sqlite'),
+    );
+    const value = intent();
+    journal.prepare(value);
+    journal.transition(value.intentId, 'SUBMITTING', 2);
+    journal.attempt(value.intentId, 2);
+    journal.recordOutcome(value.intentId, { outcome: 'PLACE_TIMEOUT_UNKNOWN' }, 2);
+    journal.transition(value.intentId, 'SUBMIT_UNKNOWN', 2);
+
+    expect(
+      journal.resolvePreSubmissionAbiFailure({
+        intentId: value.intentId,
+        at: 3,
+        confirmation: 'APTOS_REMOTE_ABI_NON_INTEGER_CONFIRMED',
+      }),
+    ).toEqual({ duplicate: false });
+    expect(journal.get(value.intentId)?.status).toBe('REJECTED');
+    expect(journal.nonTerminal()).toEqual([]);
+    expect(
+      journal.resolvePreSubmissionAbiFailure({
+        intentId: value.intentId,
+        at: 4,
+        confirmation: 'APTOS_REMOTE_ABI_NON_INTEGER_CONFIRMED',
+      }),
+    ).toEqual({ duplicate: true });
+    expect(journal.mutationAttemptsSince(0)).toBe(1);
+    journal.close();
+  });
+  it('refuses to close an unknown intent after reconciliation evidence exists', () => {
+    const journal = new decibel_execution_lifecycle_journal_v1(
+      join(mkdtempSync(join(tmpdir(), 'recover-abi-refuse-')), 'j.sqlite'),
+    );
+    const value = intent();
+    journal.prepare(value);
+    journal.transition(value.intentId, 'SUBMITTING', 2);
+    journal.attempt(value.intentId, 2);
+    journal.recordOutcome(value.intentId, { outcome: 'PLACE_TIMEOUT_UNKNOWN' }, 2);
+    journal.transition(value.intentId, 'SUBMIT_UNKNOWN', 2);
+    journal.recordReconciliation(value.intentId, 'ORDER_NOT_FOUND', null, 3);
+    expect(() =>
+      journal.resolvePreSubmissionAbiFailure({
+        intentId: value.intentId,
+        at: 4,
+        confirmation: 'APTOS_REMOTE_ABI_NON_INTEGER_CONFIRMED',
+      }),
+    ).toThrow('EXECUTION_PRE_SUBMISSION_FAILURE_RESOLUTION_REJECTED');
+    expect(journal.get(value.intentId)?.status).toBe('SUBMIT_UNKNOWN');
+    journal.close();
+  });
   it('full BUY then SELL authenticated maker fills conserve inventory and complete one cycle', () => {
     const journal = new decibel_execution_lifecycle_journal_v1(
       join(mkdtempSync(join(tmpdir(), 'cycle-')), 'j.sqlite'),
@@ -103,35 +175,5 @@ describe('Decibel lifecycle crash recovery V1', () => {
       strategyMakerVolume: 20.1,
     });
     journal.close();
-  });
-  it.each(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as const)(
-    'mock evidence manifest includes closed-loop scenario %s',
-    (scenario) => {
-      expect(buildDecibelExecutionLifecycleMockManifestV1().scenarioResults[scenario]).toBeTruthy();
-    },
-  );
-  it('builds deterministic mock evidence', () => {
-    expect(buildDecibelExecutionLifecycleMockManifestV1()).toEqual(
-      buildDecibelExecutionLifecycleMockManifestV1(),
-    );
-  });
-  it('records zero MCP, venue, and signed mainnet mutations', () => {
-    expect(buildDecibelExecutionLifecycleMockManifestV1()).toMatchObject({
-      mcpMutationCalls: 0,
-      venueMutations: 0,
-      mainnetSignedTransactions: 0,
-    });
-  });
-  it('records one completed external-maker mock cycle', () => {
-    expect(buildDecibelExecutionLifecycleMockManifestV1()).toMatchObject({
-      completedMockCycles: 1,
-      mockCounterpartiesExternal: true,
-    });
-  });
-  it('prohibits self-trade and taker cleanup', () => {
-    expect(buildDecibelExecutionLifecycleMockManifestV1()).toMatchObject({
-      selfTradePermitted: false,
-      noTakerCleanup: true,
-    });
   });
 });

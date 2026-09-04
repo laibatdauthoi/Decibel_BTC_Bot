@@ -3,15 +3,48 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  execution_preflight_rejection_v1,
   buildDecibelExecutionIntentV1,
   validateDecibelPlaceIntentV1,
   type cancel_intent_v1,
   type place_intent_v1,
 } from '../src/decibel_execution_intent_v1.js';
 import { decibel_execution_lifecycle_journal_v1 } from '../src/decibel_execution_lifecycle_journal_v1.js';
-import { decibel_execution_lifecycle_v1 } from '../src/decibel_execution_lifecycle_v1.js';
-import { decibel_mainnet_mutation_blocked_executor_v1 } from '../src/decibel_mainnet_mutation_blocked_executor_v1.js';
-import { decibel_mock_lifecycle_executor_v1 } from '../src/decibel_mock_lifecycle_executor_v1.js';
+import {
+  decibel_execution_lifecycle_v1,
+  type DecibelExecutionExecutorV1,
+  type execution_result_v1,
+} from '../src/decibel_execution_lifecycle_v1.js';
+
+class decibel_mainnet_mutation_blocked_executor_v1 implements DecibelExecutionExecutorV1 {
+  readonly mcpMutationCalls = 0;
+  readonly venueMutations = 0;
+  placePostOnlyLimit(): Promise<execution_result_v1> {
+    return Promise.reject(new Error('MAINNET_MUTATION_NOT_ENABLED'));
+  }
+  cancelExactOrder(): Promise<execution_result_v1> {
+    return Promise.reject(new Error('MAINNET_MUTATION_NOT_ENABLED'));
+  }
+}
+
+class decibel_mock_lifecycle_executor_v1 implements DecibelExecutionExecutorV1 {
+  readonly mcpMutationCalls = 0;
+  readonly venueMutations = 0;
+  mockMutationAttempts = 0;
+  constructor(private readonly Script: execution_result_v1[]) {}
+  private next(): execution_result_v1 {
+    this.mockMutationAttempts += 1;
+    const result = this.Script.shift();
+    if (result === undefined) throw new Error('MOCK_LIFECYCLE_SCRIPT_EXHAUSTED');
+    return result;
+  }
+  placePostOnlyLimit(): Promise<execution_result_v1> {
+    return Promise.resolve(this.next());
+  }
+  cancelExactOrder(): Promise<execution_result_v1> {
+    return Promise.resolve(this.next());
+  }
+}
 
 const dbPath = () => join(mkdtempSync(join(tmpdir(), 'lifecycle-')), 'journal.sqlite');
 const place = (cycleSequence = 1) =>
@@ -199,6 +232,38 @@ describe('Decibel execution lifecycle boundary V1', () => {
       selfTradePermitted: false,
       externalCounterpartyRequired: true,
     });
+  });
+  it('accepts a canonically aligned decimal price and exposes the exact notional rejection', () => {
+    const intent = buildDecibelExecutionIntentV1({
+      sessionId: 'production-live',
+      cycleSequence: 1,
+      action: 'PLACE',
+      market: 'BTC/USD',
+      side: 'BUY',
+      price: 81_163.4,
+      quantity: 0.00002,
+      tickSize: 0.1,
+      lotSize: 0.00001,
+      clientOrderId: 'd1b-preflight-diagnostic',
+      knownVenueOrderId: null,
+      sourceStateHash: 'state',
+      strategyDecisionHash: 'decision',
+      createdAt: 1_000,
+    }) as place_intent_v1;
+    expect(() =>
+      validateDecibelPlaceIntentV1(intent, {
+        tickSize: 0.1,
+        lotSize: 0.00001,
+        minimumNotionalUsd: 10,
+        maximumNotionalUsd: 50,
+        permittedSide: 'BUY',
+      }),
+    ).toThrowError(
+      expect.objectContaining<Partial<execution_preflight_rejection_v1>>({
+        message: 'EXECUTION_PREFLIGHT_REJECTED',
+        rejectionCode: 'EXECUTION_PREFLIGHT_NOTIONAL_BELOW_MINIMUM',
+      }),
+    );
   });
   it('blocks a second known live strategy order', async () => {
     const journal = new decibel_execution_lifecycle_journal_v1(dbPath());

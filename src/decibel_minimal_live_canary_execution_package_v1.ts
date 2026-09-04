@@ -167,7 +167,7 @@ export function buildDecibelCanaryPlaceOrderPayloadV1(input: {
 }): decibel_canary_transaction_payload_v1 {
   if (!/^0x[0-9a-f]+$/i.test(input.packageAddress))
     throw new Error('CANARY_TRANSACTION_PACKAGE_ADDRESS_INVALID');
-  return Object.freeze({
+  return Object.freeze<decibel_canary_transaction_payload_v1>({
     function: `${input.packageAddress}::dex_accounts_entry::place_order_to_subaccount`,
     typeArguments: Object.freeze([]),
     functionArguments: Object.freeze([
@@ -357,7 +357,7 @@ export function buildDecibelMinimalLiveCanaryExecutionPackageV1(input: {
       'FULL_MAKER_FILL_SAFE_TERMINATION',
       'AMBIGUOUS_FAIL_CLOSED',
       'SAFETY_INVARIANT_VIOLATION',
-    ]),
+    ] as const),
     lifecycleLimits: Object.freeze({
       maximumPlacementTransactions: 1,
       maximumVenueOrdersPerSession: 1,

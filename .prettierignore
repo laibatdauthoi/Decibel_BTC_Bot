@@ -1,0 +1,3 @@
+config/production_state/**
+docs/**
+README.md

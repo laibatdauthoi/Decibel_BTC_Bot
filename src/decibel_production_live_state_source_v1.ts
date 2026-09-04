@@ -15,7 +15,7 @@ import type {
 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import { isDecibelPassiveRecyclingClientOrderIdV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import { validateDecibelAuthenticatedLiveCanaryManifestV1 } from './decibel_authenticated_passive_recycling_live_state_v1.js';
-import { validateDecibelAuthenticatedBtcResyncCheckpointV1 } from './decibel_authenticated_btc_activity_resync_v1.js';
+import { loadLatestDecibelAuthenticatedBtcResyncCheckpointV1 } from './decibel_authenticated_btc_resync_checkpoint_chain_v1.js';
 import {
   resolveDecibelBulkOrderActivityV1,
   type decibel_bulk_order_record_v1,
@@ -187,7 +187,7 @@ function canonicalHash(value: unknown): string {
 
 function loadAuthenticatedActivityBaseline(): authenticated_activity_baseline {
   const manifestBytes = readFileSync(
-    'research/decibel_authenticated_live_canary_success_v1_manifest.json',
+    'config/production_state/decibel_authenticated_live_canary_success_v1_manifest.json',
   );
   const manifest = JSON.parse(manifestBytes.toString('utf8')) as Record<string, unknown>;
   const frozen = validateDecibelAuthenticatedLiveCanaryManifestV1({
@@ -212,11 +212,7 @@ function loadAuthenticatedActivityBaseline(): authenticated_activity_baseline {
   if (handoff === null || typeof handoff !== 'object')
     throw new Error('PRODUCTION_LIVE_SOURCE_HANDOFF_INVALID');
   const historyStartTimestamp = (handoff as Record<string, unknown>).createdAt;
-  const validatedCheckpoint: unknown = validateDecibelAuthenticatedBtcResyncCheckpointV1(
-    JSON.parse(
-      readFileSync('research/decibel_authenticated_btc_resync_checkpoint_v1.json', 'utf8'),
-    ),
-  );
+  const validatedCheckpoint: unknown = loadLatestDecibelAuthenticatedBtcResyncCheckpointV1();
   if (validatedCheckpoint === null || typeof validatedCheckpoint !== 'object')
     throw new Error('PRODUCTION_LIVE_SOURCE_BASELINE_INVALID');
   const checkpoint = validatedCheckpoint as Record<string, unknown>;
@@ -256,7 +252,11 @@ function isStrategyClientOrderId(value: string | null | undefined): value is str
 }
 
 function makeSDKReader(environment: NodeJS.ProcessEnv): DecibelProductionLiveAuthenticatedReaderV1 {
-  const config = loadConfig(environment);
+  const nodeApiKey = environment.DECIBEL_NODE_API_KEY?.trim();
+  const config = loadConfig({
+    ...environment,
+    DECIBEL_NODE_API_KEY: nodeApiKey === '' ? undefined : nodeApiKey,
+  });
   if (config.network !== 'mainnet') throw new Error('PRODUCTION_LIVE_SOURCE_MAINNET_REQUIRED');
   const initialized = (async () => {
     await loadDecibelSdkRuntimeV1();

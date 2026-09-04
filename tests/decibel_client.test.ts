@@ -63,6 +63,38 @@ function makeReader(): decibel_market_reader {
 }
 
 describe('decibel_client', () => {
+  it('fetches only the current BTC book snapshot by concrete market address', async () => {
+    const fetchHTTP = vi.fn<HTTP_fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          asks: [['101', '1']],
+          bids: [['100', '1']],
+          ticker_id: '0xbtc',
+          timestamp: '1700000000000',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const Client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => makeReader(),
+      fetchHTTP,
+    );
+
+    await expect(Client.getBTCCurrentBook('0xbtc')).resolves.toEqual({
+      market: '0xbtc',
+      asks: [{ price: 101, size: 1 }],
+      bids: [{ price: 100, size: 1 }],
+      best_ask: 101,
+      best_bid: 100,
+      unix_ms: 1_700_000_000_000,
+    });
+    expect(fetchHTTP).toHaveBeenCalledWith(
+      'https://testnet.example/api/v1/orderbook?market=0xbtc',
+      { headers: new Headers() },
+    );
+  });
+
   it('fetches bounded REST trade pages by concrete market address without exposing the key', async () => {
     const fetchHTTP = vi.fn<HTTP_fetch>().mockResolvedValue(
       new Response(JSON.stringify({ items: [], total_count: 0 }), {
@@ -148,6 +180,30 @@ describe('decibel_client', () => {
       midPrice: 65_000.5,
       oraclePrice: 65_002,
       observedAt: new Date(1_700_000_000_000),
+    });
+  });
+
+  it('ignores unrelated spot rows before applying perpetual leverage validation', async () => {
+    const reader = makeReader();
+    reader.markets.getAll = vi.fn().mockResolvedValue([
+      {
+        ...market,
+        market_addr: '0xspot',
+        market_name: 'APT/USD',
+        asset_type: 'spot',
+        max_leverage: 0,
+      },
+      { ...market, asset_type: 'perp' },
+    ]);
+    const client = new decibel_client(
+      { network: 'mainnet', marketSymbol: 'BTC/USD' },
+      () => reader,
+    );
+
+    await expect(client.getBTCMarketMetadata()).resolves.toMatchObject({
+      marketAddress: '0xbtc',
+      exchangeSymbol: 'BTC-USD',
+      maximumLeverage: 20,
     });
   });
 

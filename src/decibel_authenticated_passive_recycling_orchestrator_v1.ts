@@ -17,6 +17,13 @@ export const DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_ORCHESTRATOR_V1 =
 export const LIVE_EXECUTION_ENABLED = false as const;
 export const VENUE_MUTATION_ENABLED = false as const;
 
+const DECIBEL_PASSIVE_RECYCLING_CLIENT_ORDER_ID_V1 =
+  /^(?:dpvr1-[bs]-\d+-[0-9a-f]{32}|d1[bs][0-9a-f]{29})$/;
+
+export function isDecibelPassiveRecyclingClientOrderIdV1(value: string): boolean {
+  return DECIBEL_PASSIVE_RECYCLING_CLIENT_ORDER_ID_V1.test(value);
+}
+
 export type decibel_authenticated_strategy_order_v1 = Readonly<{
   venueOrderId: string;
   clientOrderId: string;
@@ -66,6 +73,8 @@ export type decibel_authenticated_passive_recycling_input_v1 = Readonly<{
     tickSize: number;
     lotSize: number;
     minimumSize: number;
+    priceDecimals?: number;
+    sizeDecimals?: number;
     mode: string;
     observedAt: number;
   }>;
@@ -142,7 +151,7 @@ function desiredOrder(input: {
     DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
     input.price,
     input.quantity,
-  ]).slice(0, 32);
+  ]).slice(0, 29);
   return Object.freeze({
     side: input.side,
     market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
@@ -151,7 +160,7 @@ function desiredOrder(input: {
     orderType: 'LIMIT',
     timeInForce: 'PostOnly',
     postOnly: true,
-    clientOrderId: `dpvr1-${input.side === 'BUY' ? 'b' : 's'}-${input.generation}-${identity}`,
+    clientOrderId: `d1${input.side === 'BUY' ? 'b' : 's'}${identity}`,
     strategyConfigId: input.strategyConfigId,
     generation: input.generation,
   });
@@ -193,6 +202,12 @@ function diffSide(
 
 export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
   input: decibel_authenticated_passive_recycling_input_v1,
+  sizing?: Readonly<{
+    minimumNotionalUsd: number;
+    maximumNotionalUsd: number;
+    availableMarginUsd: number;
+    maximumEffectiveLeverage: number;
+  }>,
 ): DecibelAuthenticatedPassiveRecyclingEvaluationV1 {
   const blockers: string[] = [];
   if (!input.sessionId || !input.strategyConfigId || !input.configuredSubaccount)
@@ -232,17 +247,45 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     input.manualOrDelegatedActivityCount !== 0
   )
     blockers.push('STRATEGY_ACTIVITY_EXCLUSIVITY_LOST');
-  const knownPrefix = /^dpvr1-[bs]-\d+-[0-9a-f]{32}$/;
   if (
     input.openOrders.some(
       (order) =>
-        !knownPrefix.test(order.clientOrderId) ||
+        !isDecibelPassiveRecyclingClientOrderIdV1(order.clientOrderId) ||
         order.strategyConfigId !== input.strategyConfigId ||
         order.market !== input.market,
     )
   )
     blockers.push('UNRESOLVED_EXTERNAL_ORDER_ACTIVITY');
-  if (Math.abs(input.actualInventoryBase) > input.metadata.minimumSize + Number.EPSILON)
+  const metadataMinimumLots = Math.ceil(input.metadata.minimumSize / input.metadata.lotSize);
+  let quoteLots = metadataMinimumLots;
+  if (sizing !== undefined) {
+    if (
+      !Number.isFinite(sizing.minimumNotionalUsd) ||
+      sizing.minimumNotionalUsd <= 0 ||
+      !Number.isFinite(sizing.maximumNotionalUsd) ||
+      sizing.maximumNotionalUsd < sizing.minimumNotionalUsd ||
+      !Number.isFinite(sizing.availableMarginUsd) ||
+      sizing.availableMarginUsd < 0 ||
+      !Number.isFinite(sizing.maximumEffectiveLeverage) ||
+      sizing.maximumEffectiveLeverage < 1 ||
+      sizing.maximumEffectiveLeverage > 40
+    )
+      blockers.push('QUOTE_SIZING_LIMITS_INVALID');
+    else if (input.book.bestBid > 0) {
+      const minimumNotionalLots = Math.ceil(
+        sizing.minimumNotionalUsd / input.book.bestBid / input.metadata.lotSize,
+      );
+      quoteLots = Math.max(metadataMinimumLots, minimumNotionalLots);
+      const maximumQuoteNotionalUsd = quoteLots * input.metadata.lotSize * input.book.bestAsk;
+      const leveragedBuyingPowerUsd = sizing.availableMarginUsd * sizing.maximumEffectiveLeverage;
+      if (maximumQuoteNotionalUsd > sizing.maximumNotionalUsd + Number.EPSILON)
+        blockers.push('MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL');
+      if (maximumQuoteNotionalUsd > leveragedBuyingPowerUsd + Number.EPSILON)
+        blockers.push('INSUFFICIENT_LEVERAGED_BUYING_POWER');
+    }
+  }
+  const quantity = Number((quoteLots * input.metadata.lotSize).toFixed(12));
+  if (Math.abs(input.actualInventoryBase) > quantity + Number.EPSILON)
     blockers.push('INVENTORY_CAP_EXCEEDED');
 
   const trace = [
@@ -348,8 +391,6 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     maximumFairToOracleDeviationBps: 1,
     maximumMarkToOracleDeviationBps: 1,
   });
-  const quantity =
-    Math.ceil(input.metadata.minimumSize / input.metadata.lotSize) * input.metadata.lotSize;
   const inventory = calculateDecibelInventoryConstraintsV1(
     { signedBaseInventory: input.actualInventoryBase, neutralTargetBase: 0 },
     {

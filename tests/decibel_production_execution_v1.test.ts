@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -75,9 +75,12 @@ describe('Decibel production execution V1', () => {
     );
   });
   it('loads a conforming external fake module', async () => {
-    const executor = await loadDecibelProductionExecutorV1(
-      'tests/fixtures/decibel_fake_production_executor_v1.ts',
+    const modulePath = join(mkdtempSync(join(tmpdir(), 'production-executor-')), 'executor.mjs');
+    writeFileSync(
+      modulePath,
+      "export function createDecibelProductionExecutorV1() { return { placePostOnlyLimit: async () => ({ outcome: 'PLACE_ACKNOWLEDGED' }), cancelExactOrder: async () => ({ outcome: 'CANCEL_CONFIRMED' }) }; }\n",
     );
+    const executor = await loadDecibelProductionExecutorV1(modulePath);
     expect(typeof executor.placePostOnlyLimit).toBe('function');
   });
   it('defaults the release stage to DISABLED', () => {

@@ -1,4 +1,6 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';

@@ -41,7 +41,7 @@ export function deriveDecibelDeterministicCanarySideV1(input: {
     'AUTO_DETERMINISTIC_CANARY_SIDE_V1',
   ].join('|');
   const digest = createHash('sha256').update(canonicalSeed).digest();
-  const sideBit = (digest[31] & 1) as 0 | 1;
+  const sideBit = (digest[31]! & 1) as 0 | 1;
   return Object.freeze({
     strategyIdentity: 'DECIBEL_MARKET_MAKER_V1',
     canaryProtocolVersion: 'MINIMAL_LIVE_CANARY_V1',

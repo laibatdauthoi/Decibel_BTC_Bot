@@ -79,9 +79,7 @@ export type decibel_submission_journal_event_v1 = Readonly<{
   recoverySource: string | null;
 }>;
 
-const allowedTransitions: Readonly<
-  Record<decibel_submission_journal_state_v1, readonly decibel_submission_journal_state_v1[]>
-> = Object.freeze({
+const allowedTransitions = Object.freeze({
   PREPARED: Object.freeze(['SUBMISSION_STARTED', 'NOT_SUBMITTED_PROVEN', 'AMBIGUOUS']),
   SUBMISSION_STARTED: Object.freeze(['ACKNOWLEDGED', 'RECOVERY_REQUIRED', 'AMBIGUOUS']),
   ACKNOWLEDGED: Object.freeze(['TERMINAL']),
@@ -104,7 +102,9 @@ const allowedTransitions: Readonly<
   NO_EXECUTION_PROVEN: Object.freeze(['RECONCILED']),
   RECONCILED: Object.freeze(['TERMINAL']),
   TERMINAL: Object.freeze([]),
-});
+}) as unknown as Readonly<
+  Record<decibel_submission_journal_state_v1, readonly decibel_submission_journal_state_v1[]>
+>;
 
 export class decibel_execution_submission_journal_v1 {
   private readonly database: Database.Database;

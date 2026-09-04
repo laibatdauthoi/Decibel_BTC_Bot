@@ -7,7 +7,15 @@ import { resolve } from 'node:path';
 import { DecibelReadDex, MAINNET_CONFIG } from '@decibeltrade/sdk';
 
 import { loadConfig } from './config.js';
-import { deriveDecibelAuthenticatedBtcActivityResyncV1 } from './decibel_authenticated_btc_activity_resync_v1.js';
+import {
+  createDecibelAuthenticatedBtcResyncCheckpointRolloverV2,
+  deriveDecibelAuthenticatedBtcActivityResyncV1,
+} from './decibel_authenticated_btc_activity_resync_v1.js';
+import {
+  getDecibelAuthenticatedBtcResyncCheckpointSequenceV1,
+  getDecibelAuthenticatedBtcResyncRolloverPathV1,
+  loadLatestDecibelAuthenticatedBtcResyncCheckpointV1,
+} from './decibel_authenticated_btc_resync_checkpoint_chain_v1.js';
 import { decibel_authenticated_passive_recycling_journal_v1 } from './decibel_authenticated_passive_recycling_journal_v1.js';
 import { resolveDecibelBulkOrderActivityV1 } from './decibel_bulk_order_activity_resolution_v1.js';
 import {
@@ -105,8 +113,12 @@ function placementLineage(input: {
 
 const config = loadConfig();
 if (config.network !== 'mainnet') throw new Error('BTC_ACTIVITY_RESYNC_MAINNET_REQUIRED');
-const manifestPath = resolve('research/decibel_authenticated_live_canary_success_v1_manifest.json');
-const checkpointPath = resolve('research/decibel_authenticated_btc_resync_checkpoint_v1.json');
+const manifestPath = resolve(
+  'config/production_state/decibel_authenticated_live_canary_success_v1_manifest.json',
+);
+const checkpointPath = resolve(
+  'config/production_state/decibel_authenticated_btc_resync_checkpoint_v1.json',
+);
 const manifestBytes = readFileSync(manifestPath);
 const manifest = JSON.parse(manifestBytes.toString('utf8')) as {
   manifestBodyHashSha256: string;
@@ -217,7 +229,7 @@ try {
       ? 1
       : order === undefined
         ? null
-        : numeric(order.time_in_force);
+        : numeric((order as { time_in_force?: unknown }).time_in_force);
     const makerStatus =
       frozenStrategyFill || (timeInForce === 1 && lineage === 'PROVEN_OPERATOR_PLACEMENT')
         ? ('PROVEN' as const)
@@ -233,7 +245,7 @@ try {
     return Object.freeze({
       tradeId: trade.trade_id,
       orderId: trade.order_id,
-      clientOrderId: trade.client_order_id,
+      clientOrderId: trade.client_order_id ?? null,
       marketAddress: order?.market ?? manifest.identity.marketAddress,
       side: order === undefined ? null : order.is_buy ? ('BUY' as const) : ('SELL' as const),
       size: trade.size,
@@ -291,23 +303,43 @@ try {
     },
   });
   let checkpointCreated = false;
+  let persistedCheckpointPath = checkpointPath;
   if (result.checkpoint !== null) {
-    const serialized = `${JSON.stringify(result.checkpoint, null, 2)}\n`;
     if (existsSync(checkpointPath)) {
-      const existing = JSON.parse(readFileSync(checkpointPath, 'utf8')) as {
-        priorFrozenManifestBodyHash?: string;
-        allAccountFillIds?: string[];
-        currentPositionBase?: number;
-      };
-      if (
-        existing.priorFrozenManifestBodyHash !== result.checkpoint.priorFrozenManifestBodyHash ||
-        JSON.stringify(existing.allAccountFillIds) !==
-          JSON.stringify(result.checkpoint.allAccountFillIds) ||
-        existing.currentPositionBase !== 0
-      )
-        throw new Error('BTC_RESYNC_CHECKPOINT_IDENTITY_CONFLICT');
+      const latest = loadLatestDecibelAuthenticatedBtcResyncCheckpointV1(checkpointPath);
+      const sameFillIdentity =
+        JSON.stringify(latest.allAccountFillIds) ===
+        JSON.stringify(result.checkpoint.allAccountFillIds);
+      if (sameFillIdentity) {
+        persistedCheckpointPath =
+          latest.schemaVersion === 'DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1'
+            ? checkpointPath
+            : getDecibelAuthenticatedBtcResyncRolloverPathV1(
+                latest.checkpointSequence,
+                checkpointPath,
+              );
+      } else {
+        const checkpointSequence = getDecibelAuthenticatedBtcResyncCheckpointSequenceV1(latest) + 1;
+        const rollover = createDecibelAuthenticatedBtcResyncCheckpointRolloverV2({
+          previous: latest,
+          next: result.checkpoint,
+          checkpointSequence,
+        });
+        persistedCheckpointPath = getDecibelAuthenticatedBtcResyncRolloverPathV1(
+          checkpointSequence,
+          checkpointPath,
+        );
+        writeFileSync(persistedCheckpointPath, `${JSON.stringify(rollover, null, 2)}\n`, {
+          encoding: 'utf8',
+          flag: 'wx',
+        });
+        checkpointCreated = true;
+      }
     } else {
-      writeFileSync(checkpointPath, serialized, { encoding: 'utf8', flag: 'wx' });
+      writeFileSync(checkpointPath, `${JSON.stringify(result.checkpoint, null, 2)}\n`, {
+        encoding: 'utf8',
+        flag: 'wx',
+      });
       checkpointCreated = true;
     }
   }
@@ -335,7 +367,7 @@ try {
   console.log(`STRATEGY_FILL_COUNT=${result.strategyFillIds.length}`);
   console.log(`CYCLE_DISPOSITION=${result.cycleDisposition}`);
   console.log(`RESYNC_CHECKPOINT_CREATED=${checkpointCreated ? 'YES' : 'NO'}`);
-  console.log(`CHECKPOINT=${result.checkpoint === null ? 'NONE' : checkpointPath}`);
+  console.log(`CHECKPOINT=${result.checkpoint === null ? 'NONE' : persistedCheckpointPath}`);
   console.log(`REPORT=${reportPath}`);
   console.log(`BLOCKER=${result.blockers.join(',') || 'NONE'}`);
 } finally {

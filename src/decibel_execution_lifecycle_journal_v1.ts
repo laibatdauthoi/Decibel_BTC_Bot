@@ -153,6 +153,56 @@ export class decibel_execution_lifecycle_journal_v1 {
     for (const row of rows) this.transition(row.intentId, 'SUPERSEDED', at);
     return rows.length;
   }
+  resolvePreSubmissionAbiFailure(input: {
+    intentId: string;
+    at: number;
+    confirmation: 'APTOS_REMOTE_ABI_NON_INTEGER_CONFIRMED';
+  }): { duplicate: boolean } {
+    const resolve = this.Database.transaction(() => {
+      const intent = this.Database.prepare(
+        'SELECT body_json,status,venue_order_id FROM execution_intents WHERE intent_id=?',
+      ).get(input.intentId) as
+        | { body_json: string; status: execution_intent_status_v1; venue_order_id: string | null }
+        | undefined;
+      if (intent === undefined) throw new Error('EXECUTION_INTENT_NOT_FOUND');
+      const blocker = 'PRE_SUBMISSION_APTOS_REMOTE_ABI_NON_INTEGER';
+      if (intent.status === 'REJECTED') {
+        const prior = this.Database.prepare(
+          'SELECT 1 FROM lifecycle_blockers WHERE intent_id=? AND blocker=? LIMIT 1',
+        ).get(input.intentId, blocker);
+        if (prior !== undefined) return true;
+      }
+      const body = JSON.parse(intent.body_json) as { action?: unknown };
+      const attemptCount = (
+        this.Database.prepare('SELECT COUNT(*) count FROM mutation_attempts WHERE intent_id=?').get(
+          input.intentId,
+        ) as { count: number }
+      ).count;
+      const outcomes = this.Database.prepare(
+        'SELECT outcome_json FROM executor_outcomes WHERE intent_id=? ORDER BY id',
+      ).all(input.intentId) as Array<{ outcome_json: string }>;
+      const reconciliationCount = (
+        this.Database.prepare(
+          'SELECT COUNT(*) count FROM reconciliation_observations WHERE intent_id=?',
+        ).get(input.intentId) as { count: number }
+      ).count;
+      if (
+        input.confirmation !== 'APTOS_REMOTE_ABI_NON_INTEGER_CONFIRMED' ||
+        intent.status !== 'SUBMIT_UNKNOWN' ||
+        intent.venue_order_id !== null ||
+        body.action !== 'PLACE' ||
+        attemptCount !== 1 ||
+        outcomes.length !== 1 ||
+        outcomes[0]?.outcome_json !== JSON.stringify({ outcome: 'PLACE_TIMEOUT_UNKNOWN' }) ||
+        reconciliationCount !== 0
+      )
+        throw new Error('EXECUTION_PRE_SUBMISSION_FAILURE_RESOLUTION_REJECTED');
+      this.recordBlocker(input.intentId, blocker, input.at);
+      this.transition(input.intentId, 'REJECTED', input.at);
+      return false;
+    });
+    return { duplicate: resolve() };
+  }
   hasOtherKnownLiveOrder(intentId: string): boolean {
     const row = this.Database.prepare(
       "SELECT 1 FROM execution_intents WHERE intent_id<>? AND venue_order_id IS NOT NULL AND status IN ('ACKNOWLEDGED','RECONCILING') LIMIT 1",

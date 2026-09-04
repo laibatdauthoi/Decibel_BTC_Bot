@@ -15,17 +15,22 @@ import {
 } from './candle_interval.js';
 import type { application_config } from './config.js';
 
-const SDKMarketSchema = z.object({
+const SDKMarketCandidateSchema = z.object({
   market_addr: z.string().min(1),
   market_name: z.string().min(1),
   sz_decimals: z.number().int().nonnegative(),
   px_decimals: z.number().int().nonnegative(),
-  max_leverage: z.number().positive(),
+  max_leverage: z.number(),
   tick_size: z.number().int().safe().positive(),
   min_size: z.number().int().safe().positive(),
   lot_size: z.number().int().safe().positive(),
   max_open_interest: z.number().nonnegative(),
   mode: z.enum(['Open', 'ReduceOnly', 'AllowlistOnly', 'Halt', 'Delisting']),
+  asset_type: z.string().optional(),
+});
+
+const SDKMarketSchema = SDKMarketCandidateSchema.extend({
+  max_leverage: z.number().positive(),
 });
 
 const SDKPriceSchema = z.object({
@@ -34,6 +39,25 @@ const SDKPriceSchema = z.object({
   mid_px: z.number().positive().finite(),
   oracle_px: z.number().positive().finite(),
   transaction_unix_ms: z.number().int().nonnegative(),
+});
+
+const PositiveDecimalStringSchema = z
+  .string()
+  .regex(/^\d+(?:\.\d+)?$/)
+  .transform(Number)
+  .pipe(z.number().positive().finite());
+
+const UnixMillisecondsStringSchema = z
+  .string()
+  .regex(/^\d+$/)
+  .transform(Number)
+  .pipe(z.number().int().safe().nonnegative());
+
+const SDKCurrentOrderbookSchema = z.object({
+  asks: z.array(z.tuple([PositiveDecimalStringSchema, PositiveDecimalStringSchema])),
+  bids: z.array(z.tuple([PositiveDecimalStringSchema, PositiveDecimalStringSchema])),
+  ticker_id: z.string().min(1).optional(),
+  timestamp: UnixMillisecondsStringSchema,
 });
 
 const SDKCandlestickSchema = z
@@ -149,6 +173,16 @@ export type reader_factory = (
 
 export type HTTP_fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+export class decibel_current_book_error extends Error {
+  public constructor(
+    public readonly safeCode: string,
+    public readonly httpStatus: number | null,
+  ) {
+    super(safeCode);
+    this.name = 'decibel_current_book_error';
+  }
+}
+
 const defaultReaderFactory: reader_factory = (config, options) =>
   new DecibelReadDex(config, options);
 
@@ -158,6 +192,25 @@ function isBTCUSDMarket(name: string): boolean {
 
 function isETHUSDMarket(name: string): boolean {
   return /^ETH(?:[-/]USD|-PERP)$/i.test(name);
+}
+
+function isPerpetualMarket(assetType: string | undefined): boolean {
+  return assetType === undefined || assetType.toLowerCase() === 'perp';
+}
+
+function selectPerpetualMarket(
+  rows: unknown,
+  matchesName: (name: string) => boolean,
+): sdk_market | undefined {
+  const candidates = z.array(SDKMarketCandidateSchema).parse(rows);
+  const matching = candidates.filter(
+    (candidate) => matchesName(candidate.market_name) && isPerpetualMarket(candidate.asset_type),
+  );
+  const explicitPerpetual = matching.filter(
+    (candidate) => candidate.asset_type?.toLowerCase() === 'perp',
+  );
+  const selected = explicitPerpetual[0] ?? matching[0];
+  return selected === undefined ? undefined : SDKMarketSchema.parse(selected);
 }
 
 function normalizeChainUnits(value: number, decimals: number): number {
@@ -214,9 +267,48 @@ export class decibel_client {
     return response.json() as Promise<unknown>;
   }
 
+  async getBTCCurrentBook(marketAddress: string): Promise<unknown> {
+    const query = new URLSearchParams({ market: marketAddress });
+    const headers = new Headers();
+    if (this.nodeApiKey !== undefined) headers.set('Authorization', `Bearer ${this.nodeApiKey}`);
+    let response: Response;
+    try {
+      response = await this.fetchHTTP(
+        `${this.tradingHTTPURL}/api/v1/orderbook?${query.toString()}`,
+        { headers },
+      );
+    } catch {
+      throw new decibel_current_book_error('CURRENT_BOOK_TRANSPORT_FAILURE', null);
+    }
+    if (!response.ok)
+      throw new decibel_current_book_error(
+        [401, 403].includes(response.status)
+          ? 'CURRENT_BOOK_AUTH_OR_CONFIG_FAILURE'
+          : 'CURRENT_BOOK_HTTP_FAILURE',
+        response.status,
+      );
+    let parsed: z.infer<typeof SDKCurrentOrderbookSchema>;
+    try {
+      parsed = SDKCurrentOrderbookSchema.parse(await response.json());
+    } catch {
+      throw new decibel_current_book_error('CURRENT_BOOK_RESPONSE_VALIDATION_FAILURE', null);
+    }
+    if (parsed.ticker_id !== undefined && parsed.ticker_id !== marketAddress)
+      throw new decibel_current_book_error('CURRENT_BOOK_TICKER_MISMATCH', null);
+    const bids = parsed.bids.map(([price, size]) => ({ price, size }));
+    const asks = parsed.asks.map(([price, size]) => ({ price, size }));
+    return {
+      market: marketAddress,
+      bids,
+      asks,
+      best_bid: bids.length === 0 ? null : Math.max(...bids.map((level) => level.price)),
+      best_ask: asks.length === 0 ? null : Math.min(...asks.map((level) => level.price)),
+      unix_ms: parsed.timestamp,
+    };
+  }
+
   async getBTCMarketMetadata(): Promise<BTC_market_metadata> {
-    const markets = z.array(SDKMarketSchema).parse(await this.reader.markets.getAll());
-    const market = markets.find((candidate) => isBTCUSDMarket(candidate.market_name));
+    const market = selectPerpetualMarket(await this.reader.markets.getAll(), isBTCUSDMarket);
 
     if (market === undefined) {
       throw new Error('Decibel BTC/USD perpetual market was not found');
@@ -227,8 +319,7 @@ export class decibel_client {
   }
 
   async getETHMarketMetadata(): Promise<BTC_market_metadata> {
-    const markets = z.array(SDKMarketSchema).parse(await this.reader.markets.getAll());
-    const market = markets.find((candidate) => isETHUSDMarket(candidate.market_name));
+    const market = selectPerpetualMarket(await this.reader.markets.getAll(), isETHUSDMarket);
     if (market === undefined) throw new Error('Decibel ETH/USD perpetual market was not found');
     return this.normalizeMarket(market);
   }

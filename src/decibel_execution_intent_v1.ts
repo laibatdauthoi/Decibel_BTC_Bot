@@ -1,5 +1,15 @@
 import { createHash } from 'node:crypto';
 
+export class execution_preflight_rejection_v1 extends Error {
+  public readonly rejectionCode: string;
+
+  public constructor(rejectionCode: string) {
+    super('EXECUTION_PREFLIGHT_REJECTED');
+    this.name = 'execution_preflight_rejection_v1';
+    this.rejectionCode = rejectionCode;
+  }
+}
+
 export type execution_intent_status_v1 =
   | 'PREPARED'
   | 'SUBMITTING'
@@ -125,15 +135,34 @@ export function validateDecibelPlaceIntentV1(
     permittedSide: 'BUY' | 'SELL';
   },
 ): void {
-  const valid =
-    input.type === 'LIMIT' &&
-    input.postOnly &&
-    input.side === limits.permittedSide &&
-    !input.selfTradePermitted &&
-    input.externalCounterpartyRequired &&
-    input.priceTicks * limits.tickSize === input.price &&
-    input.quantityLots * limits.lotSize === input.quantity &&
-    input.price * input.quantity >= limits.minimumNotionalUsd &&
-    input.price * input.quantity <= limits.maximumNotionalUsd;
-  if (!valid) throw new Error('EXECUTION_PREFLIGHT_REJECTED');
+  const isUnitAligned = (value: number, step: number, units: number): boolean => {
+    if (
+      !Number.isFinite(value) ||
+      !Number.isFinite(step) ||
+      step <= 0 ||
+      !Number.isSafeInteger(units) ||
+      units <= 0
+    )
+      return false;
+    const reconstructed = units * step;
+    const tolerance = Math.max(1e-12, Number.EPSILON * Math.max(1, Math.abs(value)) * 8);
+    return Math.abs(reconstructed - value) <= tolerance && Math.round(value / step) === units;
+  };
+  const reject = (code: string): never => {
+    throw new execution_preflight_rejection_v1(code);
+  };
+  if (input.type !== 'LIMIT') reject('EXECUTION_PREFLIGHT_LIMIT_ORDER_REQUIRED');
+  if (!input.postOnly) reject('EXECUTION_PREFLIGHT_POST_ONLY_REQUIRED');
+  if (input.side !== limits.permittedSide) reject('EXECUTION_PREFLIGHT_SIDE_NOT_PERMITTED');
+  if (input.selfTradePermitted) reject('EXECUTION_PREFLIGHT_SELF_TRADE_NOT_PERMITTED');
+  if (!input.externalCounterpartyRequired)
+    reject('EXECUTION_PREFLIGHT_EXTERNAL_COUNTERPARTY_REQUIRED');
+  if (!isUnitAligned(input.price, limits.tickSize, input.priceTicks))
+    reject('EXECUTION_PREFLIGHT_PRICE_NOT_TICK_ALIGNED');
+  if (!isUnitAligned(input.quantity, limits.lotSize, input.quantityLots))
+    reject('EXECUTION_PREFLIGHT_QUANTITY_NOT_LOT_ALIGNED');
+  const notionalUsd = input.price * input.quantity;
+  if (!Number.isFinite(notionalUsd) || notionalUsd < limits.minimumNotionalUsd)
+    reject('EXECUTION_PREFLIGHT_NOTIONAL_BELOW_MINIMUM');
+  if (notionalUsd > limits.maximumNotionalUsd) reject('EXECUTION_PREFLIGHT_NOTIONAL_ABOVE_MAXIMUM');
 }
