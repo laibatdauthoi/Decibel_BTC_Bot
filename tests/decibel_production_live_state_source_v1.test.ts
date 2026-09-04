@@ -21,6 +21,7 @@ function makeReader(
   overrides: Partial<DecibelProductionLiveAuthenticatedReaderV1> = {},
 ): DecibelProductionLiveAuthenticatedReaderV1 {
   return {
+    readAccountOverview: () => Promise.resolve({ perp_equity_balance: 8, total_margin: 0 }),
     readPositions: () => Promise.resolve([]),
     readOpenOrders: () => Promise.resolve([]),
     readOrderHistory: () => Promise.resolve([]),
@@ -68,6 +69,21 @@ describe('Decibel production live state source V1', () => {
         activeTpSlCount: 0,
         activeBulkOrderCount: 0,
       },
+      availableMarginUsd: 8,
+      maximumEffectiveLeverage: 1,
+    });
+  });
+
+  it('caps configured effective leverage at the authenticated market maximum', async () => {
+    const source = createDecibelProductionLiveStateSourceV1({
+      environment: { ...environment, MAX_EFFECTIVE_LEVERAGE: '40' },
+      reader: makeReader(),
+      getNow: () => NOW,
+    });
+
+    await expect(source.readAuthenticatedSnapshot()).resolves.toMatchObject({
+      availableMarginUsd: 8,
+      maximumEffectiveLeverage: 40,
     });
   });
 
@@ -136,6 +152,135 @@ describe('Decibel production live state source V1', () => {
     expect(snapshot.input.activeBulkOrderCount).toBe(1);
   });
 
+  it('excludes foreign-market orders, positions, fills, TWAPs and bulk activity from BTC exclusivity', async () => {
+    const source = createDecibelProductionLiveStateSourceV1({
+      environment,
+      reader: makeReader({
+        readPositions: () =>
+          Promise.resolve([
+            {
+              market: 'DELL/USD',
+              user: 'foreign-position-owner',
+              size: 10,
+              tp_order_id: 'dell-tp',
+              sl_order_id: 'dell-sl',
+            },
+          ]),
+        readOpenOrders: () =>
+          Promise.resolve([
+            {
+              market: 'DELL/USD',
+              order_id: 'dell-order',
+              client_order_id: null,
+              orig_size: 10,
+              remaining_size: 10,
+              price: 20,
+              is_buy: true,
+              is_tpsl: false,
+            },
+          ]),
+        readTradeHistory: () =>
+          Promise.resolve([
+            {
+              account: 'subaccount',
+              market: 'DELL/USD',
+              source: 'OrderFill',
+              trade_id: 'dell-fill',
+              size: 10,
+              price: 20,
+              fee_amount: 0,
+              is_rebate: false,
+              order_id: 'dell-order',
+              transaction_unix_ms: NOW - 1,
+            },
+          ]),
+        readActiveTwaps: () => Promise.resolve([{ market: 'DELL/USD' }]),
+        readBulkOrders: () =>
+          Promise.resolve([
+            {
+              market: 'DELL/USD',
+              sequence_number: 1,
+              previous_seq_num: 0,
+              bid_prices: [20],
+              bid_sizes: [10],
+              ask_prices: [],
+              ask_sizes: [],
+              cancelled_bid_prices: [],
+              cancelled_bid_sizes: [],
+              cancelled_ask_prices: [],
+              cancelled_ask_sizes: [],
+            },
+          ]),
+      }),
+      getNow: () => NOW,
+    });
+    const snapshot = await source.readAuthenticatedSnapshot();
+    const evaluation = evaluateDecibelAuthenticatedPassiveRecyclingV1(snapshot.input);
+
+    expect(snapshot.input).toMatchObject({
+      actualInventoryBase: 0,
+      openOrders: [],
+      activeTwapCount: 0,
+      activeTpSlCount: 0,
+      activeBulkOrderCount: 0,
+      manualOrDelegatedActivityCount: 0,
+    });
+    expect(evaluation.blockers).not.toContain('STRATEGY_ACTIVITY_EXCLUSIVITY_LOST');
+    expect(evaluation.blockers).not.toContain('UNRESOLVED_EXTERNAL_ORDER_ACTIVITY');
+  });
+
+  it('normalizes canonical market case and preserves safe raw identity diagnostics', async () => {
+    const upperMarket = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1.toUpperCase().replace('0X', '0x');
+    const source = createDecibelProductionLiveStateSourceV1({
+      environment,
+      reader: makeReader({
+        readPositions: () =>
+          Promise.resolve([
+            {
+              market: upperMarket,
+              user: 'subaccount',
+              size: 0,
+              tp_order_id: null,
+              sl_order_id: null,
+            },
+          ]),
+        readOpenOrders: () =>
+          Promise.resolve([
+            {
+              market: 'DELL/USD',
+              market_address: '0xdell',
+              order_id: 'dell-order',
+              client_order_id: null,
+              orig_size: 1,
+              remaining_size: 1,
+              price: 1,
+              is_buy: true,
+              is_tpsl: false,
+            },
+          ]),
+      }),
+      getNow: () => NOW,
+    });
+
+    const snapshot = await source.readAuthenticatedSnapshot();
+
+    expect(snapshot.input.actualInventoryBase).toBe(0);
+    expect(snapshot.input.openOrders).toEqual([]);
+    expect(snapshot.marketScopeDiagnostics).toEqual({
+      rawPositionMarketIdentities: [{ market: upperMarket, marketAddress: null, marketId: null }],
+      rawOpenOrderMarketIdentities: [
+        { market: 'DELL/USD', marketAddress: '0xdell', marketId: null },
+      ],
+      rawFillMarketIdentities: [],
+      rawTwapMarketIdentities: [],
+      rawTpSlMarketIdentities: [],
+      historicalOutOfBandBTCFillCount: 0,
+      activeTwapCount: 0,
+      activeTpSlCount: 0,
+      activeBulkOrderCount: 0,
+    });
+  });
+
   it('attributes only known strategy OrderFill rows to strategy maker volume', async () => {
     const strategyClientId = `dpvr1-b-1-${'b'.repeat(32)}`;
     const source = createDecibelProductionLiveStateSourceV1({
@@ -188,7 +333,33 @@ describe('Decibel production live state source V1', () => {
       'known-fill',
     ]);
     expect(snapshot.input.actualFillLedger.actualExternalMakerVolumeUsd).toBe(0.1);
-    expect(snapshot.input.manualOrDelegatedActivityCount).toBe(1);
+    expect(snapshot.input.manualOrDelegatedActivityCount).toBe(0);
+    expect(snapshot.marketScopeDiagnostics?.historicalOutOfBandBTCFillCount).toBe(1);
+    expect(evaluateDecibelAuthenticatedPassiveRecyclingV1(snapshot.input).blockers).not.toContain(
+      'STRATEGY_ACTIVITY_EXCLUSIVITY_LOST',
+    );
+  });
+
+  it('ignores inactive BTC TWAP history during active exclusivity evaluation', async () => {
+    const source = createDecibelProductionLiveStateSourceV1({
+      environment,
+      reader: makeReader({
+        readActiveTwaps: () =>
+          Promise.resolve([
+            { market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1, is_active: false },
+            { market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1, status: 'COMPLETED' },
+          ]),
+      }),
+      getNow: () => NOW,
+    });
+
+    const snapshot = await source.readAuthenticatedSnapshot();
+
+    expect(snapshot.input.activeTwapCount).toBe(0);
+    expect(snapshot.marketScopeDiagnostics?.rawTwapMarketIdentities).toHaveLength(2);
+    expect(evaluateDecibelAuthenticatedPassiveRecyclingV1(snapshot.input).blockers).not.toContain(
+      'STRATEGY_ACTIVITY_EXCLUSIVITY_LOST',
+    );
   });
 
   it('does not classify the frozen historical maker fill as current unrelated activity', async () => {
@@ -363,6 +534,83 @@ describe('Decibel production live state source V1', () => {
     open = true;
     const current = await source.readAuthenticatedSnapshot();
     await expect(source.reconcileIntent('intent', current)).resolves.toBe('ORDER_OPEN');
+  });
+
+  it('attributes a completed fill to the exact recovered venue order', async () => {
+    const clientOrderId = `d1b${'a'.repeat(29)}`;
+    const source = createDecibelProductionLiveStateSourceV1({
+      environment,
+      reader: makeReader({
+        readOrderHistory: () =>
+          Promise.resolve([
+            {
+              market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+              client_order_id: clientOrderId,
+              order_id: 'filled-order',
+              orig_size: 0.001,
+              price: 100,
+              is_buy: true,
+            },
+          ]),
+        readTradeHistory: () =>
+          Promise.resolve([
+            {
+              account: 'subaccount',
+              market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+              source: 'OrderFill',
+              trade_id: 'fill-one',
+              size: 0.001,
+              price: 100,
+              fee_amount: 0,
+              is_rebate: false,
+              order_id: 'filled-order',
+              transaction_unix_ms: NOW - 1,
+              client_order_id: clientOrderId,
+            },
+          ]),
+      }),
+      getNow: () => NOW,
+    });
+    const snapshot = await source.readAuthenticatedSnapshot();
+
+    await expect(source.reconcileIntent('intent', snapshot, 'filled-order')).resolves.toBe(
+      'FULL_FILL',
+    );
+  });
+
+  it('attributes disappearance without a fill to exact external cancellation', async () => {
+    const clientOrderId = `d1s${'b'.repeat(29)}`;
+    let open = true;
+    const source = createDecibelProductionLiveStateSourceV1({
+      environment,
+      reader: makeReader({
+        readOpenOrders: () =>
+          Promise.resolve(
+            open
+              ? [
+                  {
+                    market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+                    order_id: 'cancelled-order',
+                    client_order_id: clientOrderId,
+                    orig_size: 0.001,
+                    remaining_size: 0.001,
+                    price: 100.2,
+                    is_buy: false,
+                    is_tpsl: false,
+                  },
+                ]
+              : [],
+          ),
+      }),
+      getNow: () => NOW,
+    });
+    await source.readAuthenticatedSnapshot();
+    open = false;
+    const snapshot = await source.readAuthenticatedSnapshot();
+
+    await expect(source.reconcileIntent('intent', snapshot, 'cancelled-order')).resolves.toBe(
+      'ORDER_CANCELLED',
+    );
   });
 
   it('bounds authenticated history reads to the Decibel maximum range', async () => {

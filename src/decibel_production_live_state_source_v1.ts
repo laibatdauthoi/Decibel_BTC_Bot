@@ -13,12 +13,20 @@ import type {
   decibel_authenticated_passive_recycling_input_v1,
   decibel_authenticated_strategy_order_v1,
 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
+import { isDecibelPassiveRecyclingClientOrderIdV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import { validateDecibelAuthenticatedLiveCanaryManifestV1 } from './decibel_authenticated_passive_recycling_live_state_v1.js';
 import { validateDecibelAuthenticatedBtcResyncCheckpointV1 } from './decibel_authenticated_btc_activity_resync_v1.js';
 import {
   resolveDecibelBulkOrderActivityV1,
   type decibel_bulk_order_record_v1,
 } from './decibel_bulk_order_activity_resolution_v1.js';
+import {
+  filterDecibelBTCMarketActivityV1,
+  getDecibelMarketIdentityDiagnosticsV1,
+  isDecibelBTCMarketActivityV1,
+  isActiveDecibelTwapV1,
+  normalizeDecibelMarketAddressV1,
+} from './decibel_btc_market_activity_scope_v1.js';
 import type { BTC_market_metadata } from './decibel_client.js';
 import { loadConfig } from './config.js';
 import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 } from './decibel_minimal_live_canary_v1.js';
@@ -44,18 +52,27 @@ const ProductionLiveSourceEnvironmentSchema = z.object({
   DECIBEL_PRODUCTION_LIVE_MAX_BBO_AGE_MS: z.coerce.number().int().positive().default(5_000),
   DECIBEL_PRODUCTION_LIVE_MIN_NOTIONAL_USD: z.coerce.number().positive().default(0.01),
   DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD: z.coerce.number().positive().default(100),
+  MAX_EFFECTIVE_LEVERAGE: z.coerce.number().min(1).max(40).default(1),
   DECIBEL_PASSIVE_RECYCLING_TARGET_VOLUME_USD: z.coerce.number().positive().optional(),
 });
 
 type position_row = Readonly<{
   market: string;
+  market_address?: string;
+  market_id?: string;
   user: string;
   size: number;
   tp_order_id: string | null;
   sl_order_id: string | null;
 }>;
+type account_overview_row = Readonly<{
+  perp_equity_balance: number;
+  total_margin: number;
+}>;
 type open_order_row = Readonly<{
   market: string;
+  market_address?: string;
+  market_id?: string;
   order_id: string;
   client_order_id: string | null;
   orig_size: number | null;
@@ -66,6 +83,8 @@ type open_order_row = Readonly<{
 }>;
 type order_history_row = Readonly<{
   market: string;
+  market_address?: string;
+  market_id?: string;
   client_order_id: string;
   order_id: string;
   orig_size: number | null;
@@ -75,6 +94,8 @@ type order_history_row = Readonly<{
 type trade_history_row = Readonly<{
   account: string;
   market: string;
+  market_address?: string;
+  market_id?: string;
   source: 'OrderFill' | 'MarginCall' | 'BackStopLiquidation' | 'ADL' | 'MarketDelisted';
   trade_id: string;
   size: number;
@@ -85,8 +106,15 @@ type trade_history_row = Readonly<{
   transaction_unix_ms: number;
   client_order_id?: string;
 }>;
-type twap_row = Readonly<{ market: string }>;
+type twap_row = Readonly<{
+  market: string;
+  market_address?: string;
+  market_id?: string;
+  is_active?: boolean;
+  status?: string;
+}>;
 type sdk_read_adapter = Readonly<{
+  accountOverview: { getByAddr(input: object): Promise<account_overview_row> };
   userPositions: { getByAddr(input: object): Promise<readonly position_row[]> };
   userOpenOrders: { getByAddr(input: object): Promise<{ items: readonly open_order_row[] }> };
   userOrderHistory: {
@@ -123,6 +151,7 @@ type authenticated_activity_baseline = Readonly<{
 }>;
 
 export interface DecibelProductionLiveAuthenticatedReaderV1 {
+  readAccountOverview(subaccount: string): Promise<account_overview_row>;
   readPositions(subaccount: string, marketAddress: string): Promise<readonly position_row[]>;
   readOpenOrders(subaccount: string): Promise<readonly open_order_row[]>;
   readOrderHistory(
@@ -223,7 +252,7 @@ function loadAuthenticatedActivityBaseline(): authenticated_activity_baseline {
 }
 
 function isStrategyClientOrderId(value: string | null | undefined): value is string {
-  return value !== null && value !== undefined && /^dpvr1-[bs]-\d+-[0-9a-f]{32}$/.test(value);
+  return value !== null && value !== undefined && isDecibelPassiveRecyclingClientOrderIdV1(value);
 }
 
 function makeSDKReader(environment: NodeJS.ProcessEnv): DecibelProductionLiveAuthenticatedReaderV1 {
@@ -251,6 +280,8 @@ function makeSDKReader(environment: NodeJS.ProcessEnv): DecibelProductionLiveAut
     };
   })();
   const adapter: DecibelProductionLiveAuthenticatedReaderV1 = {
+    readAccountOverview: async (subaccount: string) =>
+      (await initialized).Reader.accountOverview.getByAddr({ subAddr: subaccount }),
     readPositions: async (subaccount: string, marketAddress: string) =>
       (await initialized).Reader.userPositions.getByAddr({
         subAddr: subaccount,
@@ -320,14 +351,20 @@ function normalizeOpenOrders(
 ): readonly decibel_authenticated_strategy_order_v1[] {
   return Object.freeze(
     rows
-      .filter((row) => row.market === marketAddress)
+      .filter((row) =>
+        isDecibelBTCMarketActivityV1({
+          market: row.market,
+          market_address: row.market_address,
+          market_id: row.market_id,
+        }),
+      )
       .map((row) => {
         const known = isStrategyClientOrderId(row.client_order_id);
         return Object.freeze({
           venueOrderId: row.order_id,
           clientOrderId: row.client_order_id ?? '',
           strategyConfigId: known ? strategyConfigId : null,
-          market: row.market,
+          market: marketAddress,
           side: row.is_buy ? ('BUY' as const) : ('SELL' as const),
           price: row.price ?? Number.NaN,
           quantity: row.remaining_size ?? row.orig_size ?? Number.NaN,
@@ -349,7 +386,8 @@ function buildStrategyFillLedger(
 ): decibel_actual_fill_ledger_v1 {
   const strategyOrders: decibel_actual_order_truth_v1[] = orders
     .filter(
-      (order) => order.market === marketAddress && isStrategyClientOrderId(order.client_order_id),
+      (order) =>
+        isDecibelBTCMarketActivityV1(order) && isStrategyClientOrderId(order.client_order_id),
     )
     .map((order) => ({
       venueOrderId: order.order_id,
@@ -361,7 +399,8 @@ function buildStrategyFillLedger(
     }))
     .filter((order) => order.requestedQuantity > 0);
   if (
-    baseline.marketAddress === marketAddress &&
+    normalizeDecibelMarketAddressV1(baseline.marketAddress) ===
+      normalizeDecibelMarketAddressV1(marketAddress) &&
     trades.some(
       (trade) =>
         baseline.fillIds.includes(trade.trade_id) &&
@@ -388,7 +427,7 @@ function buildStrategyFillLedger(
     const order = byOrder.get(trade.order_id);
     if (
       order === undefined ||
-      trade.market !== marketAddress ||
+      !isDecibelBTCMarketActivityV1(trade) ||
       trade.source !== 'OrderFill' ||
       trade.account.length === 0
     )
@@ -453,28 +492,48 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     }
     const receivedAt = this.getNow();
     if (
-      values.metadata.marketAddress !== DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 ||
+      normalizeDecibelMarketAddressV1(values.metadata.marketAddress) !==
+        normalizeDecibelMarketAddressV1(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1) ||
       values.metadata.symbol !== 'BTC/USD'
     )
       throw new Error('PRODUCTION_LIVE_SOURCE_MARKET_MISMATCH');
     const book = CurrentBookSchema.parse(values.book);
-    if (book.market !== DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 || book.best_ask <= book.best_bid)
+    if (
+      normalizeDecibelMarketAddressV1(book.market) !==
+        normalizeDecibelMarketAddressV1(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1) ||
+      book.best_ask <= book.best_bid
+    )
       throw new Error('PRODUCTION_LIVE_SOURCE_BOOK_INVALID');
     if (book.unix_ms > receivedAt) throw new Error('PRODUCTION_LIVE_SOURCE_BOOK_FUTURE');
     if (receivedAt - book.unix_ms > configuration.DECIBEL_PRODUCTION_LIVE_MAX_BBO_AGE_MS)
       throw new Error('PRODUCTION_LIVE_SOURCE_BOOK_STALE');
-    if (
-      values.positions.some(
-        (position) => position.user !== configuration.DECIBEL_SUBACCOUNT_ADDRESS,
-      )
-    )
-      throw new Error('PRODUCTION_LIVE_SOURCE_SUBACCOUNT_MISMATCH');
-    const BTCPositions = values.positions.filter(
-      (position) => position.market === DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+    const BTCPositions = filterDecibelBTCMarketActivityV1(values.positions);
+    const ActiveBTCTwaps = filterDecibelBTCMarketActivityV1(values.activeTwaps).filter(
+      isActiveDecibelTwapV1,
     );
+    const BTCTpSlPositions = BTCPositions.filter(
+      (row) => row.tp_order_id !== null || row.sl_order_id !== null,
+    );
+    if (BTCPositions.some((position) => position.user !== configuration.DECIBEL_SUBACCOUNT_ADDRESS))
+      throw new Error('PRODUCTION_LIVE_SOURCE_SUBACCOUNT_MISMATCH');
     if (BTCPositions.length > 1) throw new Error('PRODUCTION_LIVE_SOURCE_POSITION_AMBIGUOUS');
     const position = BTCPositions[0];
     const actualInventoryBase = position?.size ?? 0;
+    if (
+      !Number.isFinite(values.accountOverview.perp_equity_balance) ||
+      !Number.isFinite(values.accountOverview.total_margin) ||
+      values.accountOverview.perp_equity_balance < 0 ||
+      values.accountOverview.total_margin < 0
+    )
+      throw new Error('PRODUCTION_LIVE_SOURCE_ACCOUNT_MARGIN_INVALID');
+    const availableMarginUsd = Math.max(
+      0,
+      values.accountOverview.perp_equity_balance - values.accountOverview.total_margin,
+    );
+    const maximumEffectiveLeverage = Math.min(
+      configuration.MAX_EFFECTIVE_LEVERAGE,
+      values.metadata.maximumLeverage,
+    );
     const openOrders = normalizeOpenOrders(
       values.openOrders,
       DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
@@ -496,7 +555,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     const knownOrderIds = new Set(ledger.orders.map((order) => order.venueOrderId));
     const outOfBandBTCFillCount = values.tradeHistory.filter(
       (trade) =>
-        trade.market === DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 &&
+        isDecibelBTCMarketActivityV1(trade) &&
         trade.source === 'OrderFill' &&
         !knownOrderIds.has(trade.order_id) &&
         !baseline.reconciledAccountFillIds.includes(trade.trade_id),
@@ -509,10 +568,14 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
         tickSize: values.metadata.tickSize,
         lotSize: values.metadata.lotSize,
         minimumSize: values.metadata.minimumSize,
+        priceDecimals: values.metadata.priceDecimals,
+        sizeDecimals: values.metadata.sizeDecimals,
         mode: values.metadata.mode,
       },
       book: { bestBid: book.best_bid, bestAsk: book.best_ask },
       position: actualInventoryBase,
+      availableMarginUsd,
+      maximumEffectiveLeverage,
       positionTransactionIds: BTCPositions.map((row) => ({
         market: row.market,
         size: row.size,
@@ -527,11 +590,8 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
         price: order.price,
         quantity: order.quantity,
       })),
-      activeTwaps: values.activeTwaps.filter(
-        (twap) => twap.market === DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
-      ).length,
-      activeTpSl: BTCPositions.filter((row) => row.tp_order_id !== null || row.sl_order_id !== null)
-        .length,
+      activeTwaps: ActiveBTCTwaps.length,
+      activeTpSl: BTCTpSlPositions.length,
       bulk: { classification: bulk.classification, activeBulkSize: bulk.activeBulkSize },
       strategyFillIds: ledger.fills.map((fill) => fill.venueFillId).sort(),
       outOfBandBTCFillCount,
@@ -553,6 +613,8 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
         tickSize: values.metadata.tickSize,
         lotSize: values.metadata.lotSize,
         minimumSize: values.metadata.minimumSize,
+        priceDecimals: values.metadata.priceDecimals,
+        sizeDecimals: values.metadata.sizeDecimals,
         mode: values.metadata.mode,
         observedAt: receivedAt,
       },
@@ -561,14 +623,10 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       actualInventoryBase,
       inventoryDirectionProven: true,
       openOrders,
-      activeTwapCount: values.activeTwaps.filter(
-        (twap) => twap.market === DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
-      ).length,
-      activeTpSlCount: BTCPositions.filter(
-        (row) => row.tp_order_id !== null || row.sl_order_id !== null,
-      ).length,
+      activeTwapCount: ActiveBTCTwaps.length,
+      activeTpSlCount: BTCTpSlPositions.length,
       activeBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,
-      manualOrDelegatedActivityCount: outOfBandBTCFillCount,
+      manualOrDelegatedActivityCount: 0,
       unresolvedExecutionPlanCount: 0,
       persistenceAvailable: true,
       targetExternalMakerVolumeUsd:
@@ -579,6 +637,19 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       sourceStateHash: canonicalHash(semantic),
       minimumNotionalUsd: configuration.DECIBEL_PRODUCTION_LIVE_MIN_NOTIONAL_USD,
       maximumNotionalUsd: configuration.DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD,
+      availableMarginUsd,
+      maximumEffectiveLeverage,
+      marketScopeDiagnostics: Object.freeze({
+        rawPositionMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(values.positions),
+        rawOpenOrderMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(values.openOrders),
+        rawFillMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(values.tradeHistory),
+        rawTwapMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(values.activeTwaps),
+        rawTpSlMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(BTCTpSlPositions),
+        historicalOutOfBandBTCFillCount: outOfBandBTCFillCount,
+        activeTwapCount: ActiveBTCTwaps.length,
+        activeTpSlCount: BTCTpSlPositions.length,
+        activeBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,
+      }),
       input: strategyInput,
     });
     this.SnapshotBeforeLatest = this.PreviousSnapshot;
@@ -589,8 +660,34 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
   public reconcileIntent(
     _intentId: string,
     snapshot: decibel_production_live_snapshot_v1,
+    venueOrderId?: string | null,
   ): Promise<'ORDER_OPEN' | 'PARTIAL_FILL' | 'FULL_FILL' | 'ORDER_CANCELLED' | 'ORDER_NOT_FOUND'> {
     const previous = this.SnapshotBeforeLatest;
+    if (venueOrderId !== undefined && venueOrderId !== null) {
+      const currentOpen = snapshot.input.openOrders.some(
+        (order) => order.venueOrderId === venueOrderId,
+      );
+      const trackedOrder = snapshot.input.actualFillLedger.orders.find(
+        (order) => order.venueOrderId === venueOrderId,
+      );
+      const filledQuantity = snapshot.input.actualFillLedger.fills
+        .filter((fill) => fill.venueOrderId === venueOrderId)
+        .reduce((sum, fill) => sum + fill.executedBaseQuantity, 0);
+      if (trackedOrder !== undefined && filledQuantity > 0) {
+        return Promise.resolve(
+          filledQuantity + Number.EPSILON >= trackedOrder.requestedQuantity
+            ? 'FULL_FILL'
+            : 'PARTIAL_FILL',
+        );
+      }
+      if (currentOpen) return Promise.resolve('ORDER_OPEN');
+      const previouslyOpen = previous?.input.openOrders.some(
+        (order) => order.venueOrderId === venueOrderId,
+      );
+      if (previouslyOpen === true || trackedOrder !== undefined)
+        return Promise.resolve('ORDER_CANCELLED');
+      throw new Error('PRODUCTION_RECONCILIATION_AMBIGUOUS');
+    }
     if (previous === null) {
       if (snapshot.input.openOrders.length > 0) return Promise.resolve('ORDER_OPEN');
       throw new Error('PRODUCTION_RECONCILIATION_AMBIGUOUS');
@@ -617,18 +714,28 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
   }
 
   private async readAll(subaccount: string, startTimestamp: number, endTimestamp: number) {
-    const [positions, openOrders, orderHistory, tradeHistory, activeTwaps, bulkOrders, metadata] =
-      await Promise.all([
-        this.Reader.readPositions(subaccount, DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1),
-        this.Reader.readOpenOrders(subaccount),
-        this.Reader.readOrderHistory(subaccount, startTimestamp, endTimestamp),
-        this.Reader.readTradeHistory(subaccount, startTimestamp, endTimestamp),
-        this.Reader.readActiveTwaps(subaccount),
-        this.Reader.readBulkOrders(subaccount, DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1),
-        this.Reader.readMarketMetadata(),
-      ]);
+    const [
+      accountOverview,
+      positions,
+      openOrders,
+      orderHistory,
+      tradeHistory,
+      activeTwaps,
+      bulkOrders,
+      metadata,
+    ] = await Promise.all([
+      this.Reader.readAccountOverview(subaccount),
+      this.Reader.readPositions(subaccount, DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1),
+      this.Reader.readOpenOrders(subaccount),
+      this.Reader.readOrderHistory(subaccount, startTimestamp, endTimestamp),
+      this.Reader.readTradeHistory(subaccount, startTimestamp, endTimestamp),
+      this.Reader.readActiveTwaps(subaccount),
+      this.Reader.readBulkOrders(subaccount, DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1),
+      this.Reader.readMarketMetadata(),
+    ]);
     const book = await this.Reader.readCurrentBook(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1);
     return {
+      accountOverview,
       positions,
       openOrders,
       orderHistory,

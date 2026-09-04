@@ -13,6 +13,10 @@ import {
   type decibel_authenticated_strategy_order_v1,
 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import { resolveDecibelBulkOrderActivityV1 } from './decibel_bulk_order_activity_resolution_v1.js';
+import {
+  filterDecibelBTCMarketActivityV1,
+  isActiveDecibelTwapV1,
+} from './decibel_btc_market_activity_scope_v1.js';
 import { loadConfig } from './config.js';
 import { createDecibelActualFillLedgerV1 } from './decibel_actual_fill_truth_v1.js';
 import { decibel_client } from './decibel_client.js';
@@ -86,11 +90,14 @@ while (Date.now() - startedAt < durationMs) {
         MarketClient.getBTCCurrentBook(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1),
       ]);
     const receivedAt = Date.now();
+    const BTCPositions = filterDecibelBTCMarketActivityV1(positions);
+    const BTCOpenOrders = filterDecibelBTCMarketActivityV1(openResponse.items);
+    const BTCTwaps = filterDecibelBTCMarketActivityV1(twaps).filter(isActiveDecibelTwapV1);
     authenticatedFillRowsObserved = new Set(
       history.items.filter((row) => row.source === 'OrderFill').map((row) => row.trade_id),
     ).size;
     const book = rawBook as { best_bid?: unknown; best_ask?: unknown; unix_ms?: unknown };
-    const position = positions[0];
+    const position = BTCPositions[0];
     const actualInventoryBase = position?.size ?? 0;
     const bulk = resolveDecibelBulkOrderActivityV1({
       configuredSubaccount: subaccount,
@@ -98,27 +105,25 @@ while (Date.now() - startedAt < durationMs) {
       records: bulkRows,
       readSuccessful: true,
     });
-    const openOrders: decibel_authenticated_strategy_order_v1[] = openResponse.items.map(
-      (order) => ({
-        venueOrderId: order.order_id,
-        clientOrderId: order.client_order_id ?? '',
-        strategyConfigId:
-          order.client_order_id?.startsWith('dpvr1-') === true ? strategyConfigId : null,
-        market: order.market,
-        side: order.is_buy ? 'BUY' : 'SELL',
-        price: order.price ?? Number.NaN,
-        quantity: order.remaining_size ?? order.orig_size ?? Number.NaN,
-        orderType: 'LIMIT',
-        timeInForce: 'PostOnly',
-        postOnly: true,
-      }),
-    );
+    const openOrders: decibel_authenticated_strategy_order_v1[] = BTCOpenOrders.map((order) => ({
+      venueOrderId: order.order_id,
+      clientOrderId: order.client_order_id ?? '',
+      strategyConfigId:
+        order.client_order_id?.startsWith('dpvr1-') === true ? strategyConfigId : null,
+      market: order.market,
+      side: order.is_buy ? 'BUY' : 'SELL',
+      price: order.price ?? Number.NaN,
+      quantity: order.remaining_size ?? order.orig_size ?? Number.NaN,
+      orderType: 'LIMIT',
+      timeInForce: 'PostOnly',
+      postOnly: true,
+    }));
     evaluation = evaluateDecibelAuthenticatedPassiveRecyclingV1({
       sessionId,
       strategyConfigId,
       configuredSubaccount: subaccount,
       authenticatedSubaccount:
-        positions.find((value) => value.user !== subaccount)?.user ?? subaccount,
+        BTCPositions.find((value) => value.user !== subaccount)?.user ?? subaccount,
       configuredNetwork: 'mainnet',
       observedNetwork: 'mainnet',
       now: receivedAt,
@@ -145,8 +150,8 @@ while (Date.now() - startedAt < durationMs) {
         actualInventoryBase === 0 ||
         Journal.restore(sessionId)?.evaluation.actualInventoryBase === actualInventoryBase,
       openOrders,
-      activeTwapCount: twaps.length,
-      activeTpSlCount: positions.filter(
+      activeTwapCount: BTCTwaps.length,
+      activeTpSlCount: BTCPositions.filter(
         (value) => value.tp_order_id !== null || value.sl_order_id !== null,
       ).length,
       activeBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,

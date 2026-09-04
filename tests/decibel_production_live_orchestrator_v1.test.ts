@@ -15,6 +15,8 @@ import {
   type decibel_production_live_snapshot_v1,
 } from '../src/decibel_production_live_orchestrator_v1.js';
 import type { DecibelProductionExecutionExecutorV1 } from '../src/decibel_production_executor_handoff_v1.js';
+import { getSafeProductionLiveFailureV1 } from '../src/run_decibel_production_live_v1.js';
+import { execution_preflight_rejection_v1 } from '../src/decibel_execution_intent_v1.js';
 
 const makeSnapshot = (overrides: Partial<decibel_production_live_snapshot_v1> = {}) => {
   const now = 1_000;
@@ -55,6 +57,8 @@ const makeSnapshot = (overrides: Partial<decibel_production_live_snapshot_v1> = 
     sourceStateHash: 'state-1',
     minimumNotionalUsd: 0.01,
     maximumNotionalUsd: 1,
+    availableMarginUsd: 1,
+    maximumEffectiveLeverage: 1,
     ...overrides,
   } satisfies decibel_production_live_snapshot_v1;
 };
@@ -64,6 +68,8 @@ function make(input?: {
   snapshots?: decibel_production_live_snapshot_v1[];
   placeOutcome?: 'PLACE_ACKNOWLEDGED' | 'PLACE_OUTCOME_UNKNOWN';
   journalPath?: string;
+  readFailuresAt?: ReadonlyMap<number, Error>;
+  reconciliationState?: 'ORDER_OPEN' | 'PARTIAL_FILL' | 'FULL_FILL' | 'ORDER_CANCELLED';
 }) {
   const journal = new decibel_execution_lifecycle_journal_v1(
     input?.journalPath ?? join(mkdtempSync(join(tmpdir(), 'decibel-live-')), 'journal.sqlite'),
@@ -75,13 +81,15 @@ function make(input?: {
   const source: DecibelProductionLiveStateSourceV1 = {
     readAuthenticatedSnapshot: () => {
       reads += 1;
+      const failure = input?.readFailuresAt?.get(reads);
+      if (failure !== undefined) return Promise.reject(failure);
       const snapshot = snapshots.shift();
       if (snapshot === undefined) throw new Error('NO_SNAPSHOT');
       return Promise.resolve(snapshot);
     },
     reconcileIntent: () => {
       reconciliations += 1;
-      return Promise.resolve('ORDER_NOT_FOUND');
+      return Promise.resolve(input?.reconciliationState ?? 'ORDER_NOT_FOUND');
     },
   };
   const executor: DecibelProductionExecutionExecutorV1 = {
@@ -131,7 +139,13 @@ describe('Decibel production live orchestrator V1', () => {
   it('defaults disabled and requires production mode', () => {
     expect(
       parseDecibelProductionLiveConfigurationV1({ DECIBEL_EXECUTION_MODE: 'production' }),
-    ).toMatchObject({ releaseStage: 'DISABLED', executorEnabled: false, dryRun: false });
+    ).toMatchObject({
+      releaseStage: 'DISABLED',
+      executorEnabled: false,
+      dryRun: false,
+      readRetryCount: 3,
+      readRetryBackoffMs: 250,
+    });
     expect(() => parseDecibelProductionLiveConfigurationV1({})).toThrow();
   });
 
@@ -144,6 +158,16 @@ describe('Decibel production live orchestrator V1', () => {
     expect(test.calls()).toBe(0);
     expect(test.journal.nonTerminal()).toEqual([]);
     await test.orchestrator.close();
+  });
+
+  it('exposes a safe detailed execution preflight rejection code', () => {
+    const error = new execution_preflight_rejection_v1(
+      'EXECUTION_PREFLIGHT_NOTIONAL_ABOVE_MAXIMUM',
+    );
+    expect(getSafeProductionLiveFailureV1(error)).toEqual({
+      blocker: 'EXECUTION_PREFLIGHT_REJECTED',
+      rejectionCode: 'EXECUTION_PREFLIGHT_NOTIONAL_ABOVE_MAXIMUM',
+    });
   });
 
   it('supports three consecutive dry-run cycles without false reconciliation', async () => {
@@ -178,13 +202,13 @@ describe('Decibel production live orchestrator V1', () => {
     await restarted.orchestrator.close();
   });
 
-  it('fails closed when state changes before intent', async () => {
+  it('holds without mutation when authenticated state changes before intent', async () => {
     const test = make({
       snapshots: [makeSnapshot(), makeSnapshot({ sourceStateHash: 'state-2' })],
     });
     await expect(test.orchestrator.evaluateOnce()).resolves.toMatchObject({
-      action: 'BLOCKED',
-      blocker: 'EXECUTION_STATE_CHANGED_BEFORE_INTENT',
+      action: 'HOLD',
+      blocker: null,
     });
     expect(test.calls()).toBe(0);
     await test.orchestrator.close();
@@ -208,7 +232,7 @@ describe('Decibel production live orchestrator V1', () => {
     await test.orchestrator.close();
   });
 
-  it('holds semantic matches without invoking the executor', async () => {
+  it('adopts a recognized strategy order on an empty-journal startup without mutation', async () => {
     const base = makeSnapshot();
     const current = {
       venueOrderId: 'existing',
@@ -226,8 +250,64 @@ describe('Decibel production live orchestrator V1', () => {
       ...base,
       input: { ...base.input, openOrders: [current] },
     };
-    const test = make({ snapshots: [snapshot] });
-    await expect(test.orchestrator.evaluateOnce()).resolves.toMatchObject({ action: 'HOLD' });
+    const test = make({ snapshots: [snapshot], reconciliationState: 'ORDER_OPEN' });
+    await expect(test.orchestrator.evaluateOnce()).resolves.toMatchObject({
+      action: 'RECONCILE_ONLY',
+      mutationInvocations: 0,
+    });
+    expect(test.journal.countIntents()).toBe(1);
+    expect(test.journal.nonTerminal()).toHaveLength(1);
+    expect(test.calls()).toBe(0);
+    await test.orchestrator.close();
+  });
+
+  it('manages an authenticated startup position without treating it as foreign activity', async () => {
+    const base = makeSnapshot();
+    const positioned = {
+      ...base,
+      input: {
+        ...base.input,
+        actualInventoryBase: 0.001,
+        inventoryDirectionProven: true,
+        manualOrDelegatedActivityCount: 0,
+      },
+    };
+    const test = make({ snapshots: [positioned, positioned] });
+    const result = await test.orchestrator.evaluateOnce();
+    expect(result.blocker).not.toBe('STRATEGY_ACTIVITY_EXCLUSIVITY_LOST');
+    expect(result.evaluation?.strategyState).toBe('HARD_LONG');
+    expect(test.calls()).toBe(0);
+    await test.orchestrator.close();
+  });
+
+  it('returns safe raw market identity diagnostics only for an exclusivity blocker', async () => {
+    const base = makeSnapshot();
+    const marketScopeDiagnostics = {
+      rawPositionMarketIdentities: [
+        { market: 'dell/usd', marketAddress: '0xdell', marketId: null },
+      ],
+      rawOpenOrderMarketIdentities: [],
+      rawFillMarketIdentities: [],
+      rawTwapMarketIdentities: [],
+      rawTpSlMarketIdentities: [],
+      historicalOutOfBandBTCFillCount: 0,
+      activeTwapCount: 1,
+      activeTpSlCount: 0,
+      activeBulkOrderCount: 0,
+    };
+    const blocked = {
+      ...base,
+      marketScopeDiagnostics,
+      input: { ...base.input, activeTwapCount: 1 },
+    };
+    const test = make({ snapshots: [blocked] });
+
+    await expect(test.orchestrator.evaluateOnce()).resolves.toMatchObject({
+      action: 'BLOCKED',
+      blocker: 'STRATEGY_ACTIVITY_EXCLUSIVITY_LOST',
+      marketScopeDiagnostics,
+      mutationInvocations: 0,
+    });
     expect(test.calls()).toBe(0);
     await test.orchestrator.close();
   });
@@ -253,6 +333,91 @@ describe('Decibel production live orchestrator V1', () => {
       action: 'RECONCILE_ONLY',
     });
     expect(test.calls()).toBe(1);
+    await test.orchestrator.close();
+  });
+
+  it('completes a recovered filled intent and advances to inventory management', async () => {
+    const positioned = makeSnapshot();
+    const test = make({
+      environment: {
+        DECIBEL_EXECUTION_MODE: 'production',
+        DECIBEL_EXECUTION_RELEASE_STAGE: 'AUTONOMOUS',
+        DECIBEL_EXECUTOR_ENABLED: 'true',
+        DECIBEL_EXECUTOR_DRY_RUN: 'false',
+        DECIBEL_RECONCILED_CANARY_EVIDENCE_HASH: 'same',
+        DECIBEL_REQUIRED_CANARY_EVIDENCE_HASH: 'same',
+      },
+      snapshots: [makeSnapshot(), makeSnapshot(), positioned],
+      placeOutcome: 'PLACE_OUTCOME_UNKNOWN',
+      reconciliationState: 'FULL_FILL',
+    });
+    const submitted = await test.orchestrator.evaluateOnce();
+    await expect(test.orchestrator.evaluateOnce()).resolves.toMatchObject({
+      action: 'RECONCILE_ONLY',
+      intentId: submitted.intentId,
+      mutationInvocations: 0,
+    });
+    expect(test.journal.get(submitted.intentId ?? '')?.status).toBe('APPLIED');
+    expect(test.calls()).toBe(1);
+    await test.orchestrator.close();
+  });
+
+  it('retries transient authenticated reads during reconciliation without resubmission', async () => {
+    const timeout = Object.assign(new Error('Indexer request timed out'), { code: 'ETIMEDOUT' });
+    const reset = Object.assign(new Error('Indexer connection reset'), { code: 'ECONNRESET' });
+    const test = make({
+      environment: {
+        DECIBEL_EXECUTION_MODE: 'production',
+        DECIBEL_EXECUTION_RELEASE_STAGE: 'AUTONOMOUS',
+        DECIBEL_EXECUTOR_ENABLED: 'true',
+        DECIBEL_EXECUTOR_DRY_RUN: 'false',
+        DECIBEL_RECONCILED_CANARY_EVIDENCE_HASH: 'same',
+        DECIBEL_REQUIRED_CANARY_EVIDENCE_HASH: 'same',
+        DECIBEL_PRODUCTION_LIVE_READ_RETRY_BACKOFF_MS: '1',
+      },
+      snapshots: [makeSnapshot(), makeSnapshot(), makeSnapshot()],
+      placeOutcome: 'PLACE_OUTCOME_UNKNOWN',
+      readFailuresAt: new Map([
+        [3, timeout],
+        [4, reset],
+      ]),
+    });
+
+    await expect(test.orchestrator.evaluateOnce()).resolves.toMatchObject({
+      action: 'RECONCILIATION_REQUIRED',
+    });
+    await expect(test.orchestrator.evaluateOnce()).resolves.toMatchObject({
+      action: 'RECONCILE_ONLY',
+    });
+    expect(test.reads()).toBe(5);
+    expect(test.reconciliations()).toBe(1);
+    expect(test.calls()).toBe(1);
+    await test.orchestrator.close();
+  });
+
+  it('fails closed after the configured transient authenticated read retries', async () => {
+    const failures = new Map<number, Error>();
+    for (let read = 1; read <= 4; read += 1)
+      failures.set(
+        read,
+        Object.assign(new Error('Indexer request timed out'), { code: 'ETIMEDOUT' }),
+      );
+    const test = make({
+      environment: {
+        DECIBEL_EXECUTION_MODE: 'production',
+        DECIBEL_EXECUTION_RELEASE_STAGE: 'CANARY',
+        DECIBEL_EXECUTOR_ENABLED: 'true',
+        DECIBEL_EXECUTOR_DRY_RUN: 'true',
+        DECIBEL_PRODUCTION_LIVE_READ_RETRY_BACKOFF_MS: '1',
+      },
+      readFailuresAt: failures,
+    });
+
+    await expect(test.orchestrator.evaluateOnce()).rejects.toThrow(
+      'PRODUCTION_AUTHENTICATED_READ_REQUIRED',
+    );
+    expect(test.reads()).toBe(4);
+    expect(test.calls()).toBe(0);
     await test.orchestrator.close();
   });
 

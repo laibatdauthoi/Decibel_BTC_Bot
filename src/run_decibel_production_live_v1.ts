@@ -13,6 +13,19 @@ import {
 } from './decibel_production_live_orchestrator_v1.js';
 import { loadDecibelProductionExecutorV1 } from './decibel_production_execution_v1.js';
 import { createDecibelProductionLiveStateSourceV1 } from './decibel_production_live_state_source_v1.js';
+import { execution_preflight_rejection_v1 } from './decibel_execution_intent_v1.js';
+
+export function getSafeProductionLiveFailureV1(error: unknown): Readonly<{
+  blocker: string;
+  rejectionCode: string | null;
+}> {
+  if (error instanceof execution_preflight_rejection_v1)
+    return Object.freeze({ blocker: error.message, rejectionCode: error.rejectionCode });
+  return Object.freeze({
+    blocker: error instanceof Error ? error.message : 'PRODUCTION_LIVE_UNHANDLED_ERROR',
+    rejectionCode: null,
+  });
+}
 
 async function loadSource(modulePath: string | null): Promise<DecibelProductionLiveStateSourceV1> {
   if (modulePath === null) return createDecibelProductionLiveStateSourceV1();
@@ -68,6 +81,9 @@ export async function runDecibelProductionLiveV1(environment: NodeJS.ProcessEnv)
             intentId: cycle.intentId,
             blocker: cycle.blocker,
             mutationInvocations: cycle.mutationInvocations,
+            ...(cycle.marketScopeDiagnostics === undefined
+              ? {}
+              : { marketScopeDiagnostics: cycle.marketScopeDiagnostics }),
           },
           'Decibel production live cycle',
         ),
@@ -82,8 +98,10 @@ export async function runDecibelProductionLiveV1(environment: NodeJS.ProcessEnv)
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   runDecibelProductionLiveV1(process.env).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : 'PRODUCTION_LIVE_UNHANDLED_ERROR';
-    console.error(`DECIBEL_PRODUCTION_LIVE=FAIL BLOCKER=${message}`);
+    const failure = getSafeProductionLiveFailureV1(error);
+    console.error(
+      `DECIBEL_PRODUCTION_LIVE=FAIL BLOCKER=${failure.blocker}${failure.rejectionCode === null ? '' : ` REJECTION_CODE=${failure.rejectionCode}`}`,
+    );
     process.exitCode = 1;
   });
 }

@@ -5,6 +5,11 @@ import { resolve } from 'node:path';
 import { DecibelReadDex, MAINNET_CONFIG } from '@decibeltrade/sdk';
 
 import { resolveDecibelBulkOrderActivityV1 } from './decibel_bulk_order_activity_resolution_v1.js';
+import {
+  filterDecibelBTCMarketActivityV1,
+  getDecibelMarketIdentityDiagnosticsV1,
+  isActiveDecibelTwapV1,
+} from './decibel_btc_market_activity_scope_v1.js';
 import { validateDecibelAuthenticatedBtcResyncCheckpointV1 } from './decibel_authenticated_btc_activity_resync_v1.js';
 import type { application_config } from './config.js';
 import { deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1 } from './decibel_authenticated_passive_recycling_live_state_v1.js';
@@ -99,6 +104,12 @@ export async function readDecibelAuthenticatedPassiveRecyclingLiveStateV1(input:
       MarketClient.getBTCCurrentBook(handoff.marketAddress),
     ]);
   const receivedAt = Date.now();
+  const BTCPositions = filterDecibelBTCMarketActivityV1(positions);
+  const BTCOpenOrders = filterDecibelBTCMarketActivityV1(openResponse.items);
+  const BTCTwaps = filterDecibelBTCMarketActivityV1(twaps).filter(isActiveDecibelTwapV1);
+  const BTCTpSlPositions = BTCPositions.filter(
+    (position) => position.tp_order_id !== null || position.sl_order_id !== null,
+  );
   const book = rawBook as { best_bid?: unknown; best_ask?: unknown; unix_ms?: unknown };
   const identity = manifest.identity as {
     side?: unknown;
@@ -157,20 +168,18 @@ export async function readDecibelAuthenticatedPassiveRecyclingLiveStateV1(input:
     now: receivedAt,
     accountObservedAt: receivedAt,
     maxStateAgeMs: input.maxStateAgeMs,
-    currentPositionBase: positions[0]?.size ?? 0,
+    currentPositionBase: BTCPositions[0]?.size ?? 0,
     fills: resolvedFills.fills,
     knownRecyclingOrderIds: [...known.keys()],
-    openOrders: openResponse.items.map((order) => ({
+    openOrders: BTCOpenOrders.map((order) => ({
       orderId: order.order_id,
       clientOrderId: order.client_order_id ?? '',
       marketAddress: order.market,
       side: order.is_buy ? ('BUY' as const) : ('SELL' as const),
       knownRecyclingOrder: known.has(order.order_id),
     })),
-    activeTwapCount: twaps.length,
-    activeTpSlCount: positions.filter(
-      (position) => position.tp_order_id !== null || position.sl_order_id !== null,
-    ).length,
+    activeTwapCount: BTCTwaps.length,
+    activeTpSlCount: BTCTpSlPositions.length,
     activeBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,
     lineageBlockers: resolvedFills.lineageBlockers,
     ...(checkpoint === null
@@ -222,10 +231,13 @@ export async function readDecibelAuthenticatedPassiveRecyclingLiveStateV1(input:
       unexplainedBtcFillIds: resolvedFills.unexplainedBtcFillIds,
       unprovenFillIds: resolvedFills.unprovenFillIds,
       knownRecyclingVenueOrderIds: Object.freeze([...known.keys()]),
-      activeTwapCount: twaps.length,
-      activeTpSlCount: positions.filter(
-        (position) => position.tp_order_id !== null || position.sl_order_id !== null,
-      ).length,
+      activeTwapCount: BTCTwaps.length,
+      activeTpSlCount: BTCTpSlPositions.length,
+      rawPositionMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(positions),
+      rawOpenOrderMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(openResponse.items),
+      rawFillMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(history.items),
+      rawTwapMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(twaps),
+      rawTpSlMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(BTCTpSlPositions),
       bulkClassification: bulk.classification,
     }),
   });

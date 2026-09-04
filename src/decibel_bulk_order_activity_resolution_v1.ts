@@ -91,12 +91,14 @@ export function resolveDecibelBulkOrderActivityV1(input: {
   records: readonly decibel_bulk_order_record_v1[];
   readSuccessful: boolean;
 }): DecibelBulkOrderActivityResolutionV1 {
+  const configuredMarket = normalizeDecibelMarketAddressV1(input.configuredMarket);
+  const matchesConfiguredMarket = (record: decibel_bulk_order_record_v1): boolean =>
+    normalizeDecibelMarketAddressV1(record.market) === configuredMarket;
   const base = {
     recordCount: input.records.length,
     exactMarketRecordCount: 0,
-    otherMarketRecordCount: input.records.filter(
-      (record) => record.market !== input.configuredMarket,
-    ).length,
+    otherMarketRecordCount: input.records.filter((record) => !matchesConfiguredMarket(record))
+      .length,
     admittedRecords: Object.freeze([]) as readonly decibel_bulk_order_record_v1[],
     bidLevelCount: 0,
     askLevelCount: 0,
@@ -115,7 +117,7 @@ export function resolveDecibelBulkOrderActivityV1(input: {
       bulkOrderActivityClear: false,
       reason: 'BULK_ORDER_READ_FAILED',
     });
-  const admitted = input.records.filter((record) => record.market === input.configuredMarket);
+  const admitted = input.records.filter(matchesConfiguredMarket);
   if (
     admitted.some(
       (record) => record.user !== undefined && record.user !== input.configuredSubaccount,
@@ -214,3 +216,4 @@ export function shouldRunFinalCanaryDryRunPhaseBV1(input: {
     input.canarySideExplicit
   );
 }
+import { normalizeDecibelMarketAddressV1 } from './decibel_btc_market_activity_scope_v1.js';
