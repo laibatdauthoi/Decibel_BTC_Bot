@@ -1,4 +1,6 @@
 import { deriveDecibelEntryCycleV1 } from './decibel_entry_cycle_v1.js';
+import { runDecibelStartupRetentionV1 } from './decibel_data_retention_v1.js';
+import Database from 'better-sqlite3';
 import {
   DECIBEL_REPLACEMENT_FOLLOW_UP_IDLE_V1,
   planDecibelReplacementFollowUpV1,
@@ -934,6 +936,14 @@ export async function runDecibelProductionWebV1(
     initialSettings,
   );
   SettingsStore.read();
+  // Keep the 30 most recent sessions and their decision snapshots (no VACUUM at startup).
+  runDecibelStartupRetentionV1(
+    () => ({
+      sessionDb: new Database(web.DECIBEL_PRODUCTION_SESSION_STORE_PATH),
+      journalDb: new Database(resolve(configuration.journalPath)),
+    }),
+    (line) => console.log(line),
+  );
   const SessionStore = new decibel_production_session_store_v1(
     web.DECIBEL_PRODUCTION_SESSION_STORE_PATH,
   );
