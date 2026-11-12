@@ -4,6 +4,7 @@ import {
   type capacity_venue_margin_rules_v1,
 } from './decibel_capacity_producers_v1.js';
 import { isDecibelPositionReductionV1 } from './decibel_order_action_v1.js';
+import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_capacity_policy_v1.js';
 export type decibel_capacity_cost_observation_v1 = Readonly<{
   kind: 'MAKER_FEE' | 'TAKER_FEE' | 'ADVERSE_SELECTION' | 'TRANSACTION_COST';
   value: number;
@@ -34,19 +35,8 @@ export type decibel_capacity_inputs_v1 = Readonly<{
   venueMarginRules?: capacity_venue_margin_rules_v1;
 }>;
 
-// Estimates, never authenticated facts. 100 bps = 1% exit-window move floor;
-// use twice the observed range when larger. Reserve 10% collateral, 5% of
-// Max Loss for transaction costs, 10 bps per fee leg and 8 bps adverse selection.
-export const DECIBEL_CAPACITY_POLICY_V1 = Object.freeze({
-  modeledExitHorizonMs: 30_000,
-  adverseMoveFloorBps: 100,
-  observedRangeMultiplier: 2,
-  feePerLegBps: 10,
-  adverseSelectionBps: 8,
-  collateralReserveFraction: 0.1,
-  transactionLossReserveFraction: 0.05,
-  maximumBookSlippageBps: 25,
-});
+// The policy values live in a dependency-free module shared with the dashboard.
+export { DECIBEL_CAPACITY_POLICY_V1 };
 // Operator explicitly approved this policy and production activation on 2026-10-26. No ENV/API override.
 export const DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED: boolean = true;
 

@@ -160,6 +160,30 @@ describe('Settings draft, saved and active configuration', () => {
     },
   );
 
+  it.each([
+    ['0.1', 10, 'TOO SMALL FOR ENTRY (MIN $0.17)'],
+    ['0.17', 10, null],
+    ['0.2', 15, 'TOO SMALL FOR ENTRY (MIN $0.25)'],
+    ['0.1', null, null],
+  ] as const)(
+    'warns inline when Max Loss %s cannot admit a $%s entry, without blocking Save',
+    (maxLoss, entry, warning) => {
+      const props = createProps();
+      let view = renderView(props);
+      view.inputs[2].props.onChange!({ target: { value: maxLoss } });
+      resolveEntryProjection(props, entry);
+      view = renderView(props);
+      const maxLossRow = view.html
+        .match(/<label class="setting-row">.*?<\/label>/g)
+        ?.find((row) => row.includes('MAX LOSS'));
+      expect(maxLossRow).toBeDefined();
+      if (warning) expect(maxLossRow).toContain(`<small>${warning}</small>`);
+      else expect(maxLossRow).not.toContain('TOO SMALL FOR ENTRY');
+      expect(view.html.match(/TOO SMALL FOR ENTRY/g) ?? []).toHaveLength(warning ? 1 : 0);
+      expect(view.button('SAVE CHANGES').props.disabled).toBe(entry === null);
+    },
+  );
+
   it('does not label a pending projection as insufficient capital', () => {
     const view = renderView(createProps());
     expect(view.html).not.toContain('INSUFFICIENT CAPITAL FOR ENTRY');
