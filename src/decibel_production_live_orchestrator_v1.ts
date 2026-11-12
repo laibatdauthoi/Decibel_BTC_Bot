@@ -1754,6 +1754,11 @@ export class decibel_production_live_orchestrator_v1 {
     return this.HistoricalRecoveryBlocker;
   }
 
+  /** Decision id of a precomputed cancel → place replacement still waiting for its place. */
+  public getPendingReplacementDecisionId(): string | null {
+    return this.FrozenReprice?.decisionId ?? null;
+  }
+
   private async validateIndependentProtection(
     intent: execution_intent_v1,
     limits: void | import('./decibel_execution_lifecycle_v1.js').execution_submission_validation_v1,

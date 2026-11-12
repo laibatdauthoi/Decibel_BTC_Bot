@@ -1,5 +1,9 @@
 import { deriveDecibelEntryCycleV1 } from './decibel_entry_cycle_v1.js';
 import {
+  DECIBEL_REPLACEMENT_FOLLOW_UP_IDLE_V1,
+  planDecibelReplacementFollowUpV1,
+} from './decibel_replacement_follow_up_v1.js';
+import {
   calculateDecibelPreferredEntrySizeUsdV1,
   calculateDecibelEntrySizeV1,
 } from './decibel_entry_size_v1.js';
@@ -1897,6 +1901,7 @@ export async function runDecibelProductionWebV1(
     let evaluating = false;
     let runtimeClosed = false;
     const runtimeScheduleKey = `session-cycle:${session.sessionId}`;
+    let replacementFollowUp = DECIBEL_REPLACEMENT_FOLLOW_UP_IDLE_V1;
     let activeCycle: Promise<void> | null = null;
     let authenticatedReadFailures = 0;
     let authenticatedReadRetryAfter = 0;
@@ -1962,6 +1967,7 @@ export async function runDecibelProductionWebV1(
       if (!finalized) return false;
       runtimeClosed = true;
       RuntimeSupervisor.cancelScheduled(runtimeScheduleKey);
+      RuntimeSupervisor.cancelScheduled(`${runtimeScheduleKey}:replacement-follow-up`);
       clearCompletedSessionProjection();
       await RuntimeOrchestrator.close();
       return true;
@@ -2061,6 +2067,19 @@ export async function runDecibelProductionWebV1(
         emitControlLoopTelemetry(null, snapshot, errorMessage);
       } finally {
         evaluating = false;
+        // A precomputed replacement is waiting for its place: run the next cycle soon
+        // instead of after the full poll interval. The cycle itself is unchanged.
+        const followUp = planDecibelReplacementFollowUpV1(
+          replacementFollowUp,
+          RuntimeOrchestrator.getPendingReplacementDecisionId(),
+        );
+        replacementFollowUp = followUp.state;
+        if (followUp.delayMs !== null && !runtimeClosed)
+          RuntimeSupervisor.scheduleOnce(
+            `${runtimeScheduleKey}:replacement-follow-up`,
+            followUp.delayMs,
+            () => scheduleCycle().then(() => undefined),
+          );
       }
     };
     const scheduleCycle = (): Promise<void> => {
@@ -2075,6 +2094,7 @@ export async function runDecibelProductionWebV1(
     return Object.freeze({
       closePaused: async () => {
         RuntimeSupervisor.cancelScheduled(runtimeScheduleKey);
+        RuntimeSupervisor.cancelScheduled(`${runtimeScheduleKey}:replacement-follow-up`);
         if (activeCycle !== null) await activeCycle;
         runtimeClosed = true;
         execution = { ...execution, running: false, blocker: 'SESSION_TAKEOVER_PAUSED' };
@@ -2123,6 +2143,7 @@ export async function runDecibelProductionWebV1(
         SessionController.requestUnwind(session.sessionId, 'SESSION_END');
         RuntimeOrchestrator.requestSessionUnwind();
         RuntimeSupervisor.cancelScheduled(runtimeScheduleKey);
+        RuntimeSupervisor.cancelScheduled(`${runtimeScheduleKey}:replacement-follow-up`);
         if (activeCycle !== null) await activeCycle;
         if (runtimeClosed) return Object.freeze({ safeToEnd: true, blocker: null });
         for (

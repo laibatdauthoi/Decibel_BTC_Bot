@@ -12080,6 +12080,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         for (let cycle = 0; cycle < 3 && test.orchestrator['FrozenReprice'] !== null; cycle++)
           await test.orchestrator.evaluateOnce();
         expect(test.orchestrator['FrozenReprice']).toBeNull();
+        expect(test.orchestrator.getPendingReplacementDecisionId()).toBeNull();
         expect(test.submitted()).toEqual([{ action: 'CANCEL', side: order.side }]);
       } finally {
         await test.orchestrator.close();
@@ -17173,6 +17174,10 @@ it.each([
       expect(proof?.crossedVisibleLevelCount).toBe(1);
     }
     const frozenPrice = test.orchestrator['FrozenReprice']?.action.desired?.price;
+    // The runtime uses this id to run the next cycle early while the place is pending.
+    expect(test.orchestrator.getPendingReplacementDecisionId()).toBe(
+      test.orchestrator['FrozenReprice']?.decisionId ?? null,
+    );
     for (let i = 0; i < 5; i++) await test.orchestrator.evaluateOnce();
     expect(events.map((i) => i.action)).toEqual(['CANCEL']);
     if (mode === 'RESTART') {
