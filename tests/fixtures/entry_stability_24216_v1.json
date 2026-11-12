@@ -1,0 +1,392 @@
+{
+  "provenance": "Read-only production journal numeric/order facts; PID 24216 observed owning localhost:4173, runtime build c143dcba9cf93102 and processStart 1794069314141. Full historical depth frames were not persisted.",
+  "processId": 24216,
+  "buildId": "c143dcba9cf93102",
+  "processStart": 1794069314141,
+  "cutoff": 1794069966110,
+  "actualCancels": [
+    {
+      "orderId": "170141596714564907085801751470298628096",
+      "side": "SELL",
+      "restingPrice": 75690.5,
+      "quantity": 0.00047,
+      "placeAt": 1794069332004,
+      "cancelAt": 1794069350840,
+      "ageSincePlaceMs": 18836,
+      "reason": "REPRICE:ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+      "cancelStatus": "CANCELLED_EXTERNALLY",
+      "book": {
+        "bestBid": 75665.2,
+        "bestAsk": 75667.3,
+        "observedAt": 1794069350747
+      },
+      "candidatePrice": 75686.90000000001,
+      "depthSummary": {
+        "decision": "REPLACE",
+        "reason": "ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+        "bestMakerPrice": 75667.3,
+        "closestAdmissiblePrice": 75686.90000000001,
+        "priorityEvidence": "VISIBLE_PRICE_LEVELS_PASSED",
+        "depthEvidenceValid": true,
+        "crossedVisibleLevelCount": 1,
+        "crossedVisibleBaseQuantity": 11.1192,
+        "candidateAdmission": {
+          "notionalUsd": 35.572843000000006,
+          "costBps": 2.7175702403094406,
+          "costUsd": 0.009667169950000002,
+          "requiredEdgeBps": 2.7183118896638416,
+          "conditionalNetUsd": 0.00003833005000410117,
+          "admissionReason": "ENTRY_ADMISSION_EXECUTION_COST_COVERED",
+          "transactionReserveCount": 2,
+          "fillProbability": null,
+          "expectedValueUsd": null,
+          "adverseSelectionApplied": false
+        },
+        "executionImprovementUsd": 0.0016919999999958962,
+        "conditionalNetImprovementUsd": -0.002465536199995897,
+        "executableQuantity": 0.00047,
+        "replacementCostUsd": 0.0007739592,
+        "cancelGasReserveUsd": 0.0003869796,
+        "placementGasReserveUsd": 0.0003869796,
+        "fillProbability": null,
+        "expectedValueUsd": null
+      },
+      "observedMovementBps": 0.22038876380300224,
+      "terminalObservedAt": 1794069357200,
+      "replacement": {
+        "price": 75685.90000000001,
+        "quantity": 0.00047,
+        "createdAt": 1794069359550,
+        "acknowledgedAt": 1794069362555,
+        "reduceOnly": false
+      },
+      "observedTerminalToReplacementAckMs": 5355,
+      "mutationAttemptCount": 1,
+      "submissionStages": [
+        {
+          "stage": "STRATEGY_ADMISSION_COMPLETE",
+          "at": 1794069350840
+        },
+        {
+          "stage": "JOURNAL_PERSISTENCE_COMPLETE",
+          "at": 1794069351765
+        },
+        {
+          "stage": "EXECUTOR_SUBMISSION_STARTED",
+          "at": 1794069351766
+        },
+        {
+          "stage": "EXECUTOR_OUTCOME_RECEIVED",
+          "at": 1794069352652
+        },
+        {
+          "stage": "VENUE_ACK_RECEIVED",
+          "at": 1794069352652
+        }
+      ],
+      "executorOutcomes": [
+        {
+          "at": 1794069352652,
+          "outcome": "CANCEL_CONFIRMED",
+          "status": null,
+          "keys": ["outcome"]
+        }
+      ],
+      "sessionMatchesObservedRuntime": true
+    },
+    {
+      "orderId": "170141599249866108165711654172879749120",
+      "side": "SELL",
+      "restingPrice": 75685.9,
+      "quantity": 0.00047,
+      "placeAt": 1794069359550,
+      "cancelAt": 1794069371543,
+      "ageSincePlaceMs": 11993,
+      "reason": "REPRICE:ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+      "cancelStatus": "CANCELLED_EXTERNALLY",
+      "book": {
+        "bestBid": 75660.5,
+        "bestAsk": 75660.6,
+        "observedAt": 1794069370598
+      },
+      "candidatePrice": 75681.2,
+      "depthSummary": {
+        "decision": "REPLACE",
+        "reason": "ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+        "bestMakerPrice": 75660.6,
+        "closestAdmissiblePrice": 75681.2,
+        "priorityEvidence": "VISIBLE_PRICE_LEVELS_PASSED",
+        "depthEvidenceValid": true,
+        "crossedVisibleLevelCount": 2,
+        "crossedVisibleBaseQuantity": 11.13744,
+        "candidateAdmission": {
+          "notionalUsd": 35.570164,
+          "costBps": 2.7175866268145406,
+          "costUsd": 0.0096665002,
+          "requiredEdgeBps": 2.7183283365145585,
+          "conditionalNetUsd": 0.00003899979999726251,
+          "admissionReason": "ENTRY_ADMISSION_EXECUTION_COST_COVERED",
+          "transactionReserveCount": 2,
+          "fillProbability": null,
+          "expectedValueUsd": null,
+          "adverseSelectionApplied": false
+        },
+        "executionImprovementUsd": 0.002208999999998632,
+        "conditionalNetImprovementUsd": -0.0029824069499986314,
+        "executableQuantity": 0.00047,
+        "replacementCostUsd": 0.0007739592,
+        "cancelGasReserveUsd": 0.0003869796,
+        "placementGasReserveUsd": 0.0003869796,
+        "fillProbability": null,
+        "expectedValueUsd": null
+      },
+      "observedMovementBps": 0.2635771902653419,
+      "terminalObservedAt": 1794069377597,
+      "replacement": {
+        "price": 75681.2,
+        "quantity": 0.00047,
+        "createdAt": 1794069378993,
+        "acknowledgedAt": 1794069382558,
+        "reduceOnly": false
+      },
+      "observedTerminalToReplacementAckMs": 4961,
+      "mutationAttemptCount": 1,
+      "submissionStages": [
+        {
+          "stage": "STRATEGY_ADMISSION_COMPLETE",
+          "at": 1794069371543
+        },
+        {
+          "stage": "JOURNAL_PERSISTENCE_COMPLETE",
+          "at": 1794069372796
+        },
+        {
+          "stage": "EXECUTOR_SUBMISSION_STARTED",
+          "at": 1794069372797
+        },
+        {
+          "stage": "EXECUTOR_OUTCOME_RECEIVED",
+          "at": 1794069373670
+        },
+        {
+          "stage": "VENUE_ACK_RECEIVED",
+          "at": 1794069373670
+        }
+      ],
+      "executorOutcomes": [
+        {
+          "at": 1794069373670,
+          "outcome": "CANCEL_CONFIRMED",
+          "status": null,
+          "keys": ["outcome"]
+        }
+      ],
+      "sessionMatchesObservedRuntime": true
+    },
+    {
+      "orderId": "170141599249866110344990390086673629184",
+      "side": "SELL",
+      "restingPrice": 75681.2,
+      "quantity": 0.00047,
+      "placeAt": 1794069378993,
+      "cancelAt": 1794069569648,
+      "ageSincePlaceMs": 190655,
+      "reason": "REPRICE:ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+      "cancelStatus": "CANCELLED_EXTERNALLY",
+      "book": {
+        "bestBid": 75655.7,
+        "bestAsk": 75655.8,
+        "observedAt": 1794069568165
+      },
+      "candidatePrice": 75676.40000000001,
+      "depthSummary": {
+        "decision": "REPLACE",
+        "reason": "ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+        "bestMakerPrice": 75655.8,
+        "closestAdmissiblePrice": 75676.40000000001,
+        "priorityEvidence": "VISIBLE_PRICE_LEVELS_PASSED",
+        "depthEvidenceValid": true,
+        "crossedVisibleLevelCount": 1,
+        "crossedVisibleBaseQuantity": 11.11588,
+        "candidateAdmission": {
+          "notionalUsd": 35.567908,
+          "costBps": 2.7176004278913455,
+          "costUsd": 0.009665936200000001,
+          "requiredEdgeBps": 2.718342188416302,
+          "conditionalNetUsd": 0.0000395638000041023,
+          "admissionReason": "ENTRY_ADMISSION_EXECUTION_COST_COVERED",
+          "transactionReserveCount": 2,
+          "fillProbability": null,
+          "expectedValueUsd": null,
+          "adverseSelectionApplied": false
+        },
+        "executionImprovementUsd": 0.0022559999999945284,
+        "conditionalNetImprovementUsd": -0.003029395199994528,
+        "executableQuantity": 0.00047,
+        "replacementCostUsd": 0.0007739592,
+        "cancelGasReserveUsd": 0.0003869796,
+        "placementGasReserveUsd": 0.0003869796,
+        "fillProbability": null,
+        "expectedValueUsd": null
+      },
+      "observedMovementBps": 0.09153639850160995,
+      "terminalObservedAt": 1794069576446,
+      "replacement": {
+        "price": 75676.40000000001,
+        "quantity": 0.00047,
+        "createdAt": 1794069577777,
+        "acknowledgedAt": 1794069581642,
+        "reduceOnly": false
+      },
+      "observedTerminalToReplacementAckMs": 5196,
+      "mutationAttemptCount": 1,
+      "submissionStages": [
+        {
+          "stage": "STRATEGY_ADMISSION_COMPLETE",
+          "at": 1794069569648
+        },
+        {
+          "stage": "JOURNAL_PERSISTENCE_COMPLETE",
+          "at": 1794069571552
+        },
+        {
+          "stage": "EXECUTOR_SUBMISSION_STARTED",
+          "at": 1794069571553
+        },
+        {
+          "stage": "EXECUTOR_OUTCOME_RECEIVED",
+          "at": 1794069572866
+        },
+        {
+          "stage": "VENUE_ACK_RECEIVED",
+          "at": 1794069572866
+        }
+      ],
+      "executorOutcomes": [
+        {
+          "at": 1794069572866,
+          "outcome": "CANCEL_CONFIRMED",
+          "status": null,
+          "keys": ["outcome"]
+        }
+      ],
+      "sessionMatchesObservedRuntime": true
+    },
+    {
+      "orderId": "170141599249866108206081780495140519936",
+      "side": "BUY",
+      "restingPrice": 75649.3,
+      "quantity": 0.00047,
+      "placeAt": 1794069341272,
+      "cancelAt": 1794069793750,
+      "ageSincePlaceMs": 452478,
+      "reason": "REPRICE:ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+      "cancelStatus": "CANCELLED_EXTERNALLY",
+      "book": {
+        "bestBid": 75672.4,
+        "bestAsk": 75675,
+        "observedAt": 1794069793329
+      },
+      "candidatePrice": 75653.1,
+      "depthSummary": {
+        "decision": "REPLACE",
+        "reason": "ENTRY_REPLACEMENT_MAKER_PRIORITY_IMPROVED",
+        "bestMakerPrice": 75672.4,
+        "closestAdmissiblePrice": 75653.1,
+        "priorityEvidence": "VISIBLE_PRICE_LEVELS_PASSED",
+        "depthEvidenceValid": true,
+        "crossedVisibleLevelCount": 1,
+        "crossedVisibleBaseQuantity": 11.72909,
+        "candidateAdmission": {
+          "notionalUsd": 35.556957000000004,
+          "costBps": 2.7176674455015934,
+          "costUsd": 0.009663198450000002,
+          "requiredEdgeBps": 2.7169276382848557,
+          "conditionalNetUsd": 0.00001880154999589316,
+          "admissionReason": "ENTRY_ADMISSION_EXECUTION_COST_COVERED",
+          "transactionReserveCount": 2,
+          "fillProbability": null,
+          "expectedValueUsd": null,
+          "adverseSelectionApplied": false
+        },
+        "executionImprovementUsd": 0.0017860000000013679,
+        "conditionalNetImprovementUsd": -0.002560405700001367,
+        "executableQuantity": 0.00047,
+        "replacementCostUsd": 0.0007739592,
+        "cancelGasReserveUsd": 0.0003869796,
+        "placementGasReserveUsd": 0.0003869796,
+        "fillProbability": null,
+        "expectedValueUsd": null
+      },
+      "observedMovementBps": 0.10780549480777302,
+      "terminalObservedAt": 1794069797426,
+      "replacement": {
+        "price": 75653.1,
+        "quantity": 0.00047,
+        "createdAt": 1794069800973,
+        "acknowledgedAt": 1794069804810,
+        "reduceOnly": false
+      },
+      "observedTerminalToReplacementAckMs": 7384,
+      "mutationAttemptCount": 1,
+      "submissionStages": [
+        {
+          "stage": "STRATEGY_ADMISSION_COMPLETE",
+          "at": 1794069793750
+        },
+        {
+          "stage": "JOURNAL_PERSISTENCE_COMPLETE",
+          "at": 1794069795067
+        },
+        {
+          "stage": "EXECUTOR_SUBMISSION_STARTED",
+          "at": 1794069795068
+        },
+        {
+          "stage": "EXECUTOR_OUTCOME_RECEIVED",
+          "at": 1794069796758
+        },
+        {
+          "stage": "VENUE_ACK_RECEIVED",
+          "at": 1794069796758
+        }
+      ],
+      "executorOutcomes": [
+        {
+          "at": 1794069796758,
+          "outcome": "CANCEL_CONFIRMED",
+          "status": null,
+          "keys": ["outcome"]
+        }
+      ],
+      "sessionMatchesObservedRuntime": true
+    }
+  ],
+  "observedKeeps": [
+    {
+      "at": 1794069629181,
+      "bestBid": 75655.7,
+      "bestAsk": 75655.8,
+      "orders": [
+        {
+          "orderId": "170141599249866108206081780495140519936",
+          "restingPrice": 75649.3,
+          "candidatePrice": 75635.1,
+          "decision": "NO_OP",
+          "reason": "KEEP:ENTRY_REPLACEMENT_PRIORITY_NOT_IMPROVED",
+          "priorityEvidence": "NO_VERIFIED_PRICE_LEVEL_IMPROVEMENT",
+          "crossedVisibleLevelCount": 0
+        },
+        {
+          "orderId": "170141599249866106756479946168937218048",
+          "restingPrice": 75676.4,
+          "candidatePrice": 75676.40000000001,
+          "decision": "NO_OP",
+          "reason": "KEEP:ENTRY_REPLACEMENT_PRIORITY_NOT_IMPROVED",
+          "priorityEvidence": "NO_VERIFIED_PRICE_LEVEL_IMPROVEMENT",
+          "crossedVisibleLevelCount": 0
+        }
+      ]
+    }
+  ]
+}

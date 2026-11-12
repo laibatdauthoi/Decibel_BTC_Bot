@@ -232,8 +232,8 @@ export function calculateDecibelPassiveVolumeQuotesV1(
   }
 
   const state = getState(inventory, configuration.nearFlatToleranceBase);
-  const bidEnabled = state === 'FLAT' || state === 'SHORT_RECYCLE' || state === 'HARD_SHORT';
-  const askEnabled = state === 'FLAT' || state === 'LONG_RECYCLE' || state === 'HARD_LONG';
+  const bidEnabled = inventory.allowBidInventoryIncrease;
+  const askEnabled = inventory.allowAskInventoryIncrease;
   const bidOffset =
     state === 'FLAT' ? configuration.flatBidOffsetTicks : configuration.recyclingBidOffsetTicks;
   const askOffset =

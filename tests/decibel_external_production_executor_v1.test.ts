@@ -7,6 +7,7 @@ import {
 } from '../src/decibel_execution_intent_v1.js';
 import {
   capDecibelProductionMaxGasAmountV1,
+  readDecibelGasAccountEvidenceV1,
   createDecibelProductionExecutorV1,
   DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1,
   DECIBEL_EXTERNAL_PRODUCTION_EXECUTOR_V1,
@@ -53,6 +54,7 @@ const buildCancel = (): cancel_intent_v1 => {
     knownVenueOrderId: 'venue-one',
     sourceStateHash: 'source-state',
     strategyDecisionHash: 'strategy-decision',
+    cancelReason: 'REPRICE:TEST',
     createdAt: 2,
   });
   if (intent.action !== 'CANCEL') {
@@ -107,6 +109,7 @@ describe('Decibel external production executor V1', () => {
     await expect(Executor.placePostOnlyLimit(intent)).resolves.toEqual({
       outcome: 'PLACE_ACKNOWLEDGED',
       venueOrderId: 'venue-one',
+      transactionHash: 'transaction-one',
     });
     expect(placeOrder).toHaveBeenCalledTimes(1);
     expect(placeOrder).toHaveBeenCalledWith({
@@ -119,6 +122,65 @@ describe('Decibel external production executor V1', () => {
       clientOrderId: intent.clientOrderId,
       subaccountAddr: 'subaccount-one',
     });
+  });
+
+  it('submits inventory-reducing maker quotes as reduce-only PostOnly orders', async () => {
+    const { Executor, placeOrder } = setup();
+    const intent = buildDecibelExecutionIntentV1({
+      sessionId: 'session-one',
+      cycleSequence: 2,
+      action: 'PLACE',
+      market: 'BTC/USD',
+      side: 'SELL',
+      price: 101,
+      quantity: 0.1,
+      tickSize: 0.1,
+      lotSize: 0.01,
+      clientOrderId: 'reduce-one',
+      knownVenueOrderId: null,
+      sourceStateHash: 'source-state',
+      strategyDecisionHash: 'strategy-decision',
+      createdAt: 2,
+      executionRole: 'INVENTORY_REDUCING_MAKER',
+      reduceOnly: true,
+    });
+    if (intent.action !== 'PLACE') throw new Error('TEST_PLACE_INTENT_BUILD_FAILED');
+
+    await Executor.placePostOnlyLimit(intent);
+
+    expect(placeOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ timeInForce: 1, isReduceOnly: true, isBuy: false }),
+    );
+  });
+
+  it('submits session unwind through reduce-only ImmediateOrCancel', async () => {
+    const { Executor, placeOrder } = setup();
+    const intent = buildDecibelExecutionIntentV1({
+      sessionId: 'session-one',
+      cycleSequence: 3,
+      action: 'PLACE',
+      market: 'BTC/USD',
+      side: 'SELL',
+      price: 100,
+      quantity: 0.1,
+      tickSize: 0.1,
+      lotSize: 0.01,
+      clientOrderId: 'unwind-one',
+      knownVenueOrderId: null,
+      sourceStateHash: 'source-state',
+      strategyDecisionHash: 'strategy-decision',
+      createdAt: 3,
+      executionRole: 'SESSION_UNWIND_IOC',
+      reduceOnly: true,
+      timeInForce: 'ImmediateOrCancel',
+    });
+    if (intent.action !== 'PLACE') throw new Error('TEST_PLACE_INTENT_BUILD_FAILED');
+
+    await Executor.placeReduceOnlyImmediateOrCancel(intent);
+
+    expect(placeOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ timeInForce: 2, isReduceOnly: true, isBuy: false }),
+    );
   });
 
   it('logs the exact public Move arguments before placement', async () => {
@@ -286,9 +348,11 @@ describe('Decibel external production executor V1', () => {
     ],
   ])('maps ambiguous PLACE %s to unknown without retry', async (_name, place) => {
     const { Executor, placeOrder } = setup({ place });
-    await expect(Executor.placePostOnlyLimit(buildPlace())).resolves.toEqual({
+    const result = await Executor.placePostOnlyLimit(buildPlace());
+    expect(result).toMatchObject({
       outcome: 'PLACE_OUTCOME_UNKNOWN',
     });
+    if (_name === 'missing venue identity') expect(result.transactionHash).toBe('tx');
     expect(placeOrder).toHaveBeenCalledTimes(1);
   });
 
@@ -325,6 +389,29 @@ describe('Decibel external production executor V1', () => {
     expect(cancelOrder).toHaveBeenCalledTimes(1);
   });
 
+  it('bounds a hanging CANCEL transport and logs the exact stalled boundary', async () => {
+    const cancelOrder = vi.fn(() => new Promise<unknown>(() => undefined));
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const Executor = new decibel_external_production_executor_v1(
+      () => ({
+        client: { placeOrder: vi.fn(), cancelOrder },
+        subaccount: 'subaccount-one',
+      }),
+      5,
+      () => 100,
+    );
+
+    await expect(Executor.cancelExactOrder(buildCancel())).resolves.toEqual({
+      outcome: 'CANCEL_OUTCOME_UNKNOWN',
+    });
+    expect(cancelOrder).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('"stage":"SDK_CANCEL_ORDER_START"'));
+    expect(info).toHaveBeenCalledWith(
+      expect.stringContaining('"stage":"SDK_CANCEL_ORDER_TIMEOUT"'),
+    );
+    info.mockRestore();
+  });
+
   it('maps lazy connection failure to unknown without retrying the provider', async () => {
     const getConnection = vi.fn(() => Promise.reject(new Error('SDK unavailable')));
     const Executor = new decibel_external_production_executor_v1(getConnection);
@@ -333,5 +420,45 @@ describe('Decibel external production executor V1', () => {
       outcome: 'PLACE_OUTCOME_UNKNOWN',
     });
     expect(getConnection).toHaveBeenCalledTimes(1);
+  });
+});
+
+it('starts independent gas/object reads concurrently and awaits every safety observation', async () => {
+  const started: string[] = [];
+  let release!: (value: boolean) => void;
+  const pending = new Promise<boolean>((resolve) => {
+    release = resolve;
+  });
+  const task = readDecibelGasAccountEvidenceV1({
+    readPrimaryBalance: () => {
+      started.push('primary');
+      return Promise.resolve(1);
+    },
+    readSubaccountBalance: () => {
+      started.push('subaccount');
+      return Promise.resolve(0);
+    },
+    readSubaccountExists: () => {
+      started.push('subaccountObject');
+      return pending;
+    },
+    readMarketExists: () => {
+      started.push('marketObject');
+      return Promise.resolve(true);
+    },
+  });
+  expect(started).toEqual(['primary', 'subaccount', 'subaccountObject', 'marketObject']);
+  let complete = false;
+  void task.then(() => {
+    complete = true;
+  });
+  await Promise.resolve();
+  expect(complete).toBe(false);
+  release(false);
+  await expect(task).resolves.toMatchObject({
+    primaryAccountAptBalance: 1,
+    subaccountAptBalance: 0,
+    subaccountObjectExists: false,
+    marketObjectExists: true,
   });
 });

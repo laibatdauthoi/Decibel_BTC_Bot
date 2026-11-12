@@ -113,6 +113,9 @@ function placementLineage(input: {
 
 const config = loadConfig();
 if (config.network !== 'mainnet') throw new Error('BTC_ACTIVITY_RESYNC_MAINNET_REQUIRED');
+const allowOutOfBandReconciliation =
+  process.env.DECIBEL_ALLOW_OUT_OF_BAND_RECONCILIATION?.trim().toLowerCase() === 'true' ||
+  process.argv.includes('--allow-out-of-band-reconciliation');
 const manifestPath = resolve(
   'config/production_state/decibel_authenticated_live_canary_success_v1_manifest.json',
 );
@@ -296,6 +299,7 @@ try {
       (position) => position.tp_order_id !== null || position.sl_order_id !== null,
     ).length,
     activeBtcBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,
+    allowOutOfBandReconciliation,
     resyncTimestamp: now,
     sourceHashes: {
       frozenManifestSha256: sha256(manifestBytes),
@@ -303,6 +307,7 @@ try {
     },
   });
   let checkpointCreated = false;
+  let checkpointWritten = false;
   let persistedCheckpointPath = checkpointPath;
   if (result.checkpoint !== null) {
     if (existsSync(checkpointPath)) {
@@ -311,13 +316,39 @@ try {
         JSON.stringify(latest.allAccountFillIds) ===
         JSON.stringify(result.checkpoint.allAccountFillIds);
       if (sameFillIdentity) {
-        persistedCheckpointPath =
-          latest.schemaVersion === 'DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1'
-            ? checkpointPath
-            : getDecibelAuthenticatedBtcResyncRolloverPathV1(
-                latest.checkpointSequence,
-                checkpointPath,
-              );
+        if (
+          allowOutOfBandReconciliation &&
+          result.outOfBandFillIds.length > 0 &&
+          latest.cycleDisposition !== 'RECONCILED_AND_CHECKPOINTED'
+        ) {
+          const checkpointSequence =
+            getDecibelAuthenticatedBtcResyncCheckpointSequenceV1(latest) + 1;
+          const rollover = createDecibelAuthenticatedBtcResyncCheckpointRolloverV2({
+            previous: latest,
+            next: result.checkpoint,
+            checkpointSequence,
+            allowReconciledIdentityRollover: true,
+          });
+          persistedCheckpointPath = getDecibelAuthenticatedBtcResyncRolloverPathV1(
+            checkpointSequence,
+            checkpointPath,
+          );
+          writeFileSync(persistedCheckpointPath, `${JSON.stringify(rollover, null, 2)}\n`, {
+            encoding: 'utf8',
+            flag: 'wx',
+          });
+          checkpointWritten = true;
+        } else {
+          persistedCheckpointPath =
+            latest.schemaVersion === 'DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1'
+              ? checkpointPath
+              : getDecibelAuthenticatedBtcResyncRolloverPathV1(
+                  latest.checkpointSequence,
+                  checkpointPath,
+                );
+        }
+        checkpointCreated =
+          allowOutOfBandReconciliation && result.ready && result.outOfBandFillIds.length > 0;
       } else {
         const checkpointSequence = getDecibelAuthenticatedBtcResyncCheckpointSequenceV1(latest) + 1;
         const rollover = createDecibelAuthenticatedBtcResyncCheckpointRolloverV2({
@@ -334,6 +365,7 @@ try {
           flag: 'wx',
         });
         checkpointCreated = true;
+        checkpointWritten = true;
       }
     } else {
       writeFileSync(checkpointPath, `${JSON.stringify(result.checkpoint, null, 2)}\n`, {
@@ -341,6 +373,7 @@ try {
         flag: 'wx',
       });
       checkpointCreated = true;
+      checkpointWritten = true;
     }
   }
   const reportPath = resolve(`data/decibel_authenticated_btc_activity_resync_v1_${now}.json`);
@@ -364,12 +397,15 @@ try {
     console.log(`ACTIVITY_CLASS=${fill.activityClass}`);
   }
   console.log(`OUT_OF_BAND_FILL_COUNT=${result.outOfBandFillIds.length}`);
+  console.log(`ALLOW_OUT_OF_BAND_RECONCILIATION=${allowOutOfBandReconciliation ? 'YES' : 'NO'}`);
   console.log(`STRATEGY_FILL_COUNT=${result.strategyFillIds.length}`);
   console.log(`CYCLE_DISPOSITION=${result.cycleDisposition}`);
   console.log(`RESYNC_CHECKPOINT_CREATED=${checkpointCreated ? 'YES' : 'NO'}`);
+  console.log(`RESYNC_CHECKPOINT_WRITTEN=${checkpointWritten ? 'YES' : 'NO'}`);
   console.log(`CHECKPOINT=${result.checkpoint === null ? 'NONE' : persistedCheckpointPath}`);
   console.log(`REPORT=${reportPath}`);
   console.log(`BLOCKER=${result.blockers.join(',') || 'NONE'}`);
+  if (!result.ready) process.exitCode = 1;
 } finally {
   Journal.close();
 }

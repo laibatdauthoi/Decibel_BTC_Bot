@@ -1,0 +1,1666 @@
+{
+  "provenance": "Read-only copy of persisted Decibel public BBO observations; no account or credential fields.",
+  "incidentAt": 1793788211499,
+  "qualifiedAt": 1793788671433,
+  "observations": [
+    {
+      "timestamp": 1793787596160,
+      "bestBid": 78370.5,
+      "bestAsk": 78378,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787601880,
+      "bestBid": 78370.5,
+      "bestAsk": 78374.3,
+      "regime": "QUIET",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787604942,
+      "bestBid": 78372.4,
+      "bestAsk": 78372.5,
+      "regime": "QUIET",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787607009,
+      "bestBid": 78370.5,
+      "bestAsk": 78372.5,
+      "regime": "QUIET",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787614981,
+      "bestBid": 78370.5,
+      "bestAsk": 78370.6,
+      "regime": "QUIET",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787640132,
+      "bestBid": 78371.4,
+      "bestAsk": 78372.2,
+      "regime": "QUIET",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787642060,
+      "bestBid": 78370.5,
+      "bestAsk": 78370.6,
+      "regime": "QUIET",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787645144,
+      "bestBid": 78371.6,
+      "bestAsk": 78371.7,
+      "regime": "QUIET",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787650184,
+      "bestBid": 78375.4,
+      "bestAsk": 78378.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787653066,
+      "bestBid": 78382.7,
+      "bestAsk": 78406.9,
+      "regime": "THIN",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787655160,
+      "bestBid": 78382.7,
+      "bestAsk": 78382.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787658126,
+      "bestBid": 78406.8,
+      "bestAsk": 78406.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787662178,
+      "bestBid": 78406.8,
+      "bestAsk": 78411.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787665247,
+      "bestBid": 78424.5,
+      "bestAsk": 78424.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787668121,
+      "bestBid": 78421,
+      "bestAsk": 78421.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787670165,
+      "bestBid": 78416.3,
+      "bestAsk": 78420.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787675172,
+      "bestBid": 78416.3,
+      "bestAsk": 78416.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787678200,
+      "bestBid": 78416.3,
+      "bestAsk": 78416.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787680453,
+      "bestBid": 78420,
+      "bestAsk": 78420.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787685455,
+      "bestBid": 78416.3,
+      "bestAsk": 78416.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787690419,
+      "bestBid": 78410.4,
+      "bestAsk": 78416.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787693375,
+      "bestBid": 78410.4,
+      "bestAsk": 78410.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787718569,
+      "bestBid": 78413,
+      "bestAsk": 78413.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787720636,
+      "bestBid": 78413.6,
+      "bestAsk": 78420.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787725944,
+      "bestBid": 78420,
+      "bestAsk": 78420.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787730745,
+      "bestBid": 78420,
+      "bestAsk": 78425.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787731840,
+      "bestBid": 78429.3,
+      "bestAsk": 78430.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787735717,
+      "bestBid": 78430.6,
+      "bestAsk": 78436.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787741658,
+      "bestBid": 78436.2,
+      "bestAsk": 78441.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787743715,
+      "bestBid": 78440.7,
+      "bestAsk": 78441.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787757832,
+      "bestBid": 78440.5,
+      "bestAsk": 78440.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787761862,
+      "bestBid": 78436.2,
+      "bestAsk": 78436.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787764310,
+      "bestBid": 78436.2,
+      "bestAsk": 78436.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787769445,
+      "bestBid": 78436.3,
+      "bestAsk": 78436.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787776911,
+      "bestBid": 78436.2,
+      "bestAsk": 78436.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787779137,
+      "bestBid": 78437.4,
+      "bestAsk": 78439,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787781977,
+      "bestBid": 78439.4,
+      "bestAsk": 78445.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787785900,
+      "bestBid": 78444.7,
+      "bestAsk": 78446.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787792902,
+      "bestBid": 78444.7,
+      "bestAsk": 78445.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787796746,
+      "bestBid": 78444.7,
+      "bestAsk": 78444.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787812909,
+      "bestBid": 78439.4,
+      "bestAsk": 78444.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787815994,
+      "bestBid": 78427.6,
+      "bestAsk": 78429.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787818959,
+      "bestBid": 78428.4,
+      "bestAsk": 78429.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787820231,
+      "bestBid": 78427.6,
+      "bestAsk": 78428.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787823997,
+      "bestBid": 78427.6,
+      "bestAsk": 78427.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787828139,
+      "bestBid": 78421.7,
+      "bestAsk": 78421.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787846099,
+      "bestBid": 78427.6,
+      "bestAsk": 78427.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787852371,
+      "bestBid": 78442.6,
+      "bestAsk": 78444.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787854386,
+      "bestBid": 78445.8,
+      "bestAsk": 78450,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787857399,
+      "bestBid": 78449.9,
+      "bestAsk": 78450,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787871713,
+      "bestBid": 78445.8,
+      "bestAsk": 78445.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787875640,
+      "bestBid": 78431.8,
+      "bestAsk": 78442.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787878305,
+      "bestBid": 78448.4,
+      "bestAsk": 78452.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787883424,
+      "bestBid": 78453.3,
+      "bestAsk": 78459.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787888324,
+      "bestBid": 78456.5,
+      "bestAsk": 78459.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787891489,
+      "bestBid": 78456.5,
+      "bestAsk": 78458.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787893449,
+      "bestBid": 78459.8,
+      "bestAsk": 78459.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787896792,
+      "bestBid": 78456.5,
+      "bestAsk": 78459.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787902090,
+      "bestBid": 78469.3,
+      "bestAsk": 78477.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787904393,
+      "bestBid": 78488.3,
+      "bestAsk": 78488.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787909459,
+      "bestBid": 78499.9,
+      "bestAsk": 78500,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787912979,
+      "bestBid": 78479.3,
+      "bestAsk": 78480.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787914703,
+      "bestBid": 78457.9,
+      "bestAsk": 78458,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787917433,
+      "bestBid": 78475.4,
+      "bestAsk": 78476.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787920506,
+      "bestBid": 78473.1,
+      "bestAsk": 78473.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787923585,
+      "bestBid": 78466.4,
+      "bestAsk": 78467.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787925511,
+      "bestBid": 78466.4,
+      "bestAsk": 78466.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787929545,
+      "bestBid": 78460.3,
+      "bestAsk": 78460.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787932240,
+      "bestBid": 78460.3,
+      "bestAsk": 78460.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787933567,
+      "bestBid": 78460.3,
+      "bestAsk": 78465.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787937838,
+      "bestBid": 78459.8,
+      "bestAsk": 78460.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787939750,
+      "bestBid": 78457.4,
+      "bestAsk": 78458.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787942884,
+      "bestBid": 78456.5,
+      "bestAsk": 78456.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787946376,
+      "bestBid": 78458.2,
+      "bestAsk": 78459,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787948064,
+      "bestBid": 78457.2,
+      "bestAsk": 78457.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787951598,
+      "bestBid": 78461.8,
+      "bestAsk": 78461.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787954546,
+      "bestBid": 78474.9,
+      "bestAsk": 78475.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787956884,
+      "bestBid": 78470.3,
+      "bestAsk": 78471,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787959602,
+      "bestBid": 78461,
+      "bestAsk": 78461.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787962670,
+      "bestBid": 78462.3,
+      "bestAsk": 78463,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787966004,
+      "bestBid": 78464.6,
+      "bestAsk": 78465,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787969635,
+      "bestBid": 78462.3,
+      "bestAsk": 78462.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787975008,
+      "bestBid": 78468.8,
+      "bestAsk": 78469.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787977280,
+      "bestBid": 78486,
+      "bestAsk": 78486.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787978861,
+      "bestBid": 78489.9,
+      "bestAsk": 78490.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787982811,
+      "bestBid": 78489.9,
+      "bestAsk": 78490,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787985272,
+      "bestBid": 78481.7,
+      "bestAsk": 78482.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787985858,
+      "bestBid": 78484.7,
+      "bestAsk": 78485.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787990564,
+      "bestBid": 78488,
+      "bestAsk": 78490.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787991098,
+      "bestBid": 78483.4,
+      "bestAsk": 78484.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787995247,
+      "bestBid": 78481.7,
+      "bestAsk": 78482.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793787998721,
+      "bestBid": 78479.7,
+      "bestAsk": 78481.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788001786,
+      "bestBid": 78485.1,
+      "bestAsk": 78485.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788004604,
+      "bestBid": 78485.1,
+      "bestAsk": 78485.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788006933,
+      "bestBid": 78474.7,
+      "bestAsk": 78475.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788009199,
+      "bestBid": 78469.5,
+      "bestAsk": 78469.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788016871,
+      "bestBid": 78472.9,
+      "bestAsk": 78473.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788019342,
+      "bestBid": 78473.4,
+      "bestAsk": 78473.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788038527,
+      "bestBid": 78473.4,
+      "bestAsk": 78483.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788040285,
+      "bestBid": 78473.4,
+      "bestAsk": 78473.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788042914,
+      "bestBid": 78483.6,
+      "bestAsk": 78484,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788047224,
+      "bestBid": 78483.3,
+      "bestAsk": 78483.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788053997,
+      "bestBid": 78477.8,
+      "bestAsk": 78478.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788062970,
+      "bestBid": 78478.5,
+      "bestAsk": 78478.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788065060,
+      "bestBid": 78478.5,
+      "bestAsk": 78487.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788066974,
+      "bestBid": 78478.6,
+      "bestAsk": 78487.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788070586,
+      "bestBid": 78487.3,
+      "bestAsk": 78487.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788073087,
+      "bestBid": 78479,
+      "bestAsk": 78487.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788076012,
+      "bestBid": 78478.6,
+      "bestAsk": 78478.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788083564,
+      "bestBid": 78480.1,
+      "bestAsk": 78480.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788085742,
+      "bestBid": 78482.9,
+      "bestAsk": 78483.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788087111,
+      "bestBid": 78482.8,
+      "bestAsk": 78483.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788091364,
+      "bestBid": 78478.6,
+      "bestAsk": 78478.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788097529,
+      "bestBid": 78477,
+      "bestAsk": 78478.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788101784,
+      "bestBid": 78471,
+      "bestAsk": 78471.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788104211,
+      "bestBid": 78469.5,
+      "bestAsk": 78469.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788107166,
+      "bestBid": 78465.4,
+      "bestAsk": 78469.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788111580,
+      "bestBid": 78460.5,
+      "bestAsk": 78460.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788112423,
+      "bestBid": 78456.5,
+      "bestAsk": 78460.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788116796,
+      "bestBid": 78456.5,
+      "bestAsk": 78456.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788119565,
+      "bestBid": 78456.5,
+      "bestAsk": 78456.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788121381,
+      "bestBid": 78456.6,
+      "bestAsk": 78456.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788131071,
+      "bestBid": 78469.5,
+      "bestAsk": 78469.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788138984,
+      "bestBid": 78478.6,
+      "bestAsk": 78478.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788140632,
+      "bestBid": 78486.9,
+      "bestAsk": 78487.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788144867,
+      "bestBid": 78479,
+      "bestAsk": 78479.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788147358,
+      "bestBid": 78478.9,
+      "bestAsk": 78479.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788149856,
+      "bestBid": 78478.9,
+      "bestAsk": 78479.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788150734,
+      "bestBid": 78478.9,
+      "bestAsk": 78479,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788164397,
+      "bestBid": 78476.2,
+      "bestAsk": 78478.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788167876,
+      "bestBid": 78481.9,
+      "bestAsk": 78482,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788188591,
+      "bestBid": 78483.1,
+      "bestAsk": 78483.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788201071,
+      "bestBid": 78486.3,
+      "bestAsk": 78486.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788204544,
+      "bestBid": 78495.7,
+      "bestAsk": 78496.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788206614,
+      "bestBid": 78495.7,
+      "bestAsk": 78496.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788209479,
+      "bestBid": 78495.7,
+      "bestAsk": 78495.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788214239,
+      "bestBid": 78485.2,
+      "bestAsk": 78486,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788217644,
+      "bestBid": 78485.5,
+      "bestAsk": 78485.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788222618,
+      "bestBid": 78474.3,
+      "bestAsk": 78474.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788227723,
+      "bestBid": 78471.6,
+      "bestAsk": 78474.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788232174,
+      "bestBid": 78468.8,
+      "bestAsk": 78468.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788237745,
+      "bestBid": 78461.2,
+      "bestAsk": 78461.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788250835,
+      "bestBid": 78454.4,
+      "bestAsk": 78454.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788253917,
+      "bestBid": 78449.4,
+      "bestAsk": 78449.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788256799,
+      "bestBid": 78441.8,
+      "bestAsk": 78441.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788280122,
+      "bestBid": 78441.8,
+      "bestAsk": 78451.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788283223,
+      "bestBid": 78451.1,
+      "bestAsk": 78451.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788306558,
+      "bestBid": 78450,
+      "bestAsk": 78451.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788310586,
+      "bestBid": 78449.9,
+      "bestAsk": 78450,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788315444,
+      "bestBid": 78444.2,
+      "bestAsk": 78444.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788317585,
+      "bestBid": 78442.9,
+      "bestAsk": 78444.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788321132,
+      "bestBid": 78437.3,
+      "bestAsk": 78441.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788324068,
+      "bestBid": 78437.2,
+      "bestAsk": 78437.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788336085,
+      "bestBid": 78437.2,
+      "bestAsk": 78444.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788339303,
+      "bestBid": 78444.2,
+      "bestAsk": 78444.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788343766,
+      "bestBid": 78444.8,
+      "bestAsk": 78447.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788347136,
+      "bestBid": 78446,
+      "bestAsk": 78446.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788352403,
+      "bestBid": 78446,
+      "bestAsk": 78448.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788357781,
+      "bestBid": 78464.9,
+      "bestAsk": 78465.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788360427,
+      "bestBid": 78464.9,
+      "bestAsk": 78465,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788362832,
+      "bestBid": 78465.4,
+      "bestAsk": 78465.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788365806,
+      "bestBid": 78464.9,
+      "bestAsk": 78465,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788371094,
+      "bestBid": 78465.5,
+      "bestAsk": 78465.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788396848,
+      "bestBid": 78465.5,
+      "bestAsk": 78476.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788398277,
+      "bestBid": 78476.6,
+      "bestAsk": 78476.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788401437,
+      "bestBid": 78477,
+      "bestAsk": 78477.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788404996,
+      "bestBid": 78477.8,
+      "bestAsk": 78493.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788408448,
+      "bestBid": 78493.1,
+      "bestAsk": 78493.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788411368,
+      "bestBid": 78499.9,
+      "bestAsk": 78508.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788413280,
+      "bestBid": 78523.3,
+      "bestAsk": 78524.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788420205,
+      "bestBid": 78524.6,
+      "bestAsk": 78525,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788422617,
+      "bestBid": 78524.6,
+      "bestAsk": 78524.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788427297,
+      "bestBid": 78524.9,
+      "bestAsk": 78525,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788432383,
+      "bestBid": 78533.3,
+      "bestAsk": 78534.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788436502,
+      "bestBid": 78533.6,
+      "bestAsk": 78533.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788439351,
+      "bestBid": 78548.2,
+      "bestAsk": 78548.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788443027,
+      "bestBid": 78546.9,
+      "bestAsk": 78547,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788448111,
+      "bestBid": 78549.7,
+      "bestAsk": 78551.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788450408,
+      "bestBid": 78546.9,
+      "bestAsk": 78547,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788452662,
+      "bestBid": 78552.4,
+      "bestAsk": 78554,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788455365,
+      "bestBid": 78557.8,
+      "bestAsk": 78557.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788459730,
+      "bestBid": 78557.8,
+      "bestAsk": 78561.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788462216,
+      "bestBid": 78561.3,
+      "bestAsk": 78561.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788465389,
+      "bestBid": 78568.6,
+      "bestAsk": 78568.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788468231,
+      "bestBid": 78578.4,
+      "bestAsk": 78579.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788472523,
+      "bestBid": 78581.1,
+      "bestAsk": 78585,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788475654,
+      "bestBid": 78558.1,
+      "bestAsk": 78561,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788477729,
+      "bestBid": 78558.1,
+      "bestAsk": 78558.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788481527,
+      "bestBid": 78558.1,
+      "bestAsk": 78558.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788493541,
+      "bestBid": 78546.4,
+      "bestAsk": 78558.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788498833,
+      "bestBid": 78531,
+      "bestAsk": 78532.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788501620,
+      "bestBid": 78528.6,
+      "bestAsk": 78530.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788502632,
+      "bestBid": 78520.4,
+      "bestAsk": 78522,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788506674,
+      "bestBid": 78524,
+      "bestAsk": 78525.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788508568,
+      "bestBid": 78524,
+      "bestAsk": 78524.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788514619,
+      "bestBid": 78536.5,
+      "bestAsk": 78536.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788517656,
+      "bestBid": 78548.8,
+      "bestAsk": 78550.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788519804,
+      "bestBid": 78546.9,
+      "bestAsk": 78548.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788521687,
+      "bestBid": 78547.7,
+      "bestAsk": 78548,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788524674,
+      "bestBid": 78547.4,
+      "bestAsk": 78547.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788528781,
+      "bestBid": 78547.1,
+      "bestAsk": 78547.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788531701,
+      "bestBid": 78552.1,
+      "bestAsk": 78552.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788536502,
+      "bestBid": 78577.5,
+      "bestAsk": 78579,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788537383,
+      "bestBid": 78580.5,
+      "bestAsk": 78582.1,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788540756,
+      "bestBid": 78581.7,
+      "bestAsk": 78581.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788544004,
+      "bestBid": 78583.9,
+      "bestAsk": 78585.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788546843,
+      "bestBid": 78584.7,
+      "bestAsk": 78585.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788550718,
+      "bestBid": 78581.3,
+      "bestAsk": 78581.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788553795,
+      "bestBid": 78577.5,
+      "bestAsk": 78580.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788557036,
+      "bestBid": 78552.1,
+      "bestAsk": 78552.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788576813,
+      "bestBid": 78533.1,
+      "bestAsk": 78534.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788581544,
+      "bestBid": 78530.9,
+      "bestAsk": 78531,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788583973,
+      "bestBid": 78507.4,
+      "bestAsk": 78508.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788588962,
+      "bestBid": 78508.1,
+      "bestAsk": 78508.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788592068,
+      "bestBid": 78507.4,
+      "bestAsk": 78508.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788594042,
+      "bestBid": 78507.4,
+      "bestAsk": 78507.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788596260,
+      "bestBid": 78507.4,
+      "bestAsk": 78508.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788599996,
+      "bestBid": 78507.8,
+      "bestAsk": 78507.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788604467,
+      "bestBid": 78499.6,
+      "bestAsk": 78507.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788605255,
+      "bestBid": 78499.6,
+      "bestAsk": 78499.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788609002,
+      "bestBid": 78495.7,
+      "bestAsk": 78499.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788612319,
+      "bestBid": 78469.2,
+      "bestAsk": 78470.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788614987,
+      "bestBid": 78469.1,
+      "bestAsk": 78470.6,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788617997,
+      "bestBid": 78470.7,
+      "bestAsk": 78470.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788621770,
+      "bestBid": 78470.2,
+      "bestAsk": 78470.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788625001,
+      "bestBid": 78470.5,
+      "bestAsk": 78470.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788626784,
+      "bestBid": 78470.7,
+      "bestAsk": 78470.8,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788637733,
+      "bestBid": 78460.8,
+      "bestAsk": 78462.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788639843,
+      "bestBid": 78461.6,
+      "bestAsk": 78461.7,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788643342,
+      "bestBid": 78456.2,
+      "bestAsk": 78456.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788646044,
+      "bestBid": 78454.4,
+      "bestAsk": 78456.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788648291,
+      "bestBid": 78459.8,
+      "bestAsk": 78461.4,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788650798,
+      "bestBid": 78456.7,
+      "bestAsk": 78457.9,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788653572,
+      "bestBid": 78444.4,
+      "bestAsk": 78444.5,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788660796,
+      "bestBid": 78436.1,
+      "bestAsk": 78436.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788666570,
+      "bestBid": 78435.2,
+      "bestAsk": 78436.2,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    },
+    {
+      "timestamp": 1793788671433,
+      "bestBid": 78435.2,
+      "bestAsk": 78435.3,
+      "regime": "NORMAL",
+      "source": "DECIBEL_WS_BBO"
+    }
+  ]
+}

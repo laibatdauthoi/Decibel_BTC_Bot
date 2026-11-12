@@ -1,0 +1,1692 @@
+{
+  "provenance": "Pinned read-only production journal copy; fill and queue probabilities unavailable",
+  "sample": {
+    "cycleSequence": 392605,
+    "timestamp": 1793929900778,
+    "authenticatedPositionBase": 0,
+    "bestBid": 76102.4,
+    "bestAsk": 76103.9,
+    "marketSpreadBps": 0.19710090843808703,
+    "bookObservedAt": 1793929897715,
+    "bookAgeMs": 3063,
+    "fairPriceInputs": {
+      "midpoint": 76103.15,
+      "microprice": null,
+      "markPrice": null,
+      "oraclePrice": null
+    },
+    "fairPrice": 76103.15,
+    "fairPriceSource": "BBO_MIDPOINT",
+    "marketRegime": "NORMAL",
+    "operationalMarketRegime": "NORMAL",
+    "operationalMarketRegimeInputs": {
+      "spreadBps": 0.19710090843808703,
+      "realizedVolatilityBps": 1.0293980977699873,
+      "bboVelocityBpsPerSecond": 0.008022070142128803,
+      "topBookImbalance": null,
+      "micropriceDeviationBps": null,
+      "recentTradeIntensity": null,
+      "inventoryUsd": 0
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 1,
+      "askDistanceMultiplier": 1,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 50,
+      "minimumRestingAgeMs": 30000,
+      "maximumInventoryPriceSkewBps": 2,
+      "volatilitySpreadMultiplier": 1
+    },
+    "bidEvidenceSampleCount": 0,
+    "askEvidenceSampleCount": 0,
+    "volatilitySpreadMultiplier": 1,
+    "inventoryPressure": 0,
+    "inventoryPriceSkewBps": 0,
+    "inventoryBidSizeMultiplier": 1,
+    "inventoryAskSizeMultiplier": 1,
+    "riskState": "NORMAL_MM",
+    "riskReductionTrigger": "NONE",
+    "maximumAbsPositionBase": 0.00095,
+    "makerFeeBps": 1.5,
+    "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+    "estimatedGasCostUsd": 0.0003757104,
+    "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+    "adverseSelectionBufferBps": 7.865399083510403,
+    "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+    "safetyMarginBps": 1,
+    "desiredBid": {
+      "side": "BUY",
+      "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+      "price": 76011.8,
+      "quantity": 0.00047,
+      "orderType": "LIMIT",
+      "timeInForce": "PostOnly",
+      "postOnly": true,
+      "clientOrderId": "d1bde2d0438c023f65fb9fc4851f5a16",
+      "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+      "generation": 6,
+      "levelId": "BUY-CANDIDATE-7",
+      "skewStatus": "NEUTRAL"
+    },
+    "desiredAsk": null,
+    "FLAT_PAIR_COHORT_ID": null,
+    "FLAT_PAIR_SHARED_BASE_QTY": null,
+    "FLAT_PAIR_BUDGET_USD": null,
+    "quoteSizing": {
+      "BUY": {
+        "side": "BUY",
+        "price": 76011.8,
+        "proposedSizeBtc": 0.000475570848868202,
+        "proposedNotionalUsd": 36.148996249999996,
+        "finalSizeBtc": 0.00047,
+        "finalNotionalUsd": 35.725546,
+        "bindingConstraint": "STRATEGY_ALLOCATION",
+        "positionBudgetBtc": 0.00095,
+        "positionBudgetUsd": 72.21121000000001,
+        "marginBudgetUsd": 200,
+        "volumeBudgetUsd": 500,
+        "pendingExposureBtc": 0,
+        "reductionBudgetBtc": 0,
+        "reduceOnly": false,
+        "pendingVolumeUsd": 0,
+        "remainingTargetUsd": 500,
+        "minimumExecutableSizeBtc": 0.00014,
+        "lotSize": 0.00001,
+        "roundingReason": "ROUNDED_DOWN_TO_LOT"
+      },
+      "SELL": {
+        "side": "SELL",
+        "price": 76141.3,
+        "proposedSizeBtc": 0.00047476200498284106,
+        "proposedNotionalUsd": 36.148996249999996,
+        "finalSizeBtc": 0.00047,
+        "finalNotionalUsd": 35.786411,
+        "bindingConstraint": "STRATEGY_ALLOCATION",
+        "positionBudgetBtc": 0.00095,
+        "positionBudgetUsd": 72.334235,
+        "marginBudgetUsd": 164.342228,
+        "volumeBudgetUsd": 464.342228,
+        "pendingExposureBtc": 0,
+        "reductionBudgetBtc": 0,
+        "reduceOnly": false,
+        "pendingVolumeUsd": 35.657772,
+        "remainingTargetUsd": 500,
+        "minimumExecutableSizeBtc": 0.00014,
+        "lotSize": 0.00001,
+        "roundingReason": "ROUNDED_DOWN_TO_LOT"
+      }
+    },
+    "BID_RAW_BUDGET_USD": 36.148996249999996,
+    "ASK_RAW_BUDGET_USD": 36.148996249999996,
+    "quoteSpreadBps": null,
+    "expectedBidEdgeBps": 12.003445323878351,
+    "expectedAskEdgeBps": 9.007511515620958,
+    "requiredBidEdgeBps": 10.904127750796953,
+    "requiredAskEdgeBps": 10.470344073550962,
+    "bidLifecycleCostBps": 11.009293505296549,
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 5.012933104607915,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575583486267844,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.011577707359741,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575604488845645,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 7.010222310113481,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575625495621214,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 8.00886691286722,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575646506595804,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 9.007511515619045,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575667521770677,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 10.006156118372786,
+        "adverseSelectionBps": 7.938298119932147,
+        "lifecycleCostBps": 10.648587577568838,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 12.003445323878351,
+        "adverseSelectionBps": 8.298961996297358,
+        "lifecycleCostBps": 11.009293505296549,
+        "adverseSource": "CANDIDATE_P95"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 5.012933104609827,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575372863781356,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.011577707363566,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575351907461172,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 7.010222310115393,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575330955323638,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 8.00886691286913,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575310007367506,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 9.007511515620958,
+        "adverseSelectionBps": 7.865399083510403,
+        "lifecycleCostBps": 10.575289063591518,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 10.0061561183747,
+        "adverseSelectionBps": 10.193331149314815,
+        "lifecycleCostBps": 12.90320018979884,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 12.003445323880264,
+        "adverseSelectionBps": 11.457981404734554,
+        "lifecycleCostBps": 14.167808578556086,
+        "adverseSource": "CANDIDATE_P95"
+      }
+    ],
+    "askLifecycleCostBps": 10.575289063591518,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 72.29799249999999,
+      "maximumAbsPositionBase": 0.00095,
+      "availableMarginUsd": 4.1085557,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 36.529512
+    },
+    "admissionPipeline": [
+      {
+        "gate": "AUTHORITATIVE_SNAPSHOT",
+        "status": "READY",
+        "numericInputs": {
+          "bookAgeMs": 3063,
+          "inventoryBase": 0
+        },
+        "reason": "FRESH_SNAPSHOT_AVAILABLE",
+        "persistence": "TRANSIENT",
+        "clearCondition": "A fresh authenticated account and market snapshot is required"
+      },
+      {
+        "gate": "ECONOMIC_EVIDENCE",
+        "status": "READY",
+        "numericInputs": {
+          "makerFeeBps": 1.5,
+          "estimatedGasCostUsd": 0.0003757104,
+          "adverseSelectionBufferBps": 7.865399083510403,
+          "safetyMarginBps": 1
+        },
+        "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+        "persistence": "TRANSIENT",
+        "clearCondition": "All provenance-labeled economic inputs must be fresh"
+      },
+      {
+        "gate": "BID_ADMISSION",
+        "status": "READY",
+        "numericInputs": {
+          "lifecycleCostBps": 11.009293505296549,
+          "lifecycleCostBudgetBps": 11.25,
+          "inventoryBase": 0,
+          "residualInventoryUsd": 0,
+          "minimumNotionalUsd": 10,
+          "minimumSize": 0.00002
+        },
+        "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "persistence": "TRANSIENT",
+        "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+      },
+      {
+        "gate": "ASK_ADMISSION",
+        "status": "BLOCKED",
+        "numericInputs": {
+          "lifecycleCostBps": 10.575289063591518,
+          "lifecycleCostBudgetBps": 11.25,
+          "inventoryBase": 0,
+          "residualInventoryUsd": 0,
+          "minimumNotionalUsd": 10,
+          "minimumSize": 0.00002
+        },
+        "reason": "SPREAD_EDGE_INSUFFICIENT",
+        "persistence": "TRANSIENT",
+        "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+      }
+    ],
+    "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "askEligibilityReason": "SPREAD_EDGE_INSUFFICIENT",
+    "repriceResult": "KEEP:ENTRY_COMPARATIVE_ECONOMICS_UNPROVEN",
+    "restingAgeMs": null,
+    "priceDriftTicks": null,
+    "cancelReason": null,
+    "selectedMutation": "HOLD",
+    "selectedSide": null,
+    "exactReasonCode": "KEEP:ENTRY_COMPARATIVE_ECONOMICS_UNPROVEN",
+    "REPRICE_DECISION_ID": null,
+    "REPRICE_COMMIT_SNAPSHOT_ID": null,
+    "OLD_PRICE": null,
+    "FROZEN_REPLACEMENT_PRICE": null,
+    "REPRICE_IMPROVEMENT_TICKS": null,
+    "REPRICE_ABORT_REASON": null,
+    "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+    "orderDecisions": [
+      {
+        "ORDER_ID": "170141594179263708908331577210948288512",
+        "ORDER_ROLE": "ENTRY",
+        "ORDER_AGE_MS": 548711,
+        "RESTING_PRICE": 75867.6,
+        "CANDIDATE_PRICE": 76011.8,
+        "DELTA_TICKS": 1442,
+        "EVIDENCE_VERSION": "3c79b03af00a621913b1ceab8834387174bcd1f19d77a9c97b802415a6872312:1793929900778:1793929897715:1793929899039",
+        "PLAN_DECISION": "WOULD_REPLACE",
+        "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+        "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_COMPARATIVE_ECONOMICS_UNPROVEN",
+        "REPLACEMENT_NET_BENEFIT": null,
+        "RESTING_ENTRY_ECONOMICS": {
+          "decision": "KEEP",
+          "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+          "notionalUsd": 35.657772,
+          "remainingCostBps": 10.47076472441472,
+          "edgeBps": 30.951412655059404,
+          "placementGasSunkUsd": 0.0003757104,
+          "remainingTransactionGasReserveUsd": 0.0003757104,
+          "cancelGasEstimateUsd": 0.0003757104,
+          "fillProbability": null,
+          "conditionalNetUsd": 0.07337208587911223
+        },
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+      }
+    ],
+    "actionClass": "TP_COVERAGE_REPAIR",
+    "exitCoverageWorkflow": {
+      "outcome": "VERIFIED_COVERED",
+      "actionClass": "TP_COVERAGE_REPAIR",
+      "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+      "evidenceFresh": true,
+      "positionObservedAt": 1793929899039,
+      "sourceStateHash": "3c79b03af00a621913b1ceab8834387174bcd1f19d77a9c97b802415a6872312",
+      "positionQuantity": 0,
+      "confirmedQuantity": 0,
+      "uncoveredQuantity": 0,
+      "pendingQuantity": 0,
+      "nextCondition": "CONTINUE_AUTHENTICATED_MONITORING"
+    }
+  },
+  "orders": [
+    {
+      "intent": {
+        "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+        "cycleSequence": 392370,
+        "action": "PLACE",
+        "market": "BTC/USD",
+        "side": "BUY",
+        "price": 75867.6,
+        "quantity": 0.00047,
+        "tickSize": 0.1,
+        "lotSize": 0.00001,
+        "priceDecimals": 6,
+        "sizeDecimals": 8,
+        "clientOrderId": "d1b9909bc99d5d7e87d0d5c557677252",
+        "sourceStateHash": "9ca88340e9e02368be469b2bb12988ea272185239bc1c376631466757d3c6a54",
+        "strategyDecisionHash": "d40a9715625ee5610d02eb55bba0f426ba14a6ff8734e2d32a12762a887b4233",
+        "createdAt": 1793929347292,
+        "executionRole": "STANDARD_MAKER",
+        "reduceOnly": false,
+        "timeInForce": "PostOnly",
+        "intentId": "intent-9909bc99d5d7e87d0d5c5576",
+        "mutationKey": "9909bc99d5d7e87d0d5c55767725270a492d4d09c46aea79c76443123a80d7a1",
+        "priceTicks": 758676,
+        "quantityLots": 47,
+        "expectedPreviousVenueOrderId": null,
+        "status": "PREPARED",
+        "type": "LIMIT",
+        "postOnly": true,
+        "selfTradePermitted": false,
+        "externalCounterpartyRequired": true
+      },
+      "createdAt": 1793929347292,
+      "venueOrderId": "170141594179263708908331577210948288512",
+      "fills": [],
+      "placeSnapshot": {
+        "cycleSequence": 392370,
+        "timestamp": 1793929347292,
+        "authenticatedPositionBase": 0,
+        "bestBid": 75958.8,
+        "bestAsk": 75958.9,
+        "marketSpreadBps": 0.01316502290269914,
+        "bookObservedAt": 1793929345773,
+        "bookAgeMs": 1519,
+        "fairPriceInputs": {
+          "midpoint": 75958.85,
+          "microprice": null,
+          "markPrice": null,
+          "oraclePrice": null
+        },
+        "fairPrice": 75958.85,
+        "fairPriceSource": "BBO_MIDPOINT",
+        "marketRegime": "NORMAL",
+        "operationalMarketRegime": "NORMAL",
+        "operationalMarketRegimeInputs": {
+          "spreadBps": 0.01316502290269914,
+          "realizedVolatilityBps": 1.311082639000203,
+          "bboVelocityBpsPerSecond": 0.0031197088035991483,
+          "topBookImbalance": null,
+          "micropriceDeviationBps": null,
+          "recentTradeIntensity": null,
+          "inventoryUsd": 0
+        },
+        "operationalMarketRegimePolicy": {
+          "bidDistanceMultiplier": 1,
+          "askDistanceMultiplier": 1,
+          "sizeMultiplier": 1,
+          "repriceMinimumTicks": 50,
+          "minimumRestingAgeMs": 30000,
+          "maximumInventoryPriceSkewBps": 2,
+          "volatilitySpreadMultiplier": 1
+        },
+        "bidEvidenceSampleCount": 0,
+        "askEvidenceSampleCount": 0,
+        "volatilitySpreadMultiplier": 1,
+        "inventoryPressure": 0,
+        "inventoryPriceSkewBps": 0,
+        "inventoryBidSizeMultiplier": 1,
+        "inventoryAskSizeMultiplier": 1,
+        "riskState": "NORMAL_MM",
+        "riskReductionTrigger": "NONE",
+        "maximumAbsPositionBase": 0.00095,
+        "makerFeeBps": 1.5,
+        "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+        "estimatedGasCostUsd": 0.00037271520000000004,
+        "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+        "adverseSelectionBufferBps": 8.082640066238222,
+        "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+        "safetyMarginBps": 1,
+        "desiredBid": {
+          "side": "BUY",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75867.6,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1b119fe402ef7b8ca7f53443f00723e",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "BUY-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "desiredAsk": {
+          "side": "SELL",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 76050.1,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1s0e853e219219a53b2c876a440c622",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "SELL-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "FLAT_PAIR_COHORT_ID": "flat-pair-4445bb26c3b348792f44",
+        "FLAT_PAIR_SHARED_BASE_QTY": 0.00047,
+        "FLAT_PAIR_BUDGET_USD": 35.753041,
+        "quoteSizing": {
+          "BUY": {
+            "side": "BUY",
+            "price": 75873.1,
+            "proposedSizeBtc": 0.00047557095334182993,
+            "proposedNotionalUsd": 36.0830425,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.660357000000005,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00095,
+            "positionBudgetUsd": 72.079445,
+            "marginBudgetUsd": 164.208325,
+            "volumeBudgetUsd": 464.208325,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 35.791675,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          },
+          "SELL": {
+            "side": "SELL",
+            "price": 76002.3,
+            "proposedSizeBtc": 0.00047476250718728245,
+            "proposedNotionalUsd": 36.0830425,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.721081,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00095,
+            "positionBudgetUsd": 72.202185,
+            "marginBudgetUsd": 200,
+            "volumeBudgetUsd": 500,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 0,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          }
+        },
+        "BID_RAW_BUDGET_USD": 36.080453750000004,
+        "ASK_RAW_BUDGET_USD": 36.080453750000004,
+        "quoteSpreadBps": 24.02616679952369,
+        "expectedBidEdgeBps": 12.013083399761845,
+        "expectedAskEdgeBps": 12.013083399761845,
+        "requiredBidEdgeBps": 10.687165721963432,
+        "requiredAskEdgeBps": 10.686914888208184,
+        "bidLifecycleCostBps": 10.79169137768864,
+        "bidCandidateCosts": [
+          {
+            "distanceBps": 5.009291214914773,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.79154488911411,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 6.009832955608034,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791565803482808,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 7.010374696299378,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791586722039582,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 8.010916436992638,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.79160764478569,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.01145817768398,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.79162857172239,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.01199991837724,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791649502850943,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.013083399761845,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.79169137768864,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askCandidateCosts": [
+          {
+            "distanceBps": 5.009291214914773,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791335700883788,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 6.009832955606118,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.79131483255595,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 7.010374696299378,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.79129396840111,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 8.01091643699072,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791273108418022,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.01145817768398,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791252252605432,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.01199991837724,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791231400962088,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.013083399761845,
+            "adverseSelectionBps": 8.082640066238222,
+            "lifecycleCostBps": 10.791189710178147,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askLifecycleCostBps": 10.791189710178147,
+        "sizingInputs": {
+          "minimumNotionalUsd": 10,
+          "maximumNotionalUsd": 72.16090750000001,
+          "maximumAbsPositionBase": 0.00095,
+          "availableMarginUsd": 4.105208125,
+          "maximumEffectiveLeverage": 40,
+          "capacityBlocker": null,
+          "availableHeadroomUsd": 36.46024800000001
+        },
+        "admissionPipeline": [
+          {
+            "gate": "AUTHORITATIVE_SNAPSHOT",
+            "status": "READY",
+            "numericInputs": {
+              "bookAgeMs": 1519,
+              "inventoryBase": 0
+            },
+            "reason": "FRESH_SNAPSHOT_AVAILABLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "A fresh authenticated account and market snapshot is required"
+          },
+          {
+            "gate": "ECONOMIC_EVIDENCE",
+            "status": "READY",
+            "numericInputs": {
+              "makerFeeBps": 1.5,
+              "estimatedGasCostUsd": 0.00037271520000000004,
+              "adverseSelectionBufferBps": 8.082640066238222,
+              "safetyMarginBps": 1
+            },
+            "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "All provenance-labeled economic inputs must be fresh"
+          },
+          {
+            "gate": "BID_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 10.79169137768864,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+          },
+          {
+            "gate": "ASK_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 10.791189710178147,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+          }
+        ],
+        "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "repriceResult": "DESIRED_ORDER_ABSENT",
+        "restingAgeMs": null,
+        "priceDriftTicks": null,
+        "cancelReason": null,
+        "selectedMutation": "WOULD_PLACE",
+        "selectedSide": "BUY",
+        "exactReasonCode": "DESIRED_ORDER_ABSENT",
+        "REPRICE_DECISION_ID": null,
+        "REPRICE_COMMIT_SNAPSHOT_ID": null,
+        "OLD_PRICE": null,
+        "FROZEN_REPLACEMENT_PRICE": null,
+        "REPRICE_IMPROVEMENT_TICKS": null,
+        "REPRICE_ABORT_REASON": null,
+        "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+        "orderDecisions": [
+          {
+            "ORDER_ID": "170141599249866110628479684451741204480",
+            "ORDER_ROLE": "ENTRY",
+            "ORDER_AGE_MS": 182153,
+            "RESTING_PRICE": 76152.5,
+            "CANDIDATE_PRICE": 76050.1,
+            "DELTA_TICKS": -1024,
+            "EVIDENCE_VERSION": "9ca88340e9e02368be469b2bb12988ea272185239bc1c376631466757d3c6a54:1793929347292:1793929345773:1793929345710",
+            "PLAN_DECISION": "WOULD_REPLACE",
+            "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+            "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_COMPARATIVE_ECONOMICS_UNPROVEN",
+            "REPLACEMENT_NET_BENEFIT": null,
+            "RESTING_ENTRY_ECONOMICS": {
+              "decision": "KEEP",
+              "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+              "notionalUsd": 35.791675,
+              "remainingCostBps": 10.686774672958919,
+              "edgeBps": 25.494066853302037,
+              "placementGasSunkUsd": 0.00037271520000000004,
+              "remainingTransactionGasReserveUsd": 0.00037271520000000004,
+              "cancelGasEstimateUsd": 0.00037271520000000004,
+              "fillProbability": null,
+              "conditionalNetUsd": 0.05276574341071957
+            },
+            "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+          }
+        ],
+        "actionClass": "ENTRY",
+        "exitCoverageWorkflow": {
+          "outcome": "BLOCKED",
+          "actionClass": "ENTRY",
+          "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793929345710:BOOK_AT=1793929345773",
+          "evidenceFresh": false,
+          "positionObservedAt": 1793929345710,
+          "sourceStateHash": "9ca88340e9e02368be469b2bb12988ea272185239bc1c376631466757d3c6a54",
+          "positionQuantity": null,
+          "confirmedQuantity": null,
+          "uncoveredQuantity": null,
+          "pendingQuantity": null,
+          "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+        }
+      },
+      "lineage": [
+        {
+          "body": {
+            "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+            "cycleSequence": 392370,
+            "action": "PLACE",
+            "market": "BTC/USD",
+            "side": "BUY",
+            "price": 75867.6,
+            "quantity": 0.00047,
+            "tickSize": 0.1,
+            "lotSize": 0.00001,
+            "priceDecimals": 6,
+            "sizeDecimals": 8,
+            "clientOrderId": "d1b9909bc99d5d7e87d0d5c557677252",
+            "sourceStateHash": "9ca88340e9e02368be469b2bb12988ea272185239bc1c376631466757d3c6a54",
+            "strategyDecisionHash": "d40a9715625ee5610d02eb55bba0f426ba14a6ff8734e2d32a12762a887b4233",
+            "createdAt": 1793929347292,
+            "executionRole": "STANDARD_MAKER",
+            "reduceOnly": false,
+            "timeInForce": "PostOnly",
+            "intentId": "intent-9909bc99d5d7e87d0d5c5576",
+            "mutationKey": "9909bc99d5d7e87d0d5c55767725270a492d4d09c46aea79c76443123a80d7a1",
+            "priceTicks": 758676,
+            "quantityLots": 47,
+            "expectedPreviousVenueOrderId": null,
+            "status": "PREPARED",
+            "type": "LIMIT",
+            "postOnly": true,
+            "selfTradePermitted": false,
+            "externalCounterpartyRequired": true
+          },
+          "createdAt": 1793929347292
+        },
+        {
+          "body": {
+            "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+            "cycleSequence": 392999,
+            "action": "CANCEL",
+            "market": "BTC/USD",
+            "side": "BUY",
+            "price": 75867.6,
+            "quantity": 0.00047,
+            "tickSize": 0.1,
+            "lotSize": 0.00001,
+            "priceDecimals": 6,
+            "sizeDecimals": 8,
+            "clientOrderId": "d1b9909bc99d5d7e87d0d5c557677252",
+            "sourceStateHash": "3b518939261fafb523c9391da881c30673b986195b46289d82055a03b56d5cb0",
+            "strategyDecisionHash": "ee0c09980dd3ac4dee81dd29248d23eadcc63b935e069d85d41520a997808b36",
+            "createdAt": 1793930804370,
+            "executionRole": "STANDARD_MAKER",
+            "reduceOnly": false,
+            "timeInForce": "PostOnly",
+            "cancelReason": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+            "intentId": "intent-c070c739b70a214415e303b9",
+            "mutationKey": "c070c739b70a214415e303b9e301d3b7aae2186694a44718877bbaa7cb38784f",
+            "priceTicks": 758676,
+            "quantityLots": 47,
+            "expectedPreviousVenueOrderId": "170141594179263708908331577210948288512",
+            "status": "PREPARED"
+          },
+          "createdAt": 1793930804370
+        }
+      ]
+    },
+    {
+      "intent": {
+        "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+        "cycleSequence": 392617,
+        "action": "PLACE",
+        "market": "BTC/USD",
+        "side": "SELL",
+        "price": 76163.90000000001,
+        "quantity": 0.00047,
+        "tickSize": 0.1,
+        "lotSize": 0.00001,
+        "priceDecimals": 6,
+        "sizeDecimals": 8,
+        "clientOrderId": "d1sa15fdb9c9264ccf629ed8ba8fa6d8",
+        "sourceStateHash": "6c2cb088f645db598fe9e81f72df89c7f1caf1e8b7201ede3c26ccc2a5d866a9",
+        "strategyDecisionHash": "55788731305c48b1add43693e30dbf8e93ce5d1c80ff0af41c0a822aa0221fcf",
+        "createdAt": 1793929922198,
+        "executionRole": "STANDARD_MAKER",
+        "reduceOnly": false,
+        "timeInForce": "PostOnly",
+        "intentId": "intent-a15fdb9c9264ccf629ed8ba8",
+        "mutationKey": "a15fdb9c9264ccf629ed8ba8fa6d8a8435fc4423a7fe9297b39166216e7bccb6",
+        "priceTicks": 761639,
+        "quantityLots": 47,
+        "expectedPreviousVenueOrderId": null,
+        "status": "PREPARED",
+        "type": "LIMIT",
+        "postOnly": true,
+        "selfTradePermitted": false,
+        "externalCounterpartyRequired": true
+      },
+      "createdAt": 1793929922198,
+      "venueOrderId": "170141601785167309158035499903010996224",
+      "fills": [],
+      "placeSnapshot": {
+        "cycleSequence": 392617,
+        "timestamp": 1793929922198,
+        "authenticatedPositionBase": 0,
+        "bestBid": 76072.5,
+        "bestAsk": 76072.6,
+        "marketSpreadBps": 0.013145346121014841,
+        "bookObservedAt": 1793929921629,
+        "bookAgeMs": 569,
+        "fairPriceInputs": {
+          "midpoint": 76072.55,
+          "microprice": null,
+          "markPrice": null,
+          "oraclePrice": null
+        },
+        "fairPrice": 76072.55,
+        "fairPriceSource": "BBO_MIDPOINT",
+        "marketRegime": "NORMAL",
+        "operationalMarketRegime": "NORMAL",
+        "operationalMarketRegimeInputs": {
+          "spreadBps": 0.013145346121014841,
+          "realizedVolatilityBps": 1.0070379319540426,
+          "bboVelocityBpsPerSecond": 0.00810368369099138,
+          "topBookImbalance": null,
+          "micropriceDeviationBps": null,
+          "recentTradeIntensity": null,
+          "inventoryUsd": 0
+        },
+        "operationalMarketRegimePolicy": {
+          "bidDistanceMultiplier": 1,
+          "askDistanceMultiplier": 1,
+          "sizeMultiplier": 1,
+          "repriceMinimumTicks": 50,
+          "minimumRestingAgeMs": 30000,
+          "maximumInventoryPriceSkewBps": 2,
+          "volatilitySpreadMultiplier": 1
+        },
+        "bidEvidenceSampleCount": 0,
+        "askEvidenceSampleCount": 0,
+        "volatilitySpreadMultiplier": 1,
+        "inventoryPressure": 0,
+        "inventoryPriceSkewBps": 0,
+        "inventoryBidSizeMultiplier": 1,
+        "inventoryAskSizeMultiplier": 1,
+        "riskState": "NORMAL_MM",
+        "riskReductionTrigger": "NONE",
+        "maximumAbsPositionBase": 0.00095,
+        "makerFeeBps": 1.5,
+        "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+        "estimatedGasCostUsd": 0.0003757104,
+        "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+        "adverseSelectionBufferBps": 7.865399083510403,
+        "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+        "safetyMarginBps": 1,
+        "desiredBid": {
+          "side": "BUY",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75981.2,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1b348d6fb376bbc4d7828b1eccc4a9c",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "BUY-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "desiredAsk": {
+          "side": "SELL",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 76163.90000000001,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1s1c6e0c2722c2d11453afc5c961ff4",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "SELL-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "FLAT_PAIR_COHORT_ID": "flat-pair-00d33c84872da62f8f01",
+        "FLAT_PAIR_SHARED_BASE_QTY": 0.00047,
+        "FLAT_PAIR_BUDGET_USD": 35.797033000000006,
+        "quoteSizing": {
+          "BUY": {
+            "side": "BUY",
+            "price": 75981.2,
+            "proposedSizeBtc": 0.0004755710787668529,
+            "proposedNotionalUsd": 36.13446125,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.711164,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00095,
+            "positionBudgetUsd": 72.18214,
+            "marginBudgetUsd": 200,
+            "volumeBudgetUsd": 500,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 0,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          },
+          "SELL": {
+            "side": "SELL",
+            "price": 76163.90000000001,
+            "proposedSizeBtc": 0.000474430291122172,
+            "proposedNotionalUsd": 36.13446125,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.797033000000006,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00095,
+            "positionBudgetUsd": 72.35570500000001,
+            "marginBudgetUsd": 164.342228,
+            "volumeBudgetUsd": 464.342228,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 35.657772,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          }
+        },
+        "BID_RAW_BUDGET_USD": 36.13446125,
+        "ASK_RAW_BUDGET_USD": 36.13446125,
+        "quoteSpreadBps": 24.0165473616977,
+        "expectedBidEdgeBps": 12.00827368084885,
+        "expectedAskEdgeBps": 12.00827368084885,
+        "requiredBidEdgeBps": 10.47060719154071,
+        "requiredAskEdgeBps": 10.470354821043175,
+        "bidLifecycleCostBps": 10.575815299571016,
+        "bidCandidateCosts": [
+          {
+            "distanceBps": 5.001804198755386,
+            "adverseSelectionBps": 9.805398459950135,
+            "lifecycleCostBps": 12.515667174753872,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 6.000850503893215,
+            "adverseSelectionBps": 9.135454037158107,
+            "lifecycleCostBps": 11.84574377139355,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.01304215515397,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575710118035165,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 8.012088460291798,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575731145929096,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.011134765431539,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575752178028385,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.010181070569368,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575773214334292,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.00827368084885,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575815299571016,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askCandidateCosts": [
+          {
+            "distanceBps": 5.001804198755386,
+            "adverseSelectionBps": 11.793280015728774,
+            "lifecycleCostBps": 14.503338491102042,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 6.000850503893215,
+            "adverseSelectionBps": 12.154189494797267,
+            "lifecycleCostBps": 14.864226996941888,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.01304215515397,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575415340733565,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 8.012088460291798,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575394375934167,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.011134765431539,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.57537341531996,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.010181070569368,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.57535245888969,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.00827368084885,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575310558575948,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askLifecycleCostBps": 10.575310558575948,
+        "sizingInputs": {
+          "minimumNotionalUsd": 10,
+          "maximumNotionalUsd": 72.2689225,
+          "maximumAbsPositionBase": 0.00095,
+          "availableMarginUsd": 4.1085557,
+          "maximumEffectiveLeverage": 40,
+          "capacityBlocker": null,
+          "availableHeadroomUsd": 36.514824000000004
+        },
+        "admissionPipeline": [
+          {
+            "gate": "AUTHORITATIVE_SNAPSHOT",
+            "status": "READY",
+            "numericInputs": {
+              "bookAgeMs": 569,
+              "inventoryBase": 0
+            },
+            "reason": "FRESH_SNAPSHOT_AVAILABLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "A fresh authenticated account and market snapshot is required"
+          },
+          {
+            "gate": "ECONOMIC_EVIDENCE",
+            "status": "READY",
+            "numericInputs": {
+              "makerFeeBps": 1.5,
+              "estimatedGasCostUsd": 0.0003757104,
+              "adverseSelectionBufferBps": 7.865399083510403,
+              "safetyMarginBps": 1
+            },
+            "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "All provenance-labeled economic inputs must be fresh"
+          },
+          {
+            "gate": "BID_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 10.575815299571016,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+          },
+          {
+            "gate": "ASK_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 10.575310558575948,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+          }
+        ],
+        "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "repriceResult": "DESIRED_ORDER_ABSENT",
+        "restingAgeMs": null,
+        "priceDriftTicks": null,
+        "cancelReason": null,
+        "selectedMutation": "WOULD_PLACE",
+        "selectedSide": "SELL",
+        "exactReasonCode": "DESIRED_ORDER_ABSENT",
+        "REPRICE_DECISION_ID": null,
+        "REPRICE_COMMIT_SNAPSHOT_ID": null,
+        "OLD_PRICE": null,
+        "FROZEN_REPLACEMENT_PRICE": null,
+        "REPRICE_IMPROVEMENT_TICKS": null,
+        "REPRICE_ABORT_REASON": null,
+        "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+        "orderDecisions": [
+          {
+            "ORDER_ID": "170141594179263708908331577210948288512",
+            "ORDER_ROLE": "ENTRY",
+            "ORDER_AGE_MS": 570131,
+            "RESTING_PRICE": 75867.6,
+            "CANDIDATE_PRICE": 75981.2,
+            "DELTA_TICKS": 1136,
+            "EVIDENCE_VERSION": "6c2cb088f645db598fe9e81f72df89c7f1caf1e8b7201ede3c26ccc2a5d866a9:1793929922198:1793929921629:1793929921561",
+            "PLAN_DECISION": "WOULD_REPLACE",
+            "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+            "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_COMPARATIVE_ECONOMICS_UNPROVEN",
+            "REPLACEMENT_NET_BENEFIT": null,
+            "RESTING_ENTRY_ECONOMICS": {
+              "decision": "KEEP",
+              "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+              "notionalUsd": 35.657772,
+              "remainingCostBps": 10.47076472441472,
+              "edgeBps": 26.94138687345134,
+              "placementGasSunkUsd": 0.0003757104,
+              "remainingTransactionGasReserveUsd": 0.0003757104,
+              "cancelGasEstimateUsd": 0.0003757104,
+              "fillProbability": null,
+              "conditionalNetUsd": 0.05899008587911635
+            },
+            "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+          }
+        ],
+        "actionClass": "ENTRY",
+        "exitCoverageWorkflow": {
+          "outcome": "VERIFIED_COVERED",
+          "actionClass": "ENTRY",
+          "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+          "evidenceFresh": true,
+          "positionObservedAt": 1793929921561,
+          "sourceStateHash": "6c2cb088f645db598fe9e81f72df89c7f1caf1e8b7201ede3c26ccc2a5d866a9",
+          "positionQuantity": 0,
+          "confirmedQuantity": 0,
+          "uncoveredQuantity": 0,
+          "pendingQuantity": 0,
+          "nextCondition": "CONTINUE_AUTHENTICATED_MONITORING"
+        }
+      },
+      "lineage": [
+        {
+          "body": {
+            "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+            "cycleSequence": 392617,
+            "action": "PLACE",
+            "market": "BTC/USD",
+            "side": "SELL",
+            "price": 76163.90000000001,
+            "quantity": 0.00047,
+            "tickSize": 0.1,
+            "lotSize": 0.00001,
+            "priceDecimals": 6,
+            "sizeDecimals": 8,
+            "clientOrderId": "d1sa15fdb9c9264ccf629ed8ba8fa6d8",
+            "sourceStateHash": "6c2cb088f645db598fe9e81f72df89c7f1caf1e8b7201ede3c26ccc2a5d866a9",
+            "strategyDecisionHash": "55788731305c48b1add43693e30dbf8e93ce5d1c80ff0af41c0a822aa0221fcf",
+            "createdAt": 1793929922198,
+            "executionRole": "STANDARD_MAKER",
+            "reduceOnly": false,
+            "timeInForce": "PostOnly",
+            "intentId": "intent-a15fdb9c9264ccf629ed8ba8",
+            "mutationKey": "a15fdb9c9264ccf629ed8ba8fa6d8a8435fc4423a7fe9297b39166216e7bccb6",
+            "priceTicks": 761639,
+            "quantityLots": 47,
+            "expectedPreviousVenueOrderId": null,
+            "status": "PREPARED",
+            "type": "LIMIT",
+            "postOnly": true,
+            "selfTradePermitted": false,
+            "externalCounterpartyRequired": true
+          },
+          "createdAt": 1793929922198
+        },
+        {
+          "body": {
+            "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+            "cycleSequence": 392621,
+            "action": "CANCEL",
+            "market": "BTC/USD",
+            "side": "SELL",
+            "price": 76163.9,
+            "quantity": 0.00047,
+            "tickSize": 0.1,
+            "lotSize": 0.00001,
+            "priceDecimals": 6,
+            "sizeDecimals": 8,
+            "clientOrderId": "d1sa15fdb9c9264ccf629ed8ba8fa6d8",
+            "sourceStateHash": "3f70ef2853f5a177a17a369ff40a275976c966633614932b5c7c4a8416e154b2",
+            "strategyDecisionHash": "6d9909ff4439c652b977ca0ac9c7eabd99c1f4325dcdd700ad95e0fc91c12513",
+            "createdAt": 1793929933250,
+            "executionRole": "STANDARD_MAKER",
+            "reduceOnly": false,
+            "timeInForce": "PostOnly",
+            "cancelReason": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+            "intentId": "intent-38504275779a7a512b2b8b29",
+            "mutationKey": "38504275779a7a512b2b8b29dcd02d2506bb5c6b9f0ff4742f8e56284d98dc48",
+            "priceTicks": 761639,
+            "quantityLots": 47,
+            "expectedPreviousVenueOrderId": "170141601785167309158035499903010996224",
+            "status": "PREPARED"
+          },
+          "createdAt": 1793929933250
+        }
+      ]
+    },
+    {
+      "intent": {
+        "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+        "cycleSequence": 392631,
+        "action": "PLACE",
+        "market": "BTC/USD",
+        "side": "SELL",
+        "price": 76193.8,
+        "quantity": 0.00047,
+        "tickSize": 0.1,
+        "lotSize": 0.00001,
+        "priceDecimals": 6,
+        "sizeDecimals": 8,
+        "clientOrderId": "d1sfe1184eab2279c1b52f6559f68811",
+        "sourceStateHash": "170fee6463943d084d9c595ce2b0febc26108302f86e1efa39b8c4c9b34576d4",
+        "strategyDecisionHash": "bfffdc688140733a5478d220d05125c345c5302d04a072082902584f84adc5ae",
+        "createdAt": 1793929953224,
+        "executionRole": "STANDARD_MAKER",
+        "reduceOnly": false,
+        "timeInForce": "PostOnly",
+        "intentId": "intent-fe1184eab2279c1b52f6559f",
+        "mutationKey": "fe1184eab2279c1b52f6559f68811bb4a0635a30d06a462393f6454b6eabe751",
+        "priceTicks": 761938,
+        "quantityLots": 47,
+        "expectedPreviousVenueOrderId": null,
+        "status": "PREPARED",
+        "type": "LIMIT",
+        "postOnly": true,
+        "selfTradePermitted": false,
+        "externalCounterpartyRequired": true
+      },
+      "createdAt": 1793929953224,
+      "venueOrderId": "170141604320468511515858861292433440768",
+      "fills": [],
+      "placeSnapshot": {
+        "cycleSequence": 392631,
+        "timestamp": 1793929953224,
+        "authenticatedPositionBase": 0,
+        "bestBid": 76101.6,
+        "bestAsk": 76103.2,
+        "marketSpreadBps": 0.2102430409541971,
+        "bookObservedAt": 1793929952615,
+        "bookAgeMs": 609,
+        "fairPriceInputs": {
+          "midpoint": 76102.4,
+          "microprice": null,
+          "markPrice": null,
+          "oraclePrice": null
+        },
+        "fairPrice": 76102.4,
+        "fairPriceSource": "BBO_MIDPOINT",
+        "marketRegime": "NORMAL",
+        "operationalMarketRegime": "NORMAL",
+        "operationalMarketRegimeInputs": {
+          "spreadBps": 0.2102430409541971,
+          "realizedVolatilityBps": 0.9800502281540275,
+          "bboVelocityBpsPerSecond": 0.009864724471024927,
+          "topBookImbalance": null,
+          "micropriceDeviationBps": null,
+          "recentTradeIntensity": null,
+          "inventoryUsd": 0
+        },
+        "operationalMarketRegimePolicy": {
+          "bidDistanceMultiplier": 1,
+          "askDistanceMultiplier": 1,
+          "sizeMultiplier": 1,
+          "repriceMinimumTicks": 50,
+          "minimumRestingAgeMs": 30000,
+          "maximumInventoryPriceSkewBps": 2,
+          "volatilitySpreadMultiplier": 1
+        },
+        "bidEvidenceSampleCount": 0,
+        "askEvidenceSampleCount": 0,
+        "volatilitySpreadMultiplier": 1,
+        "inventoryPressure": 0,
+        "inventoryPriceSkewBps": 0,
+        "inventoryBidSizeMultiplier": 1,
+        "inventoryAskSizeMultiplier": 1,
+        "riskState": "NORMAL_MM",
+        "riskReductionTrigger": "NONE",
+        "maximumAbsPositionBase": 0.0009500000000000001,
+        "makerFeeBps": 1.5,
+        "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+        "estimatedGasCostUsd": 0.0003757104,
+        "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+        "adverseSelectionBufferBps": 7.865399083510403,
+        "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+        "safetyMarginBps": 1,
+        "desiredBid": {
+          "side": "BUY",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 76011,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1b8697de23cba382bfe91c004ea2713",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "BUY-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "desiredAsk": {
+          "side": "SELL",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 76193.8,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1s10975f21b6cd42f4ff59a3db5334d",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "SELL-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "FLAT_PAIR_COHORT_ID": "flat-pair-b43599d25e9777717251",
+        "FLAT_PAIR_SHARED_BASE_QTY": 0.00047,
+        "FLAT_PAIR_BUDGET_USD": 35.811086,
+        "quoteSizing": {
+          "BUY": {
+            "side": "BUY",
+            "price": 76011,
+            "proposedSizeBtc": 0.0004755711673310442,
+            "proposedNotionalUsd": 36.14864,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.72517,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00095,
+            "positionBudgetUsd": 72.21045,
+            "marginBudgetUsd": 200,
+            "volumeBudgetUsd": 500,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 0,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          },
+          "SELL": {
+            "side": "SELL",
+            "price": 76193.8,
+            "proposedSizeBtc": 0.00047443020298239486,
+            "proposedNotionalUsd": 36.14864,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.811086,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00095,
+            "positionBudgetUsd": 72.38411,
+            "marginBudgetUsd": 164.342228,
+            "volumeBudgetUsd": 464.342228,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 35.657772,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          }
+        },
+        "BID_RAW_BUDGET_USD": 36.14864,
+        "ASK_RAW_BUDGET_USD": 36.14864,
+        "quoteSpreadBps": 24.02026742914848,
+        "expectedBidEdgeBps": 12.010133714573284,
+        "expectedAskEdgeBps": 12.010133714575195,
+        "requiredBidEdgeBps": 10.47056594485774,
+        "requiredAskEdgeBps": 10.470313634272701,
+        "bidLifecycleCostBps": 10.575732806205075,
+        "bidCandidateCosts": [
+          {
+            "distanceBps": 5.0064124127479905,
+            "adverseSelectionBps": 9.805398459950135,
+            "lifecycleCostBps": 12.515584796980052,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 6.005066857286642,
+            "adverseSelectionBps": 9.135454037158107,
+            "lifecycleCostBps": 11.84566137715241,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.00372130182338,
+            "adverseSelectionBps": 8.474232123668534,
+            "lifecycleCostBps": 11.184460470825103,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 8.00237574636203,
+            "adverseSelectionBps": 8.640629508195754,
+            "lifecycleCostBps": 11.35087886671373,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 9.00103019089877,
+            "adverseSelectionBps": 8.557931709723904,
+            "lifecycleCostBps": 11.268202083803686,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 10.012824825497894,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575690753957495,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.010133714573284,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575732806205075,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askCandidateCosts": [
+          {
+            "distanceBps": 5.006412412749904,
+            "adverseSelectionBps": 11.793280015728774,
+            "lifecycleCostBps": 14.50325600217153,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 6.005066857288554,
+            "adverseSelectionBps": 12.154189494797267,
+            "lifecycleCostBps": 14.864144524479487,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.003721301825292,
+            "adverseSelectionBps": 11.336852588603081,
+            "lifecycleCostBps": 14.046786665707549,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 8.002375746363944,
+            "adverseSelectionBps": 10.336519170077898,
+            "lifecycleCostBps": 13.046432298786142,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 9.001030190902593,
+            "adverseSelectionBps": 10.496050408828355,
+            "lifecycleCostBps": 13.205942593320657,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 10.012824825499807,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575270052466838,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.010133714575195,
+            "adverseSelectionBps": 7.865399083510403,
+            "lifecycleCostBps": 10.575228185034998,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askLifecycleCostBps": 10.575228185034998,
+        "sizingInputs": {
+          "minimumNotionalUsd": 10,
+          "maximumNotionalUsd": 72.29728,
+          "maximumAbsPositionBase": 0.0009500000000000001,
+          "availableMarginUsd": 4.1085557,
+          "maximumEffectiveLeverage": 40,
+          "capacityBlocker": null,
+          "availableHeadroomUsd": 36.529152
+        },
+        "admissionPipeline": [
+          {
+            "gate": "AUTHORITATIVE_SNAPSHOT",
+            "status": "READY",
+            "numericInputs": {
+              "bookAgeMs": 609,
+              "inventoryBase": 0
+            },
+            "reason": "FRESH_SNAPSHOT_AVAILABLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "A fresh authenticated account and market snapshot is required"
+          },
+          {
+            "gate": "ECONOMIC_EVIDENCE",
+            "status": "READY",
+            "numericInputs": {
+              "makerFeeBps": 1.5,
+              "estimatedGasCostUsd": 0.0003757104,
+              "adverseSelectionBufferBps": 7.865399083510403,
+              "safetyMarginBps": 1
+            },
+            "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "All provenance-labeled economic inputs must be fresh"
+          },
+          {
+            "gate": "BID_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 10.575732806205075,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+          },
+          {
+            "gate": "ASK_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 10.575228185034998,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+          }
+        ],
+        "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "repriceResult": "DESIRED_ORDER_ABSENT",
+        "restingAgeMs": null,
+        "priceDriftTicks": null,
+        "cancelReason": null,
+        "selectedMutation": "WOULD_PLACE",
+        "selectedSide": "SELL",
+        "exactReasonCode": "DESIRED_ORDER_ABSENT",
+        "REPRICE_DECISION_ID": null,
+        "REPRICE_COMMIT_SNAPSHOT_ID": null,
+        "OLD_PRICE": null,
+        "FROZEN_REPLACEMENT_PRICE": null,
+        "REPRICE_IMPROVEMENT_TICKS": null,
+        "REPRICE_ABORT_REASON": null,
+        "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+        "orderDecisions": [
+          {
+            "ORDER_ID": "170141594179263708908331577210948288512",
+            "ORDER_ROLE": "ENTRY",
+            "ORDER_AGE_MS": 601157,
+            "RESTING_PRICE": 75867.6,
+            "CANDIDATE_PRICE": 76011,
+            "DELTA_TICKS": 1434,
+            "EVIDENCE_VERSION": "170fee6463943d084d9c595ce2b0febc26108302f86e1efa39b8c4c9b34576d4:1793929953224:1793929952615:1793929952548",
+            "PLAN_DECISION": "WOULD_REPLACE",
+            "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+            "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_COMPARATIVE_ECONOMICS_UNPROVEN",
+            "REPLACEMENT_NET_BENEFIT": null,
+            "RESTING_ENTRY_ECONOMICS": {
+              "decision": "KEEP",
+              "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+              "notionalUsd": 35.657772,
+              "remainingCostBps": 10.47076472441472,
+              "edgeBps": 30.85316626019526,
+              "placementGasSunkUsd": 0.0003757104,
+              "remainingTransactionGasReserveUsd": 0.0003757104,
+              "cancelGasEstimateUsd": 0.0003757104,
+              "fillProbability": null,
+              "conditionalNetUsd": 0.07301958587911224
+            },
+            "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+          }
+        ],
+        "actionClass": "ENTRY",
+        "exitCoverageWorkflow": {
+          "outcome": "BLOCKED",
+          "actionClass": "ENTRY",
+          "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793929952548:BOOK_AT=1793929952615",
+          "evidenceFresh": false,
+          "positionObservedAt": 1793929952548,
+          "sourceStateHash": "170fee6463943d084d9c595ce2b0febc26108302f86e1efa39b8c4c9b34576d4",
+          "positionQuantity": null,
+          "confirmedQuantity": null,
+          "uncoveredQuantity": null,
+          "pendingQuantity": null,
+          "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+        }
+      },
+      "lineage": [
+        {
+          "body": {
+            "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+            "cycleSequence": 392631,
+            "action": "PLACE",
+            "market": "BTC/USD",
+            "side": "SELL",
+            "price": 76193.8,
+            "quantity": 0.00047,
+            "tickSize": 0.1,
+            "lotSize": 0.00001,
+            "priceDecimals": 6,
+            "sizeDecimals": 8,
+            "clientOrderId": "d1sfe1184eab2279c1b52f6559f68811",
+            "sourceStateHash": "170fee6463943d084d9c595ce2b0febc26108302f86e1efa39b8c4c9b34576d4",
+            "strategyDecisionHash": "bfffdc688140733a5478d220d05125c345c5302d04a072082902584f84adc5ae",
+            "createdAt": 1793929953224,
+            "executionRole": "STANDARD_MAKER",
+            "reduceOnly": false,
+            "timeInForce": "PostOnly",
+            "intentId": "intent-fe1184eab2279c1b52f6559f",
+            "mutationKey": "fe1184eab2279c1b52f6559f68811bb4a0635a30d06a462393f6454b6eabe751",
+            "priceTicks": 761938,
+            "quantityLots": 47,
+            "expectedPreviousVenueOrderId": null,
+            "status": "PREPARED",
+            "type": "LIMIT",
+            "postOnly": true,
+            "selfTradePermitted": false,
+            "externalCounterpartyRequired": true
+          },
+          "createdAt": 1793929953224
+        },
+        {
+          "body": {
+            "sessionId": "session-1793929143512-ff561694-69ab-40aa-9c5e-08f3c9a52296",
+            "cycleSequence": 392693,
+            "action": "CANCEL",
+            "market": "BTC/USD",
+            "side": "SELL",
+            "price": 76193.8,
+            "quantity": 0.00047,
+            "tickSize": 0.1,
+            "lotSize": 0.00001,
+            "priceDecimals": 6,
+            "sizeDecimals": 8,
+            "clientOrderId": "d1sfe1184eab2279c1b52f6559f68811",
+            "sourceStateHash": "27fd204b07fdada7fb8836d92f928f100d5976c1dcc92fd312bd9de555488345",
+            "strategyDecisionHash": "016ca78d8f753e525e79763af4bebbdb80f110739ad60d532d9f514e85b34a98",
+            "createdAt": 1793930092097,
+            "executionRole": "STANDARD_MAKER",
+            "reduceOnly": false,
+            "timeInForce": "PostOnly",
+            "cancelReason": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+            "intentId": "intent-e886e11970ecb3bacb2d8215",
+            "mutationKey": "e886e11970ecb3bacb2d82151c6bcdc83a586a396e3dc2db7339014ea3984f64",
+            "priceTicks": 761938,
+            "quantityLots": 47,
+            "expectedPreviousVenueOrderId": "170141604320468511515858861292433440768",
+            "status": "PREPARED"
+          },
+          "createdAt": 1793930092097
+        }
+      ]
+    }
+  ]
+}

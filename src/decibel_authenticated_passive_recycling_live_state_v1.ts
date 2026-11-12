@@ -138,7 +138,10 @@ export function deriveDecibelAuthenticatedPassiveRecyclingLiveStateV1(input: {
     checkpointBodyHashSha256: string;
     allAccountFillIds: readonly string[];
     currentPositionBase: 0;
-    cycleDisposition: 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY';
+    cycleDisposition:
+      | 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY'
+      | 'CYCLE_NOT_INTERRUPTED'
+      | 'RECONCILED_AND_CHECKPOINTED';
   }>;
   diagnostics?: Readonly<{
     foreignMarketFillIds: readonly string[];

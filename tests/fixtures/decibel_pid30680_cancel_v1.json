@@ -1,0 +1,23 @@
+{
+  "provenance": "Read-only PID30680 journal and venue history, public execution identities and numeric facts only",
+  "buyOrderId": "170141594179263706066195014466442100736",
+  "buyClientOrderId": "d1b200854252a7cd14bdea29a31f3109",
+  "originalQuantity": 0.00013,
+  "remainingAtCancel": 0.0001,
+  "fillQuantity": 0.00003,
+  "buyPrice": 80473.5,
+  "placeAt": 1793854095963,
+  "placeAckAt": 1793854099199,
+  "fillAt": 1793854309308,
+  "fillVersion": "7909291813",
+  "fillId": "129260825583338352264272522248193",
+  "cancelAt": 1793854312854,
+  "cancelAckAt": 1793854316065,
+  "cancelVersion": "7909292718",
+  "tpOrderId": "170141594179263710252156217515334172672",
+  "tpClientOrderId": "d1s802bee8d62c7ac1ffddad60e94a27",
+  "tpPrice": 80635.2,
+  "tpQuantity": 0.00044,
+  "positionAfter": 0.00047,
+  "basisAfter": 80541.934043
+}

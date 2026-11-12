@@ -6,6 +6,7 @@ export default typescriptEslint.config(
   {
     ignores: [
       'dist/**',
+      'web_dashboard/dist/**',
       'coverage/**',
       'data/**',
       'node_modules/**',
@@ -18,7 +19,9 @@ export default typescriptEslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          allowDefaultProject: ['src/*.mjs'],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {
@@ -44,6 +47,15 @@ export default typescriptEslint.config(
           trailingUnderscore: 'forbid',
         },
       ],
+    },
+  },
+  {
+    files: ['web_dashboard/src/**/*.{ts,tsx}', 'web_dashboard/vite.config.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
     },
   },
 );

@@ -1,0 +1,2352 @@
+{
+  "provenance": "Pinned read-only journal snapshot and recorded PID 26796 stdout. No estimated probabilities.",
+  "selected": {
+    "ORDER_ID": "170141591643962506774669499529477226496",
+    "ORDER_ROLE": "ENTRY",
+    "ORDER_AGE_MS": 982686,
+    "RESTING_PRICE": 75141.4,
+    "CANDIDATE_PRICE": 75583.90000000001,
+    "DELTA_TICKS": 4425,
+    "EVIDENCE_VERSION": "9bba855e35d0979697c7772560cf7c318e45a5766cc1bf6e06df4aef93c52a15:1793951267780:1793951266930:1793951266831",
+    "PLAN_DECISION": "WOULD_REPLACE",
+    "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+    "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+    "REPLACEMENT_NET_BENEFIT": -0.21320946694923112,
+    "RESTING_ENTRY_ECONOMICS": {
+      "decision": "KEEP",
+      "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+      "notionalUsd": 35.316458,
+      "remainingCostBps": 9.376539131308235,
+      "edgeBps": 68.49097801204495,
+      "placementGasSunkUsd": 0.0003784328,
+      "remainingTransactionGasReserveUsd": 0.0003784328,
+      "cancelGasEstimateUsd": 0.0003784328,
+      "fillProbability": null,
+      "conditionalNetUsd": 0.2104393849583851
+    },
+    "ENTRY_REPLACEMENT_VALUE": {
+      "valueKind": "CONDITIONAL_MODEL_PROXY",
+      "expectedNetBenefitUsd": null,
+      "optimality": "NOT_PROVEN",
+      "reason": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+      "netBenefitUsd": -0.21320946694923112,
+      "restingConditionalNetUsd": 0.19249744302150124,
+      "candidateConditionalNetUsd": 0.0020460698111344246,
+      "comparisonQuantity": 0.00043
+    },
+    "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+  },
+  "snapshot": {
+    "cycleSequence": 396619,
+    "timestamp": 1793951267780,
+    "authenticatedPositionBase": 0,
+    "bestBid": 75658.8,
+    "bestAsk": 75660.4,
+    "marketSpreadBps": 0.21147349443973648,
+    "bookObservedAt": 1793951266930,
+    "bookAgeMs": 850,
+    "fairPriceInputs": {
+      "midpoint": 75659.6,
+      "microprice": null,
+      "markPrice": null,
+      "oraclePrice": null
+    },
+    "fairPrice": 75659.6,
+    "fairPriceSource": "BBO_MIDPOINT",
+    "marketRegime": "NORMAL",
+    "operationalMarketRegime": "NORMAL",
+    "operationalMarketRegimeInputs": {
+      "spreadBps": 0.21147349443973648,
+      "realizedVolatilityBps": 1.4330939533555882,
+      "bboVelocityBpsPerSecond": 0.05944632212703,
+      "topBookImbalance": null,
+      "micropriceDeviationBps": null,
+      "recentTradeIntensity": null,
+      "inventoryUsd": 0
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 1,
+      "askDistanceMultiplier": 1,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 50,
+      "minimumRestingAgeMs": 30000,
+      "maximumInventoryPriceSkewBps": 2,
+      "volatilitySpreadMultiplier": 1
+    },
+    "bidEvidenceSampleCount": 0,
+    "askEvidenceSampleCount": 0,
+    "volatilitySpreadMultiplier": 1,
+    "inventoryPressure": 0,
+    "inventoryPriceSkewBps": 0,
+    "inventoryBidSizeMultiplier": 1,
+    "inventoryAskSizeMultiplier": 1,
+    "riskState": "NORMAL_MM",
+    "riskReductionTrigger": "NONE",
+    "maximumAbsPositionBase": 0.0008900000000000002,
+    "makerFeeBps": 1.5,
+    "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+    "estimatedGasCostUsd": 0.0003784328,
+    "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+    "adverseSelectionBufferBps": 6.769384331129803,
+    "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+    "safetyMarginBps": 1,
+    "desiredBid": {
+      "side": "BUY",
+      "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+      "price": 75583.90000000001,
+      "quantity": 0.00043,
+      "orderType": "LIMIT",
+      "timeInForce": "PostOnly",
+      "postOnly": true,
+      "clientOrderId": "d1b22f81f0935ca4335f3dc30adb4232",
+      "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+      "generation": 5,
+      "levelId": "BUY-CANDIDATE-6",
+      "skewStatus": "NEUTRAL"
+    },
+    "desiredAsk": null,
+    "FLAT_PAIR_COHORT_ID": null,
+    "FLAT_PAIR_SHARED_BASE_QTY": 0.00043,
+    "FLAT_PAIR_BUDGET_USD": null,
+    "quoteSizing": {
+      "BUY": {
+        "side": "BUY",
+        "price": 75583.90000000001,
+        "proposedSizeBtc": 0.0004454456835384256,
+        "proposedNotionalUsd": 33.66852200000001,
+        "finalSizeBtc": 0.00044,
+        "finalNotionalUsd": 33.256916000000004,
+        "bindingConstraint": "STRATEGY_ALLOCATION",
+        "positionBudgetBtc": 0.00089,
+        "positionBudgetUsd": 67.269671,
+        "marginBudgetUsd": 164.37259,
+        "volumeBudgetUsd": 464.37259,
+        "pendingExposureBtc": 0,
+        "reductionBudgetBtc": 0,
+        "reduceOnly": false,
+        "pendingVolumeUsd": 35.62741,
+        "remainingTargetUsd": 500,
+        "minimumExecutableSizeBtc": 0.00014,
+        "lotSize": 0.00001,
+        "roundingReason": "ROUNDED_DOWN_TO_LOT"
+      },
+      "SELL": {
+        "side": "SELL",
+        "price": 75697.5,
+        "proposedSizeBtc": 0.00044477719871858395,
+        "proposedNotionalUsd": 33.66852200000001,
+        "finalSizeBtc": 0.00044,
+        "finalNotionalUsd": 33.3069,
+        "bindingConstraint": "STRATEGY_ALLOCATION",
+        "positionBudgetBtc": 0.00089,
+        "positionBudgetUsd": 67.370775,
+        "marginBudgetUsd": 164.68354200000002,
+        "volumeBudgetUsd": 464.683542,
+        "pendingExposureBtc": 0,
+        "reductionBudgetBtc": 0,
+        "reduceOnly": false,
+        "pendingVolumeUsd": 35.316458,
+        "remainingTargetUsd": 500,
+        "minimumExecutableSizeBtc": 0.00014,
+        "lotSize": 0.00001,
+        "roundingReason": "ROUNDED_DOWN_TO_LOT"
+      }
+    },
+    "BID_RAW_BUDGET_USD": 33.66852200000001,
+    "ASK_RAW_BUDGET_USD": 33.66852200000001,
+    "quoteSpreadBps": null,
+    "expectedBidEdgeBps": 10.005339705734247,
+    "expectedAskEdgeBps": 8.009558601947573,
+    "requiredBidEdgeBps": 9.492751004856983,
+    "requiredAskEdgeBps": 9.509449706466993,
+    "bidLifecycleCostBps": 9.502258337120436,
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 5.009278399569748,
+        "adverseSelectionBps": 6.769384331129803,
+        "lifecycleCostBps": 9.502141933529582,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.000560404761422,
+        "adverseSelectionBps": 16.84495016091229,
+        "lifecycleCostBps": 19.577730850007665,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 7.005059503354498,
+        "adverseSelectionBps": 16.459592244037296,
+        "lifecycleCostBps": 19.192396332323177,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 8.009558601949497,
+        "adverseSelectionBps": 6.769384331129803,
+        "lifecycleCostBps": 9.502211823310855,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 9.000840607141171,
+        "adverseSelectionBps": 16.635790714745294,
+        "lifecycleCostBps": 19.368641307489124,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 10.005339705734247,
+        "adverseSelectionBps": 6.769384331129803,
+        "lifecycleCostBps": 9.502258337120436,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 12.00112080952092,
+        "adverseSelectionBps": 6.769384331129803,
+        "lifecycleCostBps": 9.5023048695186,
+        "adverseSource": "GLOBAL_FALLBACK"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 5.009278399567825,
+        "adverseSelectionBps": 6.769384331129803,
+        "lifecycleCostBps": 9.501908860756215,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.000560404759498,
+        "adverseSelectionBps": 26.87692959783002,
+        "lifecycleCostBps": 29.609431091541076,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 7.005059503354498,
+        "adverseSelectionBps": 27.95493221031944,
+        "lifecycleCostBps": 30.6874103656251,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 8.009558601947573,
+        "adverseSelectionBps": 6.769384331129803,
+        "lifecycleCostBps": 9.501839152714998,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 9.000840607139247,
+        "adverseSelectionBps": 28.59287819789494,
+        "lifecycleCostBps": 31.3253099973738,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 10.005339705734247,
+        "adverseSelectionBps": 28.22997307285188,
+        "lifecycleCostBps": 30.962381547914305,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 12.00112080952092,
+        "adverseSelectionBps": 25.565727489584077,
+        "lifecycleCostBps": 28.298089636601063,
+        "adverseSource": "CANDIDATE_P95"
+      }
+    ],
+    "askLifecycleCostBps": 9.501839152714998,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 67.33704400000002,
+      "maximumAbsPositionBase": 0.0008900000000000002,
+      "availableMarginUsd": 3.2264033000000003,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 31.77703200000002
+    },
+    "admissionPipeline": [
+      {
+        "gate": "AUTHORITATIVE_SNAPSHOT",
+        "status": "READY",
+        "numericInputs": {
+          "bookAgeMs": 850,
+          "inventoryBase": 0
+        },
+        "reason": "FRESH_SNAPSHOT_AVAILABLE",
+        "persistence": "TRANSIENT",
+        "clearCondition": "A fresh authenticated account and market snapshot is required"
+      },
+      {
+        "gate": "ECONOMIC_EVIDENCE",
+        "status": "READY",
+        "numericInputs": {
+          "makerFeeBps": 1.5,
+          "estimatedGasCostUsd": 0.0003784328,
+          "adverseSelectionBufferBps": 6.769384331129803,
+          "safetyMarginBps": 1
+        },
+        "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+        "persistence": "TRANSIENT",
+        "clearCondition": "All provenance-labeled economic inputs must be fresh"
+      },
+      {
+        "gate": "BID_ADMISSION",
+        "status": "READY",
+        "numericInputs": {
+          "lifecycleCostBps": 9.502258337120436,
+          "lifecycleCostBudgetBps": 11.25,
+          "inventoryBase": 0,
+          "residualInventoryUsd": 0,
+          "minimumNotionalUsd": 10,
+          "minimumSize": 0.00002
+        },
+        "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "persistence": "TRANSIENT",
+        "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+      },
+      {
+        "gate": "ASK_ADMISSION",
+        "status": "BLOCKED",
+        "numericInputs": {
+          "lifecycleCostBps": 9.501839152714998,
+          "lifecycleCostBudgetBps": 11.25,
+          "inventoryBase": 0,
+          "residualInventoryUsd": 0,
+          "minimumNotionalUsd": 10,
+          "minimumSize": 0.00002
+        },
+        "reason": "SPREAD_EDGE_INSUFFICIENT",
+        "persistence": "TRANSIENT",
+        "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+      }
+    ],
+    "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "askEligibilityReason": "SPREAD_EDGE_INSUFFICIENT",
+    "repriceResult": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+    "restingAgeMs": null,
+    "priceDriftTicks": null,
+    "cancelReason": null,
+    "selectedMutation": "HOLD",
+    "selectedSide": null,
+    "exactReasonCode": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+    "REPRICE_DECISION_ID": null,
+    "REPRICE_COMMIT_SNAPSHOT_ID": null,
+    "OLD_PRICE": null,
+    "FROZEN_REPLACEMENT_PRICE": null,
+    "REPRICE_IMPROVEMENT_TICKS": null,
+    "REPRICE_ABORT_REASON": null,
+    "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+    "orderDecisions": [
+      {
+        "ORDER_ID": "170141591643962506774669499529477226496",
+        "ORDER_ROLE": "ENTRY",
+        "ORDER_AGE_MS": 982686,
+        "RESTING_PRICE": 75141.4,
+        "CANDIDATE_PRICE": 75583.90000000001,
+        "DELTA_TICKS": 4425,
+        "EVIDENCE_VERSION": "9bba855e35d0979697c7772560cf7c318e45a5766cc1bf6e06df4aef93c52a15:1793951267780:1793951266930:1793951266831",
+        "PLAN_DECISION": "WOULD_REPLACE",
+        "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+        "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+        "REPLACEMENT_NET_BENEFIT": -0.21320946694923112,
+        "RESTING_ENTRY_ECONOMICS": {
+          "decision": "KEEP",
+          "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+          "notionalUsd": 35.316458,
+          "remainingCostBps": 9.376539131308235,
+          "edgeBps": 68.49097801204495,
+          "placementGasSunkUsd": 0.0003784328,
+          "remainingTransactionGasReserveUsd": 0.0003784328,
+          "cancelGasEstimateUsd": 0.0003784328,
+          "fillProbability": null,
+          "conditionalNetUsd": 0.2104393849583851
+        },
+        "ENTRY_REPLACEMENT_VALUE": {
+          "valueKind": "CONDITIONAL_MODEL_PROXY",
+          "expectedNetBenefitUsd": null,
+          "optimality": "NOT_PROVEN",
+          "reason": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+          "netBenefitUsd": -0.21320946694923112,
+          "restingConditionalNetUsd": 0.19249744302150124,
+          "candidateConditionalNetUsd": 0.0020460698111344246,
+          "comparisonQuantity": 0.00043
+        },
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+      },
+      {
+        "ORDER_ID": "170141594179263709155652333930605969408",
+        "ORDER_ROLE": "ENTRY",
+        "ORDER_AGE_MS": 84900,
+        "RESTING_PRICE": 75803,
+        "CANDIDATE_PRICE": null,
+        "DELTA_TICKS": null,
+        "EVIDENCE_VERSION": "9bba855e35d0979697c7772560cf7c318e45a5766cc1bf6e06df4aef93c52a15:1793951267780:1793951266930:1793951266831",
+        "PLAN_DECISION": "NO_OP",
+        "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+        "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+        "REPLACEMENT_NET_BENEFIT": null,
+        "RESTING_ENTRY_ECONOMICS": {
+          "decision": "KEEP",
+          "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+          "notionalUsd": 35.62741,
+          "remainingCostBps": 9.375603896346584,
+          "edgeBps": 18.95331193926404,
+          "placementGasSunkUsd": 0.0003784328,
+          "remainingTransactionGasReserveUsd": 0.0003784328,
+          "cancelGasEstimateUsd": 0.0003784328,
+          "fillProbability": null,
+          "conditionalNetUsd": 0.033995151598723544
+        },
+        "ENTRY_REPLACEMENT_VALUE": {
+          "valueKind": "CONDITIONAL_MODEL_PROXY",
+          "expectedNetBenefitUsd": null,
+          "optimality": "NOT_PROVEN",
+          "reason": "KEEP:ENTRY_COMPARABLE_QUANTITY_REQUIRED",
+          "netBenefitUsd": null
+        },
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+      }
+    ],
+    "actionClass": "TP_COVERAGE_REPAIR",
+    "exitCoverageWorkflow": {
+      "outcome": "VERIFIED_COVERED",
+      "actionClass": "TP_COVERAGE_REPAIR",
+      "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+      "evidenceFresh": true,
+      "positionObservedAt": 1793951266831,
+      "sourceStateHash": "9bba855e35d0979697c7772560cf7c318e45a5766cc1bf6e06df4aef93c52a15",
+      "positionQuantity": 0,
+      "confirmedQuantity": 0,
+      "uncoveredQuantity": 0,
+      "pendingQuantity": 0,
+      "nextCondition": "CONTINUE_AUTHENTICATED_MONITORING"
+    }
+  },
+  "facts": [
+    {
+      "side": "BUY",
+      "price": 75141.40000000001,
+      "quantity": 0.00047,
+      "at": 1793950274023,
+      "clientOrderId": "d1bc25878bb493b6da3a58dc953da08d",
+      "venueOrderId": "170141591643962506774669499529477226496",
+      "firstRetainedOpenAt": 1793950828643,
+      "place": {
+        "cycleSequence": 396220,
+        "timestamp": 1793950274023,
+        "authenticatedPositionBase": 0,
+        "bestBid": 75201.6,
+        "bestAsk": 75201.7,
+        "marketSpreadBps": 0.013297580570541851,
+        "bookObservedAt": 1793950272835,
+        "bookAgeMs": 1188,
+        "fairPriceInputs": {
+          "midpoint": 75201.65,
+          "microprice": null,
+          "markPrice": null,
+          "oraclePrice": null
+        },
+        "fairPrice": 75201.65,
+        "fairPriceSource": "BBO_MIDPOINT",
+        "marketRegime": "NORMAL",
+        "operationalMarketRegime": "NORMAL",
+        "operationalMarketRegimeInputs": {
+          "spreadBps": 0.013297580570541851,
+          "realizedVolatilityBps": 0.5758686834126715,
+          "bboVelocityBpsPerSecond": 0.014904249279911951,
+          "topBookImbalance": null,
+          "micropriceDeviationBps": null,
+          "recentTradeIntensity": null,
+          "inventoryUsd": 0
+        },
+        "operationalMarketRegimePolicy": {
+          "bidDistanceMultiplier": 1,
+          "askDistanceMultiplier": 1,
+          "sizeMultiplier": 1,
+          "repriceMinimumTicks": 50,
+          "minimumRestingAgeMs": 30000,
+          "maximumInventoryPriceSkewBps": 2,
+          "volatilitySpreadMultiplier": 1
+        },
+        "bidEvidenceSampleCount": 0,
+        "askEvidenceSampleCount": 0,
+        "volatilitySpreadMultiplier": 1,
+        "inventoryPressure": 0,
+        "inventoryPriceSkewBps": 0,
+        "inventoryBidSizeMultiplier": 1,
+        "inventoryAskSizeMultiplier": 1,
+        "riskState": "NORMAL_MM",
+        "riskReductionTrigger": "NONE",
+        "maximumAbsPositionBase": 0.0009600000000000001,
+        "makerFeeBps": 1.5,
+        "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+        "estimatedGasCostUsd": 0.0003784328,
+        "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+        "adverseSelectionBufferBps": 4.453896528881682,
+        "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+        "safetyMarginBps": 1,
+        "desiredBid": {
+          "side": "BUY",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75141.40000000001,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1b28faa2649e1c64f66c9f125011026",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 3,
+          "levelId": "BUY-CANDIDATE-4",
+          "skewStatus": "NEUTRAL"
+        },
+        "desiredAsk": {
+          "side": "SELL",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75291.90000000001,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1s9040f94201845b1eb0e60a6443398",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "SELL-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "FLAT_PAIR_COHORT_ID": "flat-pair-4dfc57f22a2ec5b2c350",
+        "FLAT_PAIR_SHARED_BASE_QTY": 0.00047,
+        "FLAT_PAIR_BUDGET_USD": 35.440867000000004,
+        "quoteSizing": {
+          "BUY": {
+            "side": "BUY",
+            "price": 75140.5,
+            "proposedSizeBtc": 0.0004803848789933525,
+            "proposedNotionalUsd": 36.096360000000004,
+            "finalSizeBtc": 0.00048,
+            "finalNotionalUsd": 36.06744,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00096,
+            "positionBudgetUsd": 72.13488,
+            "marginBudgetUsd": 164.53375300000002,
+            "volumeBudgetUsd": 464.533753,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 35.466247,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          },
+          "SELL": {
+            "side": "SELL",
+            "price": 75291,
+            "proposedSizeBtc": 0.00047942463242618645,
+            "proposedNotionalUsd": 36.096360000000004,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.38677,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00096,
+            "positionBudgetUsd": 72.27936,
+            "marginBudgetUsd": 200.00000000000003,
+            "volumeBudgetUsd": 500,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 0,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          }
+        },
+        "BID_RAW_BUDGET_USD": 36.096792,
+        "ASK_RAW_BUDGET_USD": 36.096792,
+        "quoteSpreadBps": 20.01285876041284,
+        "expectedBidEdgeBps": 8.011792294449052,
+        "expectedAskEdgeBps": 12.001066465963786,
+        "requiredBidEdgeBps": 7.162463111375422,
+        "requiredAskEdgeBps": 7.176379846282124,
+        "bidLifecycleCostBps": 7.168206129238547,
+        "bidCandidateCosts": [
+          {
+            "distanceBps": 5.006539085245361,
+            "adverseSelectionBps": 17.96857474650505,
+            "lifecycleCostBps": 20.682819909139493,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 6.003857628123077,
+            "adverseSelectionBps": 17.181139637946618,
+            "lifecycleCostBps": 19.895406180484592,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.001176171000794,
+            "adverseSelectionBps": 16.472802991772884,
+            "lifecycleCostBps": 19.187090918481893,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 8.011792294449052,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.168206129238547,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.009110837326768,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.168227522005362,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.006429380204484,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.168248919043533,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.001066465959916,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.168291725939056,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askCandidateCosts": [
+          {
+            "distanceBps": 5.006539085247296,
+            "adverseSelectionBps": 4.60554231226962,
+            "lifecycleCostBps": 7.319573056897166,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 6.0038576281250124,
+            "adverseSelectionBps": 4.13150081163254,
+            "lifecycleCostBps": 6.845510223385004,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.0011761710027285,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.167884612011221,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 8.011792294452922,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.167863003342934,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.009110837330638,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.167841683277164,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.006429380208354,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.167820367459722,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.001066465963786,
+            "adverseSelectionBps": 4.453896528881682,
+            "lifecycleCostBps": 7.167777748564746,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askLifecycleCostBps": 7.167777748564746,
+        "sizingInputs": {
+          "minimumNotionalUsd": 10,
+          "maximumNotionalUsd": 72.193584,
+          "maximumAbsPositionBase": 0.0009600000000000001,
+          "availableMarginUsd": 4.113343825,
+          "maximumEffectiveLeverage": 40,
+          "capacityBlocker": null,
+          "availableHeadroomUsd": 36.848808500000004
+        },
+        "admissionPipeline": [
+          {
+            "gate": "AUTHORITATIVE_SNAPSHOT",
+            "status": "READY",
+            "numericInputs": {
+              "bookAgeMs": 1188,
+              "inventoryBase": 0
+            },
+            "reason": "FRESH_SNAPSHOT_AVAILABLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "A fresh authenticated account and market snapshot is required"
+          },
+          {
+            "gate": "ECONOMIC_EVIDENCE",
+            "status": "READY",
+            "numericInputs": {
+              "makerFeeBps": 1.5,
+              "estimatedGasCostUsd": 0.0003784328,
+              "adverseSelectionBufferBps": 4.453896528881682,
+              "safetyMarginBps": 1
+            },
+            "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "All provenance-labeled economic inputs must be fresh"
+          },
+          {
+            "gate": "BID_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 7.168206129238547,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+          },
+          {
+            "gate": "ASK_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 7.167777748564746,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+          }
+        ],
+        "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "repriceResult": "DESIRED_ORDER_ABSENT",
+        "restingAgeMs": null,
+        "priceDriftTicks": null,
+        "cancelReason": null,
+        "selectedMutation": "WOULD_PLACE",
+        "selectedSide": "BUY",
+        "exactReasonCode": "DESIRED_ORDER_ABSENT",
+        "REPRICE_DECISION_ID": null,
+        "REPRICE_COMMIT_SNAPSHOT_ID": null,
+        "OLD_PRICE": null,
+        "FROZEN_REPLACEMENT_PRICE": null,
+        "REPRICE_IMPROVEMENT_TICKS": null,
+        "REPRICE_ABORT_REASON": null,
+        "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+        "orderDecisions": [
+          {
+            "ORDER_ID": "170141591643962506999455689709002424320",
+            "ORDER_ROLE": "ENTRY",
+            "ORDER_AGE_MS": 1326870,
+            "RESTING_PRICE": 75460.1,
+            "CANDIDATE_PRICE": 75291.90000000001,
+            "DELTA_TICKS": -1682,
+            "EVIDENCE_VERSION": "5db53a5007360accab17d65bb4cfafe4e1e0a226593d3ab1ff48d56c7ac2453c:1793950274023:1793950272835:1793950271660",
+            "PLAN_DECISION": "WOULD_REPLACE",
+            "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+            "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+            "REPLACEMENT_NET_BENEFIT": -0.09551698187333582,
+            "RESTING_ENTRY_ECONOMICS": {
+              "decision": "KEEP",
+              "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+              "notionalUsd": 35.466247,
+              "remainingCostBps": 7.060598768901608,
+              "edgeBps": 34.36759698756765,
+              "placementGasSunkUsd": 0.0003784328,
+              "remainingTransactionGasReserveUsd": 0.0003784328,
+              "cancelGasEstimateUsd": 0.0003784328,
+              "fillProbability": null,
+              "conditionalNetUsd": 0.09643020600942942
+            },
+            "ENTRY_REPLACEMENT_VALUE": {
+              "valueKind": "CONDITIONAL_MODEL_PROXY",
+              "expectedNetBenefitUsd": null,
+              "optimality": "NOT_PROVEN",
+              "reason": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+              "netBenefitUsd": -0.09551698187333582,
+              "restingConditionalNetUsd": 0.09643020600942942,
+              "candidateConditionalNetUsd": 0.01743117934305022,
+              "comparisonQuantity": 0.00047
+            },
+            "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+          }
+        ],
+        "actionClass": "ENTRY",
+        "exitCoverageWorkflow": {
+          "outcome": "BLOCKED",
+          "actionClass": "ENTRY",
+          "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793950271660:BOOK_AT=1793950272835",
+          "evidenceFresh": false,
+          "positionObservedAt": 1793950271660,
+          "sourceStateHash": "5db53a5007360accab17d65bb4cfafe4e1e0a226593d3ab1ff48d56c7ac2453c",
+          "positionQuantity": null,
+          "confirmedQuantity": null,
+          "uncoveredQuantity": null,
+          "pendingQuantity": null,
+          "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+        }
+      },
+      "cancel": [
+        {
+          "at": 1793951364982,
+          "reason": "SESSION_UNWIND_CANCEL_OPEN",
+          "snapshot": {
+            "cycleSequence": 396661,
+            "timestamp": 1793951364982,
+            "authenticatedPositionBase": 0,
+            "bestBid": 75593.3,
+            "bestAsk": 75593.4,
+            "marketSpreadBps": 0.013228676859970995,
+            "bookObservedAt": 1793951363108,
+            "bookAgeMs": 1874,
+            "fairPriceInputs": {
+              "midpoint": 75593.35,
+              "microprice": null,
+              "markPrice": null,
+              "oraclePrice": null
+            },
+            "fairPrice": 75593.35,
+            "fairPriceSource": "BBO_MIDPOINT",
+            "marketRegime": "NORMAL",
+            "operationalMarketRegime": "NORMAL",
+            "operationalMarketRegimeInputs": {
+              "spreadBps": 0.013228676859970995,
+              "realizedVolatilityBps": 1.425186190677959,
+              "bboVelocityBpsPerSecond": 0.05077834717688774,
+              "topBookImbalance": null,
+              "micropriceDeviationBps": null,
+              "recentTradeIntensity": null,
+              "inventoryUsd": 0
+            },
+            "operationalMarketRegimePolicy": {
+              "bidDistanceMultiplier": 1,
+              "askDistanceMultiplier": 1,
+              "sizeMultiplier": 1,
+              "repriceMinimumTicks": 50,
+              "minimumRestingAgeMs": 30000,
+              "maximumInventoryPriceSkewBps": 2,
+              "volatilitySpreadMultiplier": 1
+            },
+            "bidEvidenceSampleCount": 0,
+            "askEvidenceSampleCount": 0,
+            "volatilitySpreadMultiplier": 1,
+            "inventoryPressure": 0,
+            "inventoryPriceSkewBps": 0,
+            "inventoryBidSizeMultiplier": 1,
+            "inventoryAskSizeMultiplier": 1,
+            "riskState": "SESSION_UNWIND",
+            "riskReductionTrigger": "SESSION_UNWIND",
+            "maximumAbsPositionBase": 0.00002,
+            "makerFeeBps": 1.5,
+            "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+            "estimatedGasCostUsd": 0.0003784328,
+            "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+            "adverseSelectionBufferBps": 6.769384331129803,
+            "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+            "safetyMarginBps": 1,
+            "desiredBid": null,
+            "desiredAsk": null,
+            "FLAT_PAIR_COHORT_ID": null,
+            "FLAT_PAIR_SHARED_BASE_QTY": 0.00044,
+            "FLAT_PAIR_BUDGET_USD": null,
+            "quoteSizing": {
+              "BUY": null,
+              "SELL": null
+            },
+            "BID_RAW_BUDGET_USD": null,
+            "ASK_RAW_BUDGET_USD": null,
+            "quoteSpreadBps": null,
+            "expectedBidEdgeBps": null,
+            "expectedAskEdgeBps": null,
+            "requiredBidEdgeBps": null,
+            "requiredAskEdgeBps": null,
+            "bidLifecycleCostBps": null,
+            "bidCandidateCosts": [],
+            "askCandidateCosts": [],
+            "askLifecycleCostBps": null,
+            "sizingInputs": {
+              "minimumNotionalUsd": 10,
+              "maximumNotionalUsd": 67.27808150000001,
+              "maximumAbsPositionBase": 0.0008900000000000001,
+              "availableMarginUsd": 3.2264033000000003,
+              "maximumEffectiveLeverage": 40,
+              "capacityBlocker": null,
+              "availableHeadroomUsd": 31.749207000000013
+            },
+            "admissionPipeline": [
+              {
+                "gate": "AUTHORITATIVE_SNAPSHOT",
+                "status": "READY",
+                "numericInputs": {
+                  "bookAgeMs": 1874,
+                  "inventoryBase": 0
+                },
+                "reason": "FRESH_SNAPSHOT_AVAILABLE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "A fresh authenticated account and market snapshot is required"
+              },
+              {
+                "gate": "ECONOMIC_EVIDENCE",
+                "status": "READY",
+                "numericInputs": {
+                  "makerFeeBps": 1.5,
+                  "estimatedGasCostUsd": 0.0003784328,
+                  "adverseSelectionBufferBps": 6.769384331129803,
+                  "safetyMarginBps": 1
+                },
+                "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "All provenance-labeled economic inputs must be fresh"
+              },
+              {
+                "gate": "BID_ADMISSION",
+                "status": "BLOCKED",
+                "numericInputs": {
+                  "lifecycleCostBps": null,
+                  "lifecycleCostBudgetBps": 11.25,
+                  "inventoryBase": 0,
+                  "residualInventoryUsd": 0,
+                  "minimumNotionalUsd": 10,
+                  "minimumSize": 0.00002
+                },
+                "reason": "SESSION_COMPLETE_FLAT",
+                "persistence": "TRANSIENT",
+                "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+              },
+              {
+                "gate": "ASK_ADMISSION",
+                "status": "BLOCKED",
+                "numericInputs": {
+                  "lifecycleCostBps": null,
+                  "lifecycleCostBudgetBps": 11.25,
+                  "inventoryBase": 0,
+                  "residualInventoryUsd": 0,
+                  "minimumNotionalUsd": 10,
+                  "minimumSize": 0.00002
+                },
+                "reason": "SESSION_COMPLETE_FLAT",
+                "persistence": "TRANSIENT",
+                "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+              }
+            ],
+            "bidEligibilityReason": "SESSION_COMPLETE_FLAT",
+            "askEligibilityReason": "SESSION_COMPLETE_FLAT",
+            "repriceResult": "SESSION_UNWIND_CANCEL_OPEN",
+            "restingAgeMs": null,
+            "priceDriftTicks": null,
+            "cancelReason": "SESSION_UNWIND_CANCEL_OPEN",
+            "selectedMutation": "WOULD_CANCEL",
+            "selectedSide": "BUY",
+            "exactReasonCode": "SESSION_UNWIND_CANCEL_OPEN",
+            "REPRICE_DECISION_ID": null,
+            "REPRICE_COMMIT_SNAPSHOT_ID": null,
+            "OLD_PRICE": null,
+            "FROZEN_REPLACEMENT_PRICE": null,
+            "REPRICE_IMPROVEMENT_TICKS": null,
+            "REPRICE_ABORT_REASON": null,
+            "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+            "orderDecisions": [
+              {
+                "ORDER_ID": "170141591643962506774669499529477226496",
+                "ORDER_ROLE": "ENTRY",
+                "ORDER_AGE_MS": null,
+                "RESTING_PRICE": 75141.4,
+                "CANDIDATE_PRICE": null,
+                "DELTA_TICKS": null,
+                "EVIDENCE_VERSION": "049514cf5fbf4bc3c183b69677bbf0f6eac451b115da99cf34904c45d67b47e2:1793951364982:1793951363108:1793951364042",
+                "PLAN_DECISION": "WOULD_CANCEL",
+                "RISK_VALIDATION_DECISION": "CANCEL_REQUIRED",
+                "FINAL_KEEP_CANCEL_REPLACE_REASON": "SESSION_UNWIND_CANCEL_OPEN",
+                "REPLACEMENT_NET_BENEFIT": null,
+                "RESTING_ENTRY_ECONOMICS": null,
+                "ENTRY_REPLACEMENT_VALUE": {
+                  "valueKind": "CONDITIONAL_MODEL_PROXY",
+                  "expectedNetBenefitUsd": null,
+                  "optimality": "NOT_PROVEN",
+                  "reason": "KEEP:ENTRY_COMPARABLE_QUANTITY_REQUIRED",
+                  "netBenefitUsd": null
+                },
+                "ACK_RECONCILIATION_STATE": "CANCELLED_EXTERNALLY:CANCELLED"
+              },
+              {
+                "ORDER_ID": "170141594179263709155652333930605969408",
+                "ORDER_ROLE": "ENTRY",
+                "ORDER_AGE_MS": 182102,
+                "RESTING_PRICE": 75803,
+                "CANDIDATE_PRICE": null,
+                "DELTA_TICKS": null,
+                "EVIDENCE_VERSION": "049514cf5fbf4bc3c183b69677bbf0f6eac451b115da99cf34904c45d67b47e2:1793951364982:1793951363108:1793951364042",
+                "PLAN_DECISION": "WOULD_CANCEL",
+                "RISK_VALIDATION_DECISION": "CANCEL_REQUIRED",
+                "FINAL_KEEP_CANCEL_REPLACE_REASON": "RISK_INVALID:REDUCE_ONLY_REQUIRED",
+                "REPLACEMENT_NET_BENEFIT": null,
+                "RESTING_ENTRY_ECONOMICS": null,
+                "ENTRY_REPLACEMENT_VALUE": {
+                  "valueKind": "CONDITIONAL_MODEL_PROXY",
+                  "expectedNetBenefitUsd": null,
+                  "optimality": "NOT_PROVEN",
+                  "reason": "KEEP:ENTRY_COMPARABLE_QUANTITY_REQUIRED",
+                  "netBenefitUsd": null
+                },
+                "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+              }
+            ],
+            "actionClass": "CANCEL",
+            "exitCoverageWorkflow": {
+              "outcome": "BLOCKED",
+              "actionClass": "CANCEL",
+              "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793951364042:BOOK_AT=1793951363108",
+              "evidenceFresh": false,
+              "positionObservedAt": 1793951364042,
+              "sourceStateHash": "049514cf5fbf4bc3c183b69677bbf0f6eac451b115da99cf34904c45d67b47e2",
+              "positionQuantity": null,
+              "confirmedQuantity": null,
+              "uncoveredQuantity": null,
+              "pendingQuantity": null,
+              "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+            }
+          }
+        }
+      ],
+      "fills": []
+    },
+    {
+      "side": "SELL",
+      "price": 75770.1,
+      "quantity": 0.00047,
+      "at": 1793951160874,
+      "clientOrderId": "d1s4ae5db77e048a0e41b1d96315ca56",
+      "venueOrderId": "170141606855769711880149237178356989952",
+      "firstRetainedOpenAt": 1793951164862,
+      "place": {
+        "cycleSequence": 396579,
+        "timestamp": 1793951160874,
+        "authenticatedPositionBase": 0,
+        "bestBid": 75678.9,
+        "bestAsk": 75679.5,
+        "marketSpreadBps": 0.07928202200945844,
+        "bookObservedAt": 1793951160363,
+        "bookAgeMs": 511,
+        "fairPriceInputs": {
+          "midpoint": 75679.2,
+          "microprice": null,
+          "markPrice": null,
+          "oraclePrice": null
+        },
+        "fairPrice": 75679.2,
+        "fairPriceSource": "BBO_MIDPOINT",
+        "marketRegime": "NORMAL",
+        "operationalMarketRegime": "NORMAL",
+        "operationalMarketRegimeInputs": {
+          "spreadBps": 0.07928202200945844,
+          "realizedVolatilityBps": 1.3725445269470922,
+          "bboVelocityBpsPerSecond": 0.06934951454472907,
+          "topBookImbalance": null,
+          "micropriceDeviationBps": null,
+          "recentTradeIntensity": null,
+          "inventoryUsd": 0
+        },
+        "operationalMarketRegimePolicy": {
+          "bidDistanceMultiplier": 1,
+          "askDistanceMultiplier": 1,
+          "sizeMultiplier": 1,
+          "repriceMinimumTicks": 50,
+          "minimumRestingAgeMs": 30000,
+          "maximumInventoryPriceSkewBps": 2,
+          "volatilitySpreadMultiplier": 1
+        },
+        "bidEvidenceSampleCount": 0,
+        "askEvidenceSampleCount": 0,
+        "volatilitySpreadMultiplier": 1,
+        "inventoryPressure": 0,
+        "inventoryPriceSkewBps": 0,
+        "inventoryBidSizeMultiplier": 1,
+        "inventoryAskSizeMultiplier": 1,
+        "riskState": "NORMAL_MM",
+        "riskReductionTrigger": "NONE",
+        "maximumAbsPositionBase": 0.0009600000000000001,
+        "makerFeeBps": 1.5,
+        "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+        "estimatedGasCostUsd": 0.0003784328,
+        "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+        "adverseSelectionBufferBps": 5.8807894212240015,
+        "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+        "safetyMarginBps": 1,
+        "desiredBid": {
+          "side": "BUY",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75611,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1b9e8c6604b88c7e26df265f7598dab",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 4,
+          "levelId": "BUY-CANDIDATE-5",
+          "skewStatus": "NEUTRAL"
+        },
+        "desiredAsk": {
+          "side": "SELL",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75770.1,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1sfa3e19e5f5f799f963810eb8131d0",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "SELL-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "FLAT_PAIR_COHORT_ID": "flat-pair-4dfc57f22a2ec5b2c350",
+        "FLAT_PAIR_SHARED_BASE_QTY": 0.00047,
+        "FLAT_PAIR_BUDGET_USD": 35.440867000000004,
+        "quoteSizing": {
+          "BUY": {
+            "side": "BUY",
+            "price": 75611,
+            "proposedSizeBtc": 0.00048043295287722687,
+            "proposedNotionalUsd": 36.326016,
+            "finalSizeBtc": 0.00048,
+            "finalNotionalUsd": 36.29328,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00096,
+            "positionBudgetUsd": 72.58656,
+            "marginBudgetUsd": 200,
+            "volumeBudgetUsd": 500,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 0,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          },
+          "SELL": {
+            "side": "SELL",
+            "price": 75770.1,
+            "proposedSizeBtc": 0.00047942415279905926,
+            "proposedNotionalUsd": 36.326016,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.611947,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00096,
+            "positionBudgetUsd": 72.73929600000001,
+            "marginBudgetUsd": 164.683542,
+            "volumeBudgetUsd": 464.683542,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 35.316458,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          }
+        },
+        "BID_RAW_BUDGET_USD": 36.326016,
+        "ASK_RAW_BUDGET_USD": 36.326016,
+        "quoteSpreadBps": 21.02294950263822,
+        "expectedBidEdgeBps": 9.011723168320634,
+        "expectedAskEdgeBps": 12.011226334317584,
+        "requiredBidEdgeBps": 8.586023535296663,
+        "requiredAskEdgeBps": 8.603642426576126,
+        "bidLifecycleCostBps": 8.593768001116548,
+        "bidCandidateCosts": [
+          {
+            "distanceBps": 5.007981056881439,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593682687260616,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 6.012220002325606,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593704079693115,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 7.003245277434223,
+            "adverseSelectionBps": 16.459592244037296,
+            "lifecycleCostBps": 19.172528017674676,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 8.007484222876467,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593746595837857,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.011723168320634,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593768001116548,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.00274844342925,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593789128965778,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.01122633431566,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593831960932597,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askCandidateCosts": [
+          {
+            "distanceBps": 5.007981056883362,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.5934695609052,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 6.012220002325606,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593448215570566,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 7.003245277434223,
+            "adverseSelectionBps": 27.95493221031944,
+            "lifecycleCostBps": 30.667569944391015,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 8.00748422287839,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593405818471622,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.011723168322556,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593384485929263,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 10.002748443431173,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593363438274455,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.011226334317584,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593320794473545,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askLifecycleCostBps": 8.593320794473545,
+        "sizingInputs": {
+          "minimumNotionalUsd": 10,
+          "maximumNotionalUsd": 72.652032,
+          "maximumAbsPositionBase": 0.0009600000000000001,
+          "availableMarginUsd": 4.11708855,
+          "maximumEffectiveLeverage": 40,
+          "capacityBlocker": null,
+          "availableHeadroomUsd": 37.08280800000001
+        },
+        "admissionPipeline": [
+          {
+            "gate": "AUTHORITATIVE_SNAPSHOT",
+            "status": "READY",
+            "numericInputs": {
+              "bookAgeMs": 511,
+              "inventoryBase": 0
+            },
+            "reason": "FRESH_SNAPSHOT_AVAILABLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "A fresh authenticated account and market snapshot is required"
+          },
+          {
+            "gate": "ECONOMIC_EVIDENCE",
+            "status": "READY",
+            "numericInputs": {
+              "makerFeeBps": 1.5,
+              "estimatedGasCostUsd": 0.0003784328,
+              "adverseSelectionBufferBps": 5.8807894212240015,
+              "safetyMarginBps": 1
+            },
+            "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "All provenance-labeled economic inputs must be fresh"
+          },
+          {
+            "gate": "BID_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 8.593768001116548,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+          },
+          {
+            "gate": "ASK_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 8.593320794473545,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+          }
+        ],
+        "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "repriceResult": "DESIRED_ORDER_ABSENT",
+        "restingAgeMs": null,
+        "priceDriftTicks": null,
+        "cancelReason": null,
+        "selectedMutation": "WOULD_PLACE",
+        "selectedSide": "SELL",
+        "exactReasonCode": "DESIRED_ORDER_ABSENT",
+        "REPRICE_DECISION_ID": null,
+        "REPRICE_COMMIT_SNAPSHOT_ID": null,
+        "OLD_PRICE": null,
+        "FROZEN_REPLACEMENT_PRICE": null,
+        "REPRICE_IMPROVEMENT_TICKS": null,
+        "REPRICE_ABORT_REASON": null,
+        "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+        "orderDecisions": [
+          {
+            "ORDER_ID": "170141591643962506774669499529477226496",
+            "ORDER_ROLE": "ENTRY",
+            "ORDER_AGE_MS": 875780,
+            "RESTING_PRICE": 75141.4,
+            "CANDIDATE_PRICE": 75611,
+            "DELTA_TICKS": 4696,
+            "EVIDENCE_VERSION": "c3a98cb41a93937c4c31b987961d36d2ac69f4ee2c7b955cedffef6d1994d433:1793951160874:1793951160363:1793951159151",
+            "PLAN_DECISION": "WOULD_REPLACE",
+            "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+            "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+            "REPLACEMENT_NET_BENEFIT": -0.24255250101910036,
+            "RESTING_ENTRY_ECONOMICS": {
+              "decision": "KEEP",
+              "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+              "notionalUsd": 35.316458,
+              "remainingCostBps": 8.487944221402433,
+              "edgeBps": 71.06311906045556,
+              "placementGasSunkUsd": 0.0003784328,
+              "remainingTransactionGasReserveUsd": 0.0003784328,
+              "cancelGasEstimateUsd": 0.0003784328,
+              "fillProbability": null,
+              "conditionalNetUsd": 0.22278958743985122
+            },
+            "ENTRY_REPLACEMENT_VALUE": {
+              "valueKind": "CONDITIONAL_MODEL_PROXY",
+              "expectedNetBenefitUsd": null,
+              "optimality": "NOT_PROVEN",
+              "reason": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+              "netBenefitUsd": -0.24255250101910036,
+              "restingConditionalNetUsd": 0.22278958743985122,
+              "candidateConditionalNetUsd": 0.0018926133603747418,
+              "comparisonQuantity": 0.00047
+            },
+            "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+          }
+        ],
+        "actionClass": "ENTRY",
+        "exitCoverageWorkflow": {
+          "outcome": "BLOCKED",
+          "actionClass": "ENTRY",
+          "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793951159151:BOOK_AT=1793951160363",
+          "evidenceFresh": false,
+          "positionObservedAt": 1793951159151,
+          "sourceStateHash": "c3a98cb41a93937c4c31b987961d36d2ac69f4ee2c7b955cedffef6d1994d433",
+          "positionQuantity": null,
+          "confirmedQuantity": null,
+          "uncoveredQuantity": null,
+          "pendingQuantity": null,
+          "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+        }
+      },
+      "cancel": [
+        {
+          "at": 1793951173664,
+          "reason": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+          "snapshot": {
+            "cycleSequence": 396583,
+            "timestamp": 1793951173664,
+            "authenticatedPositionBase": 0,
+            "bestBid": 75708.6,
+            "bestAsk": 75710.1,
+            "marketSpreadBps": 0.19812612312746045,
+            "bookObservedAt": 1793951172475,
+            "bookAgeMs": 1189,
+            "fairPriceInputs": {
+              "midpoint": 75709.35,
+              "microprice": null,
+              "markPrice": null,
+              "oraclePrice": null
+            },
+            "fairPrice": 75709.35,
+            "fairPriceSource": "BBO_MIDPOINT",
+            "marketRegime": "NORMAL",
+            "operationalMarketRegime": "NORMAL",
+            "operationalMarketRegimeInputs": {
+              "spreadBps": 0.19812612312746045,
+              "realizedVolatilityBps": 1.3720245370042765,
+              "bboVelocityBpsPerSecond": 0.07504306335809183,
+              "topBookImbalance": null,
+              "micropriceDeviationBps": null,
+              "recentTradeIntensity": null,
+              "inventoryUsd": 0
+            },
+            "operationalMarketRegimePolicy": {
+              "bidDistanceMultiplier": 1,
+              "askDistanceMultiplier": 1,
+              "sizeMultiplier": 1,
+              "repriceMinimumTicks": 50,
+              "minimumRestingAgeMs": 30000,
+              "maximumInventoryPriceSkewBps": 2,
+              "volatilitySpreadMultiplier": 1
+            },
+            "bidEvidenceSampleCount": 0,
+            "askEvidenceSampleCount": 0,
+            "volatilitySpreadMultiplier": 1,
+            "inventoryPressure": 0,
+            "inventoryPriceSkewBps": 0,
+            "inventoryBidSizeMultiplier": 1,
+            "inventoryAskSizeMultiplier": 1,
+            "riskState": "NORMAL_MM",
+            "riskReductionTrigger": "NONE",
+            "maximumAbsPositionBase": 0.0008900000000000001,
+            "makerFeeBps": 1.5,
+            "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+            "estimatedGasCostUsd": 0.0003784328,
+            "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+            "adverseSelectionBufferBps": 5.8807894212240015,
+            "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+            "safetyMarginBps": 1,
+            "desiredBid": {
+              "side": "BUY",
+              "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+              "price": 75633.6,
+              "quantity": 0.00047,
+              "orderType": "LIMIT",
+              "timeInForce": "PostOnly",
+              "postOnly": true,
+              "clientOrderId": "d1b155d281f17400d86f3f969de69562",
+              "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+              "generation": 5,
+              "levelId": "BUY-CANDIDATE-6",
+              "skewStatus": "NEUTRAL"
+            },
+            "desiredAsk": {
+              "side": "SELL",
+              "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+              "price": 75800.3,
+              "quantity": 0.00047,
+              "orderType": "LIMIT",
+              "timeInForce": "PostOnly",
+              "postOnly": true,
+              "clientOrderId": "d1s7c052ad32fb8d69808e9d71d5dd40",
+              "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+              "generation": 6,
+              "levelId": "SELL-CANDIDATE-7",
+              "skewStatus": "NEUTRAL"
+            },
+            "FLAT_PAIR_COHORT_ID": "flat-pair-4dfc57f22a2ec5b2c350",
+            "FLAT_PAIR_SHARED_BASE_QTY": 0.00047,
+            "FLAT_PAIR_BUDGET_USD": 35.440867000000004,
+            "quoteSizing": {
+              "BUY": {
+                "side": "BUY",
+                "price": 75633.6,
+                "proposedSizeBtc": 0.00047,
+                "proposedNotionalUsd": 35.547792,
+                "finalSizeBtc": 0.00047,
+                "finalNotionalUsd": 35.547792,
+                "bindingConstraint": "STRATEGY_ALLOCATION",
+                "positionBudgetBtc": 0.00089,
+                "positionBudgetUsd": 67.31390400000001,
+                "marginBudgetUsd": 164.388053,
+                "volumeBudgetUsd": 464.388053,
+                "pendingExposureBtc": 0,
+                "reductionBudgetBtc": 0,
+                "reduceOnly": false,
+                "pendingVolumeUsd": 35.611947,
+                "remainingTargetUsd": 500,
+                "minimumExecutableSizeBtc": 0.00014,
+                "lotSize": 0.00001,
+                "roundingReason": "LOT_ALIGNED"
+              },
+              "SELL": {
+                "side": "SELL",
+                "price": 75800.3,
+                "proposedSizeBtc": 0.00047,
+                "proposedNotionalUsd": 35.626141,
+                "finalSizeBtc": 0.00047,
+                "finalNotionalUsd": 35.626141,
+                "bindingConstraint": "STRATEGY_ALLOCATION",
+                "positionBudgetBtc": 0.00089,
+                "positionBudgetUsd": 67.462267,
+                "marginBudgetUsd": 164.683542,
+                "volumeBudgetUsd": 464.683542,
+                "pendingExposureBtc": 0,
+                "reductionBudgetBtc": 0,
+                "reduceOnly": false,
+                "pendingVolumeUsd": 35.316458,
+                "remainingTargetUsd": 500,
+                "minimumExecutableSizeBtc": 0.00014,
+                "lotSize": 0.00001,
+                "roundingReason": "LOT_ALIGNED"
+              }
+            },
+            "BID_RAW_BUDGET_USD": 33.690660750000006,
+            "ASK_RAW_BUDGET_USD": 33.690660750000006,
+            "quoteSpreadBps": 22.01841648356472,
+            "expectedBidEdgeBps": 10.005369217936753,
+            "expectedAskEdgeBps": 12.013047265627968,
+            "requiredBidEdgeBps": 8.585106042692782,
+            "requiredAskEdgeBps": 8.60355921388654,
+            "bidLifecycleCostBps": 8.593704361201144,
+            "bidCandidateCosts": [
+              {
+                "distanceBps": 5.012590915124365,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593598004179455,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 6.003221530761668,
+                "adverseSelectionBps": 16.84495016091229,
+                "lifecycleCostBps": 19.557779838000773,
+                "adverseSource": "CANDIDATE_P95"
+              },
+              {
+                "distanceBps": 7.007060554608236,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593640477966868,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 8.010899578454804,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593661861917038,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 9.001530194092107,
+                "adverseSelectionBps": 16.635790714745294,
+                "lifecycleCostBps": 19.348684262233373,
+                "adverseSource": "CANDIDATE_P95"
+              },
+              {
+                "distanceBps": 10.005369217936753,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593704361201144,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 12.013047265627968,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593747159079541,
+                "adverseSource": "GLOBAL_FALLBACK"
+              }
+            ],
+            "askCandidateCosts": [
+              {
+                "distanceBps": 5.012590915124365,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593384766592818,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 6.003221530761668,
+                "adverseSelectionBps": 27.515836401698305,
+                "lifecycleCostBps": 30.22841069935674,
+                "adverseSource": "CANDIDATE_P95"
+              },
+              {
+                "distanceBps": 7.007060554608236,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593342394786816,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 8.010899578452882,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593321074968959,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 9.001530194090185,
+                "adverseSelectionBps": 29.23189434101742,
+                "lifecycleCostBps": 31.944404959660886,
+                "adverseSource": "CANDIDATE_P95"
+              },
+              {
+                "distanceBps": 10.005369217936753,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593278728545036,
+                "adverseSource": "GLOBAL_FALLBACK"
+              },
+              {
+                "distanceBps": 12.013047265627968,
+                "adverseSelectionBps": 5.8807894212240015,
+                "lifecycleCostBps": 8.593236118720652,
+                "adverseSource": "GLOBAL_FALLBACK"
+              }
+            ],
+            "askLifecycleCostBps": 8.593236118720652,
+            "sizingInputs": {
+              "minimumNotionalUsd": 10,
+              "maximumNotionalUsd": 67.38132150000001,
+              "maximumAbsPositionBase": 0.0008900000000000001,
+              "availableMarginUsd": 3.226789875,
+              "maximumEffectiveLeverage": 40,
+              "capacityBlocker": null,
+              "availableHeadroomUsd": 31.79792700000001
+            },
+            "admissionPipeline": [
+              {
+                "gate": "AUTHORITATIVE_SNAPSHOT",
+                "status": "READY",
+                "numericInputs": {
+                  "bookAgeMs": 1189,
+                  "inventoryBase": 0
+                },
+                "reason": "FRESH_SNAPSHOT_AVAILABLE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "A fresh authenticated account and market snapshot is required"
+              },
+              {
+                "gate": "ECONOMIC_EVIDENCE",
+                "status": "READY",
+                "numericInputs": {
+                  "makerFeeBps": 1.5,
+                  "estimatedGasCostUsd": 0.0003784328,
+                  "adverseSelectionBufferBps": 5.8807894212240015,
+                  "safetyMarginBps": 1
+                },
+                "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "All provenance-labeled economic inputs must be fresh"
+              },
+              {
+                "gate": "BID_ADMISSION",
+                "status": "READY",
+                "numericInputs": {
+                  "lifecycleCostBps": 8.593704361201144,
+                  "lifecycleCostBudgetBps": 11.25,
+                  "inventoryBase": 0,
+                  "residualInventoryUsd": 0,
+                  "minimumNotionalUsd": 10,
+                  "minimumSize": 0.00002
+                },
+                "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+              },
+              {
+                "gate": "ASK_ADMISSION",
+                "status": "READY",
+                "numericInputs": {
+                  "lifecycleCostBps": 8.593236118720652,
+                  "lifecycleCostBudgetBps": 11.25,
+                  "inventoryBase": 0,
+                  "residualInventoryUsd": 0,
+                  "minimumNotionalUsd": 10,
+                  "minimumSize": 0.00002
+                },
+                "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+              }
+            ],
+            "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "repriceResult": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+            "restingAgeMs": null,
+            "priceDriftTicks": null,
+            "cancelReason": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+            "selectedMutation": "WOULD_CANCEL",
+            "selectedSide": "SELL",
+            "exactReasonCode": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+            "REPRICE_DECISION_ID": null,
+            "REPRICE_COMMIT_SNAPSHOT_ID": null,
+            "OLD_PRICE": null,
+            "FROZEN_REPLACEMENT_PRICE": null,
+            "REPRICE_IMPROVEMENT_TICKS": null,
+            "REPRICE_ABORT_REASON": null,
+            "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+            "orderDecisions": [
+              {
+                "ORDER_ID": "170141591643962506774669499529477226496",
+                "ORDER_ROLE": "ENTRY",
+                "ORDER_AGE_MS": 888570,
+                "RESTING_PRICE": 75141.4,
+                "CANDIDATE_PRICE": 75633.6,
+                "DELTA_TICKS": 4922,
+                "EVIDENCE_VERSION": "abd3faf5ebf2910d4b7e60dc1511568ff6ff6264b6bf70499a33d20be066dab5:1793951173664:1793951172475:1793951170586",
+                "PLAN_DECISION": "WOULD_REPLACE",
+                "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+                "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+                "REPLACEMENT_NET_BENEFIT": -0.25318964966814955,
+                "RESTING_ENTRY_ECONOMICS": {
+                  "decision": "KEEP",
+                  "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+                  "notionalUsd": 35.316458,
+                  "remainingCostBps": 8.487944221402433,
+                  "edgeBps": 75.01715442016231,
+                  "placementGasSunkUsd": 0.0003784328,
+                  "remainingTransactionGasReserveUsd": 0.0003784328,
+                  "cancelGasEstimateUsd": 0.0003784328,
+                  "fillProbability": null,
+                  "conditionalNetUsd": 0.2369600874398553
+                },
+                "ENTRY_REPLACEMENT_VALUE": {
+                  "valueKind": "CONDITIONAL_MODEL_PROXY",
+                  "expectedNetBenefitUsd": null,
+                  "optimality": "NOT_PROVEN",
+                  "reason": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+                  "netBenefitUsd": -0.25318964966814955,
+                  "restingConditionalNetUsd": 0.2369600874398553,
+                  "candidateConditionalNetUsd": 0.005432211285852875,
+                  "comparisonQuantity": 0.00047
+                },
+                "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+              },
+              {
+                "ORDER_ID": "170141606855769711880149237178356989952",
+                "ORDER_ROLE": "ENTRY",
+                "ORDER_AGE_MS": null,
+                "RESTING_PRICE": 75770.1,
+                "CANDIDATE_PRICE": null,
+                "DELTA_TICKS": null,
+                "EVIDENCE_VERSION": "abd3faf5ebf2910d4b7e60dc1511568ff6ff6264b6bf70499a33d20be066dab5:1793951173664:1793951172475:1793951170586",
+                "PLAN_DECISION": "WOULD_CANCEL",
+                "RISK_VALIDATION_DECISION": "CANCEL_REQUIRED",
+                "FINAL_KEEP_CANCEL_REPLACE_REASON": "ECONOMIC_INVALID:RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+                "REPLACEMENT_NET_BENEFIT": null,
+                "RESTING_ENTRY_ECONOMICS": {
+                  "decision": "CANCEL",
+                  "reason": "RESTING_ENTRY_FUTURE_EDGE_INSUFFICIENT",
+                  "notionalUsd": 35.611947,
+                  "remainingCostBps": 8.487055107848773,
+                  "edgeBps": 8.024107986662148,
+                  "placementGasSunkUsd": 0.0003784328,
+                  "remainingTransactionGasReserveUsd": 0.0003784328,
+                  "cancelGasEstimateUsd": 0.0003784328,
+                  "fillProbability": null,
+                  "conditionalNetUsd": -0.0016715556686789854
+                },
+                "ENTRY_REPLACEMENT_VALUE": {
+                  "valueKind": "CONDITIONAL_MODEL_PROXY",
+                  "expectedNetBenefitUsd": null,
+                  "optimality": "NOT_PROVEN",
+                  "reason": "KEEP:ENTRY_COMPARABLE_QUANTITY_REQUIRED",
+                  "netBenefitUsd": null
+                },
+                "ACK_RECONCILIATION_STATE": "CANCELLED_EXTERNALLY:CANCELLED"
+              }
+            ],
+            "actionClass": "CANCEL",
+            "exitCoverageWorkflow": {
+              "outcome": "BLOCKED",
+              "actionClass": "CANCEL",
+              "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793951170586:BOOK_AT=1793951172475",
+              "evidenceFresh": false,
+              "positionObservedAt": 1793951170586,
+              "sourceStateHash": "abd3faf5ebf2910d4b7e60dc1511568ff6ff6264b6bf70499a33d20be066dab5",
+              "positionQuantity": null,
+              "confirmedQuantity": null,
+              "uncoveredQuantity": null,
+              "pendingQuantity": null,
+              "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+            }
+          }
+        }
+      ],
+      "fills": []
+    },
+    {
+      "side": "SELL",
+      "price": 75803,
+      "quantity": 0.00047,
+      "at": 1793951178492,
+      "clientOrderId": "d1sa9abb8eb6dfd296945cc3ce2b05df",
+      "venueOrderId": "170141594179263709155652333930605969408",
+      "firstRetainedOpenAt": 1793951182880,
+      "place": {
+        "cycleSequence": 396584,
+        "timestamp": 1793951178492,
+        "authenticatedPositionBase": 0,
+        "bestBid": 75711.4,
+        "bestAsk": 75712.7,
+        "marketSpreadBps": 0.17170318331136333,
+        "bookObservedAt": 1793951177556,
+        "bookAgeMs": 936,
+        "fairPriceInputs": {
+          "midpoint": 75712.04999999999,
+          "microprice": null,
+          "markPrice": null,
+          "oraclePrice": null
+        },
+        "fairPrice": 75712.04999999999,
+        "fairPriceSource": "BBO_MIDPOINT",
+        "marketRegime": "NORMAL",
+        "operationalMarketRegime": "NORMAL",
+        "operationalMarketRegimeInputs": {
+          "spreadBps": 0.17170318331136333,
+          "realizedVolatilityBps": 1.3721384629825228,
+          "bboVelocityBpsPerSecond": 0.0761042034697222,
+          "topBookImbalance": null,
+          "micropriceDeviationBps": null,
+          "recentTradeIntensity": null,
+          "inventoryUsd": 0
+        },
+        "operationalMarketRegimePolicy": {
+          "bidDistanceMultiplier": 1,
+          "askDistanceMultiplier": 1,
+          "sizeMultiplier": 1,
+          "repriceMinimumTicks": 50,
+          "minimumRestingAgeMs": 30000,
+          "maximumInventoryPriceSkewBps": 2,
+          "volatilitySpreadMultiplier": 1
+        },
+        "bidEvidenceSampleCount": 0,
+        "askEvidenceSampleCount": 0,
+        "volatilitySpreadMultiplier": 1,
+        "inventoryPressure": 0,
+        "inventoryPriceSkewBps": 0,
+        "inventoryBidSizeMultiplier": 1,
+        "inventoryAskSizeMultiplier": 1,
+        "riskState": "NORMAL_MM",
+        "riskReductionTrigger": "NONE",
+        "maximumAbsPositionBase": 0.00096,
+        "makerFeeBps": 1.5,
+        "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+        "estimatedGasCostUsd": 0.0003784328,
+        "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+        "adverseSelectionBufferBps": 5.8807894212240015,
+        "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+        "safetyMarginBps": 1,
+        "desiredBid": {
+          "side": "BUY",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75636.3,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1b39ff0d810472f2ec61039f37fed49",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 5,
+          "levelId": "BUY-CANDIDATE-6",
+          "skewStatus": "NEUTRAL"
+        },
+        "desiredAsk": {
+          "side": "SELL",
+          "market": "0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861",
+          "price": 75803,
+          "quantity": 0.00047,
+          "orderType": "LIMIT",
+          "timeInForce": "PostOnly",
+          "postOnly": true,
+          "clientOrderId": "d1s1be49ec54b0402b025f35abbf1059",
+          "strategyConfigId": "DECIBEL_MARKET_MAKER_V1_PASSIVE_VOLUME_RECYCLING_V1",
+          "generation": 6,
+          "levelId": "SELL-CANDIDATE-7",
+          "skewStatus": "NEUTRAL"
+        },
+        "FLAT_PAIR_COHORT_ID": "flat-pair-4dfc57f22a2ec5b2c350",
+        "FLAT_PAIR_SHARED_BASE_QTY": 0.00047,
+        "FLAT_PAIR_BUDGET_USD": 35.440867000000004,
+        "quoteSizing": {
+          "BUY": {
+            "side": "BUY",
+            "price": 75637.2,
+            "proposedSizeBtc": 0.00048048071583823833,
+            "proposedNotionalUsd": 36.342216,
+            "finalSizeBtc": 0.00048,
+            "finalNotionalUsd": 36.305856,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00096,
+            "positionBudgetUsd": 72.611712,
+            "marginBudgetUsd": 200,
+            "volumeBudgetUsd": 500,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 0,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          },
+          "SELL": {
+            "side": "SELL",
+            "price": 75803.90000000001,
+            "proposedSizeBtc": 0.00047942409295563944,
+            "proposedNotionalUsd": 36.342216,
+            "finalSizeBtc": 0.00047,
+            "finalNotionalUsd": 35.627833,
+            "bindingConstraint": "STRATEGY_ALLOCATION",
+            "positionBudgetBtc": 0.00096,
+            "positionBudgetUsd": 72.77174400000001,
+            "marginBudgetUsd": 164.683542,
+            "volumeBudgetUsd": 464.683542,
+            "pendingExposureBtc": 0,
+            "reductionBudgetBtc": 0,
+            "reduceOnly": false,
+            "pendingVolumeUsd": 35.316458,
+            "remainingTargetUsd": 500,
+            "minimumExecutableSizeBtc": 0.00014,
+            "lotSize": 0.00001,
+            "roundingReason": "ROUNDED_DOWN_TO_LOT"
+          }
+        },
+        "BID_RAW_BUDGET_USD": 36.341784,
+        "ASK_RAW_BUDGET_USD": 36.341784,
+        "quoteSpreadBps": 22.01763127533822,
+        "expectedBidEdgeBps": 10.005012412157043,
+        "expectedAskEdgeBps": 12.012618863181178,
+        "requiredBidEdgeBps": 8.585098756469813,
+        "requiredAskEdgeBps": 8.60355126959709,
+        "bidLifecycleCostBps": 8.593696760745571,
+        "bidCandidateCosts": [
+          {
+            "distanceBps": 5.012412158960501,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593590411315134,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 6.003007447293072,
+            "adverseSelectionBps": 16.84495016091229,
+            "lifecycleCostBps": 19.557772243631156,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.00681067280418,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593632882071425,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 8.010613898313364,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593654264495314,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.001209186645935,
+            "adverseSelectionBps": 16.635790714745294,
+            "lifecycleCostBps": 19.348676663304996,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 10.005012412157043,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593696760745571,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.012618863177336,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.59373955556819,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askCandidateCosts": [
+          {
+            "distanceBps": 5.012412158964345,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593377188936943,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 6.003007447296917,
+            "adverseSelectionBps": 27.515836401698305,
+            "lifecycleCostBps": 30.228403123201197,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 7.006810672808023,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.59333482015115,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 8.010613898317208,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593313501852716,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 9.00120918664978,
+            "adverseSelectionBps": 29.23189434101742,
+            "lifecycleCostBps": 31.944397388043626,
+            "adverseSource": "CANDIDATE_P95"
+          },
+          {
+            "distanceBps": 10.005012412160886,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593271158446289,
+            "adverseSource": "GLOBAL_FALLBACK"
+          },
+          {
+            "distanceBps": 12.012618863181178,
+            "adverseSelectionBps": 5.8807894212240015,
+            "lifecycleCostBps": 8.593228551657564,
+            "adverseSource": "GLOBAL_FALLBACK"
+          }
+        ],
+        "askLifecycleCostBps": 8.593228551657564,
+        "sizingInputs": {
+          "minimumNotionalUsd": 10,
+          "maximumNotionalUsd": 72.683568,
+          "maximumAbsPositionBase": 0.00096,
+          "availableMarginUsd": 4.11708855,
+          "maximumEffectiveLeverage": 40,
+          "capacityBlocker": null,
+          "availableHeadroomUsd": 37.0989045
+        },
+        "admissionPipeline": [
+          {
+            "gate": "AUTHORITATIVE_SNAPSHOT",
+            "status": "READY",
+            "numericInputs": {
+              "bookAgeMs": 936,
+              "inventoryBase": 0
+            },
+            "reason": "FRESH_SNAPSHOT_AVAILABLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "A fresh authenticated account and market snapshot is required"
+          },
+          {
+            "gate": "ECONOMIC_EVIDENCE",
+            "status": "READY",
+            "numericInputs": {
+              "makerFeeBps": 1.5,
+              "estimatedGasCostUsd": 0.0003784328,
+              "adverseSelectionBufferBps": 5.8807894212240015,
+              "safetyMarginBps": 1
+            },
+            "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "All provenance-labeled economic inputs must be fresh"
+          },
+          {
+            "gate": "BID_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 8.593696760745571,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+          },
+          {
+            "gate": "ASK_ADMISSION",
+            "status": "READY",
+            "numericInputs": {
+              "lifecycleCostBps": 8.593228551657564,
+              "lifecycleCostBudgetBps": 11.25,
+              "inventoryBase": 0,
+              "residualInventoryUsd": 0,
+              "minimumNotionalUsd": 10,
+              "minimumSize": 0.00002
+            },
+            "reason": "VOLUME_COST_BUDGET_ELIGIBLE",
+            "persistence": "TRANSIENT",
+            "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+          }
+        ],
+        "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+        "repriceResult": "DESIRED_ORDER_ABSENT",
+        "restingAgeMs": null,
+        "priceDriftTicks": null,
+        "cancelReason": null,
+        "selectedMutation": "WOULD_PLACE",
+        "selectedSide": "SELL",
+        "exactReasonCode": "DESIRED_ORDER_ABSENT",
+        "REPRICE_DECISION_ID": null,
+        "REPRICE_COMMIT_SNAPSHOT_ID": null,
+        "OLD_PRICE": null,
+        "FROZEN_REPLACEMENT_PRICE": null,
+        "REPRICE_IMPROVEMENT_TICKS": null,
+        "REPRICE_ABORT_REASON": null,
+        "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+        "orderDecisions": [
+          {
+            "ORDER_ID": "170141591643962506774669499529477226496",
+            "ORDER_ROLE": "ENTRY",
+            "ORDER_AGE_MS": 893398,
+            "RESTING_PRICE": 75141.4,
+            "CANDIDATE_PRICE": 75636.3,
+            "DELTA_TICKS": 4949,
+            "EVIDENCE_VERSION": "60b014948b4f2263957dae15573f00b47e1c8f170a4e14d739dc224466d305c1:1793951178492:1793951177556:1793951176281",
+            "PLAN_DECISION": "WOULD_REPLACE",
+            "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+            "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+            "REPLACEMENT_NET_BENEFIT": -0.2544604594625033,
+            "RESTING_ENTRY_ECONOMICS": {
+              "decision": "KEEP",
+              "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+              "notionalUsd": 35.316458,
+              "remainingCostBps": 8.487944221402433,
+              "edgeBps": 75.3710935049301,
+              "placementGasSunkUsd": 0.0003784328,
+              "remainingTransactionGasReserveUsd": 0.0003784328,
+              "cancelGasEstimateUsd": 0.0003784328,
+              "fillProbability": null,
+              "conditionalNetUsd": 0.2382290874398471
+            },
+            "ENTRY_REPLACEMENT_VALUE": {
+              "valueKind": "CONDITIONAL_MODEL_PROXY",
+              "expectedNetBenefitUsd": null,
+              "optimality": "NOT_PROVEN",
+              "reason": "KEEP:ENTRY_NO_NET_REPLACEMENT_BENEFIT",
+              "netBenefitUsd": -0.2544604594625033,
+              "restingConditionalNetUsd": 0.2382290874398471,
+              "candidateConditionalNetUsd": 0.005431147763668487,
+              "comparisonQuantity": 0.00047
+            },
+            "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+          }
+        ],
+        "actionClass": "ENTRY",
+        "exitCoverageWorkflow": {
+          "outcome": "BLOCKED",
+          "actionClass": "ENTRY",
+          "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793951176281:BOOK_AT=1793951177556",
+          "evidenceFresh": false,
+          "positionObservedAt": 1793951176281,
+          "sourceStateHash": "60b014948b4f2263957dae15573f00b47e1c8f170a4e14d739dc224466d305c1",
+          "positionQuantity": null,
+          "confirmedQuantity": null,
+          "uncoveredQuantity": null,
+          "pendingQuantity": null,
+          "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+        }
+      },
+      "cancel": [
+        {
+          "at": 1793951374613,
+          "reason": "SESSION_UNWIND_CANCEL_OPEN",
+          "snapshot": {
+            "cycleSequence": 396662,
+            "timestamp": 1793951374613,
+            "authenticatedPositionBase": 0,
+            "bestBid": 75634.9,
+            "bestAsk": 75636.4,
+            "marketSpreadBps": 0.19831917885282935,
+            "bookObservedAt": 1793951372665,
+            "bookAgeMs": 1948,
+            "fairPriceInputs": {
+              "midpoint": 75635.65,
+              "microprice": null,
+              "markPrice": null,
+              "oraclePrice": null
+            },
+            "fairPrice": 75635.65,
+            "fairPriceSource": "BBO_MIDPOINT",
+            "marketRegime": "NORMAL",
+            "operationalMarketRegime": "NORMAL",
+            "operationalMarketRegimeInputs": {
+              "spreadBps": 0.19831917885282935,
+              "realizedVolatilityBps": 1.4592792501309553,
+              "bboVelocityBpsPerSecond": 0.055884782295745825,
+              "topBookImbalance": null,
+              "micropriceDeviationBps": null,
+              "recentTradeIntensity": null,
+              "inventoryUsd": 0
+            },
+            "operationalMarketRegimePolicy": {
+              "bidDistanceMultiplier": 1,
+              "askDistanceMultiplier": 1,
+              "sizeMultiplier": 1,
+              "repriceMinimumTicks": 50,
+              "minimumRestingAgeMs": 30000,
+              "maximumInventoryPriceSkewBps": 2,
+              "volatilitySpreadMultiplier": 1
+            },
+            "bidEvidenceSampleCount": 0,
+            "askEvidenceSampleCount": 0,
+            "volatilitySpreadMultiplier": 1,
+            "inventoryPressure": 0,
+            "inventoryPriceSkewBps": 0,
+            "inventoryBidSizeMultiplier": 1,
+            "inventoryAskSizeMultiplier": 1,
+            "riskState": "SESSION_UNWIND",
+            "riskReductionTrigger": "SESSION_UNWIND",
+            "maximumAbsPositionBase": 0.00002,
+            "makerFeeBps": 1.5,
+            "makerFeeSource": "DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES",
+            "estimatedGasCostUsd": 0.0003784328,
+            "estimatedGasCostSource": "HISTORICAL_SUCCESSFUL_TX_P95",
+            "adverseSelectionBufferBps": 6.769384331129803,
+            "adverseSelectionSource": "SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95",
+            "safetyMarginBps": 1,
+            "desiredBid": null,
+            "desiredAsk": null,
+            "FLAT_PAIR_COHORT_ID": null,
+            "FLAT_PAIR_SHARED_BASE_QTY": null,
+            "FLAT_PAIR_BUDGET_USD": null,
+            "quoteSizing": {
+              "BUY": null,
+              "SELL": null
+            },
+            "BID_RAW_BUDGET_USD": null,
+            "ASK_RAW_BUDGET_USD": null,
+            "quoteSpreadBps": null,
+            "expectedBidEdgeBps": null,
+            "expectedAskEdgeBps": null,
+            "requiredBidEdgeBps": null,
+            "requiredAskEdgeBps": null,
+            "bidLifecycleCostBps": null,
+            "bidCandidateCosts": [],
+            "askCandidateCosts": [],
+            "askLifecycleCostBps": null,
+            "sizingInputs": {
+              "minimumNotionalUsd": 10,
+              "maximumNotionalUsd": 72.610224,
+              "maximumAbsPositionBase": 0.0009600000000000001,
+              "availableMarginUsd": 4.10931475,
+              "maximumEffectiveLeverage": 40,
+              "capacityBlocker": null,
+              "availableHeadroomUsd": 37.061468500000004
+            },
+            "admissionPipeline": [
+              {
+                "gate": "AUTHORITATIVE_SNAPSHOT",
+                "status": "READY",
+                "numericInputs": {
+                  "bookAgeMs": 1948,
+                  "inventoryBase": 0
+                },
+                "reason": "FRESH_SNAPSHOT_AVAILABLE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "A fresh authenticated account and market snapshot is required"
+              },
+              {
+                "gate": "ECONOMIC_EVIDENCE",
+                "status": "READY",
+                "numericInputs": {
+                  "makerFeeBps": 1.5,
+                  "estimatedGasCostUsd": 0.0003784328,
+                  "adverseSelectionBufferBps": 6.769384331129803,
+                  "safetyMarginBps": 1
+                },
+                "reason": "ECONOMIC_EVIDENCE_COMPLETE",
+                "persistence": "TRANSIENT",
+                "clearCondition": "All provenance-labeled economic inputs must be fresh"
+              },
+              {
+                "gate": "BID_ADMISSION",
+                "status": "BLOCKED",
+                "numericInputs": {
+                  "lifecycleCostBps": null,
+                  "lifecycleCostBudgetBps": 11.25,
+                  "inventoryBase": 0,
+                  "residualInventoryUsd": 0,
+                  "minimumNotionalUsd": 10,
+                  "minimumSize": 0.00002
+                },
+                "reason": "SESSION_COMPLETE_FLAT",
+                "persistence": "TRANSIENT",
+                "clearCondition": "BID candidate must pass fresh evidence, inventory, and lifecycle gates"
+              },
+              {
+                "gate": "ASK_ADMISSION",
+                "status": "BLOCKED",
+                "numericInputs": {
+                  "lifecycleCostBps": null,
+                  "lifecycleCostBudgetBps": 11.25,
+                  "inventoryBase": 0,
+                  "residualInventoryUsd": 0,
+                  "minimumNotionalUsd": 10,
+                  "minimumSize": 0.00002
+                },
+                "reason": "SESSION_COMPLETE_FLAT",
+                "persistence": "TRANSIENT",
+                "clearCondition": "ASK candidate must pass fresh evidence, inventory, and lifecycle gates"
+              }
+            ],
+            "bidEligibilityReason": "SESSION_COMPLETE_FLAT",
+            "askEligibilityReason": "SESSION_COMPLETE_FLAT",
+            "repriceResult": "SESSION_UNWIND_CANCEL_OPEN",
+            "restingAgeMs": 191733,
+            "priceDriftTicks": null,
+            "cancelReason": "SESSION_UNWIND_CANCEL_OPEN",
+            "selectedMutation": "WOULD_CANCEL",
+            "selectedSide": "SELL",
+            "exactReasonCode": "SESSION_UNWIND_CANCEL_OPEN",
+            "REPRICE_DECISION_ID": null,
+            "REPRICE_COMMIT_SNAPSHOT_ID": null,
+            "OLD_PRICE": null,
+            "FROZEN_REPLACEMENT_PRICE": null,
+            "REPRICE_IMPROVEMENT_TICKS": null,
+            "REPRICE_ABORT_REASON": null,
+            "CANCEL_TO_REPLACEMENT_ACK_MS": null,
+            "orderDecisions": [
+              {
+                "ORDER_ID": "170141594179263709155652333930605969408",
+                "ORDER_ROLE": "ENTRY",
+                "ORDER_AGE_MS": 191733,
+                "RESTING_PRICE": 75803,
+                "CANDIDATE_PRICE": null,
+                "DELTA_TICKS": null,
+                "EVIDENCE_VERSION": "5f0e26cf42fa138fddd6778b55ef0cea25667932ed64273695e8f21f55532155:1793951374613:1793951372665:1793951373505",
+                "PLAN_DECISION": "WOULD_CANCEL",
+                "RISK_VALIDATION_DECISION": "CANCEL_REQUIRED",
+                "FINAL_KEEP_CANCEL_REPLACE_REASON": "SESSION_UNWIND_CANCEL_OPEN",
+                "REPLACEMENT_NET_BENEFIT": null,
+                "RESTING_ENTRY_ECONOMICS": null,
+                "ENTRY_REPLACEMENT_VALUE": {
+                  "valueKind": "CONDITIONAL_MODEL_PROXY",
+                  "expectedNetBenefitUsd": null,
+                  "optimality": "NOT_PROVEN",
+                  "reason": "KEEP:ENTRY_COMPARABLE_QUANTITY_REQUIRED",
+                  "netBenefitUsd": null
+                },
+                "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+              }
+            ],
+            "actionClass": "CANCEL",
+            "exitCoverageWorkflow": {
+              "outcome": "BLOCKED",
+              "actionClass": "CANCEL",
+              "reason": "AUTHENTICATED_EXIT_EVIDENCE_UNVERIFIED:ACCOUNT_AT=1793951373505:BOOK_AT=1793951372665",
+              "evidenceFresh": false,
+              "positionObservedAt": 1793951373505,
+              "sourceStateHash": "5f0e26cf42fa138fddd6778b55ef0cea25667932ed64273695e8f21f55532155",
+              "positionQuantity": null,
+              "confirmedQuantity": null,
+              "uncoveredQuantity": null,
+              "pendingQuantity": null,
+              "nextCondition": "FRESH_EVIDENCE_AND_SAME_ACTION_AUTHORIZATION"
+            }
+          }
+        }
+      ],
+      "fills": []
+    }
+  ]
+}

@@ -1,0 +1,767 @@
+{
+  "source": "Read-only production journal and stdout; no hypothetical fill probabilities. Missing evidence remains unknown.",
+  "resting": {
+    "timestamp": 1794024735426,
+    "bestBid": 75756.3,
+    "bestAsk": 75756.4,
+    "bookObservedAt": 1794024734617,
+    "fairPrice": 75756.35,
+    "marketSpreadBps": 0.013200213578303184,
+    "volatilitySpreadMultiplier": 1,
+    "maximumAbsPositionBase": 0.0008900000000000002,
+    "makerFeeBps": 1.5,
+    "estimatedGasCostUsd": 0.0003639636,
+    "adverseSelectionBufferBps": 3.6316287128451368,
+    "safetyMarginBps": 1,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 67.42315150000002,
+      "maximumAbsPositionBase": 0.0008900000000000002,
+      "availableMarginUsd": 3.293224775,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 31.817667000000014
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 1,
+      "askDistanceMultiplier": 1,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 50,
+      "minimumRestingAgeMs": 30000,
+      "maximumInventoryPriceSkewBps": 2,
+      "volatilitySpreadMultiplier": 1
+    },
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 5.009481053403059,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7235723355866437,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 6.012697285442462,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7235947782203294,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 7.002713303901641,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7236169299737756,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 8.005929535941043,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7236393815617497,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.009145767978525,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723661837658545,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 10.012362000017928,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7236842982655203,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 12.005594250514587,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723728937333097,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 5.009481053403059,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723348451465133,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 6.012697285442462,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7233260582503043,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 7.002713303901641,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723303964084714,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 8.005929535939122,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7232815797892784,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.009145767978525,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723259199981058,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 10.012362000016008,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723236824658703,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 12.005594250514587,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723192381731238,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "authenticatedPositionBase": 0,
+    "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "desiredBid": {
+      "side": "BUY",
+      "price": 75718.40000000001,
+      "quantity": 0.00043,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "BUY-CANDIDATE-1"
+    },
+    "desiredAsk": {
+      "side": "SELL",
+      "price": 75847.3,
+      "quantity": 0.00043,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "SELL-CANDIDATE-7"
+    },
+    "recordedOrders": [
+      {
+        "ORDER_ROLE": "ENTRY",
+        "RESTING_PRICE": 76035.7,
+        "CANDIDATE_PRICE": null,
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN",
+        "RESTING_ENTRY_ECONOMICS": {
+          "decision": "KEEP",
+          "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+          "notionalUsd": 35.736779,
+          "remainingCostBps": 2.6018456643784265,
+          "adverseSelectionApplied": false,
+          "expectedValueUsd": null,
+          "edgeBps": 36.87479663420839,
+          "placementGasSunkUsd": 0.0003639636,
+          "remainingTransactionGasReserveUsd": 0.0003639636,
+          "cancelGasEstimateUsd": 0.0003639636,
+          "fillProbability": null,
+          "conditionalNetUsd": 0.1219963416499959
+        }
+      },
+      {
+        "ORDER_ROLE": "ENTRY",
+        "RESTING_PRICE": 75661,
+        "CANDIDATE_PRICE": null,
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN",
+        "RESTING_ENTRY_ECONOMICS": {
+          "decision": "KEEP",
+          "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+          "notionalUsd": 32.53423,
+          "remainingCostBps": 2.6118709740479487,
+          "adverseSelectionApplied": false,
+          "expectedValueUsd": null,
+          "edgeBps": 12.586403648011792,
+          "placementGasSunkUsd": 0.0003639636,
+          "remainingTransactionGasReserveUsd": 0.0003639636,
+          "cancelGasEstimateUsd": 0.0003639636,
+          "fillProbability": null,
+          "conditionalNetUsd": 0.0325029789000025
+        }
+      }
+    ]
+  },
+  "sellPlacement": {
+    "timestamp": 1794016968506,
+    "bestBid": 75952.2,
+    "bestAsk": 75955,
+    "bookObservedAt": 1794016966538,
+    "fairPrice": 75953.6,
+    "marketSpreadBps": 0.3686461207899178,
+    "volatilitySpreadMultiplier": 1,
+    "maximumAbsPositionBase": 0.00095,
+    "makerFeeBps": 1.5,
+    "estimatedGasCostUsd": 0.000365115,
+    "adverseSelectionBufferBps": 2.1488960870319938,
+    "safetyMarginBps": 1,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 72.15592000000001,
+      "maximumAbsPositionBase": 0.00095,
+      "availableMarginUsd": 5,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 72.15592000000001
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 0.9,
+      "askDistanceMultiplier": 0.9,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 75,
+      "minimumRestingAgeMs": 60000,
+      "maximumInventoryPriceSkewBps": 1.5,
+      "volatilitySpreadMultiplier": 1
+    },
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 4.502749046786075,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.704648726289174,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 5.411198415875721,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.70466732765537,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 6.306481852079259,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7046856627451996,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 7.201765288280883,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7047040011204153,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 8.110214657370529,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7047226125367403,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.005498093574067,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7047409575337262,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 10.809230898865335,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.704777927293362,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 4.502749046786075,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.704464512864411,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 5.411198415873805,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.70444594834427,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 6.306481852077344,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7044276561730793,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 7.201765288280883,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7044093672748675,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 8.110214657368612,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.704390812766898,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.00549809357215,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7043725304601076,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 10.80923089886342,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7043357069197533,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "authenticatedPositionBase": 0,
+    "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "desiredBid": {
+      "side": "BUY",
+      "price": 75919.40000000001,
+      "quantity": 0.00047,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "BUY-CANDIDATE-1"
+    },
+    "desiredAsk": {
+      "side": "SELL",
+      "price": 76035.7,
+      "quantity": 0.00047,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "SELL-CANDIDATE-7"
+    },
+    "recordedOrders": []
+  },
+  "buyPlacement": {
+    "timestamp": 1794022696682,
+    "bestBid": 75698.1,
+    "bestAsk": 75699.7,
+    "bookObservedAt": 1794022696206,
+    "fairPrice": 75698.9,
+    "marketSpreadBps": 0.21136370541596627,
+    "volatilitySpreadMultiplier": 1,
+    "maximumAbsPositionBase": 0.0009600000000000001,
+    "makerFeeBps": 1.5,
+    "estimatedGasCostUsd": 0.0003639636,
+    "adverseSelectionBufferBps": 3.5886238648096254,
+    "safetyMarginBps": 1,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 72.670944,
+      "maximumAbsPositionBase": 0.0009600000000000001,
+      "availableMarginUsd": 4.106580525,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 37.09246100000001
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 1,
+      "askDistanceMultiplier": 1,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 50,
+      "minimumRestingAgeMs": 30000,
+      "maximumInventoryPriceSkewBps": 2,
+      "volatilitySpreadMultiplier": 1
+    },
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 5.006677772067254,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7237419480958978,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 6.010655372797419,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723764424796291,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 7.001422741940167,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7237866101782613,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 8.005400342672255,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7238090958533405,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.009377943404342,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723831586047514,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 10.00014531254709,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7238537847497026,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 12.008100514009344,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723898787626755,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 5.006677772069176,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7235180194421167,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 6.0106553728012635,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723495592213863,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 7.001422741944012,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723473464492425,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 8.005400342674177,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7234510462038917,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.009377943406264,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7234286324127983,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 10.000145312549012,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.723406517947752,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 12.008100514011264,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 2.7233617127223413,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "authenticatedPositionBase": 0,
+    "bidEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "askEligibilityReason": "VOLUME_COST_BUDGET_ELIGIBLE",
+    "desiredBid": {
+      "side": "BUY",
+      "price": 75661,
+      "quantity": 0.00043,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "BUY-CANDIDATE-1"
+    },
+    "desiredAsk": {
+      "side": "SELL",
+      "price": 75789.8,
+      "quantity": 0.00043,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "SELL-CANDIDATE-7"
+    },
+    "recordedOrders": [
+      {
+        "ORDER_ROLE": "ENTRY",
+        "RESTING_PRICE": 76035.7,
+        "CANDIDATE_PRICE": null,
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN",
+        "RESTING_ENTRY_ECONOMICS": {
+          "decision": "KEEP",
+          "reason": "RESTING_ENTRY_FUTURE_ECONOMICS_VALID",
+          "notionalUsd": 35.736779,
+          "remainingCostBps": 2.6018456643784265,
+          "adverseSelectionApplied": false,
+          "expectedValueUsd": null,
+          "edgeBps": 44.49205999030407,
+          "placementGasSunkUsd": 0.0003639636,
+          "remainingTransactionGasReserveUsd": 0.0003639636,
+          "cancelGasEstimateUsd": 0.0003639636,
+          "fillProbability": null,
+          "conditionalNetUsd": 0.14899784165000135
+        }
+      }
+    ]
+  },
+  "tpPlacement": {
+    "timestamp": 1793986615749,
+    "bestBid": 75592.5,
+    "bestAsk": 75613.2,
+    "bookObservedAt": 1793986614570,
+    "fairPrice": 75602.85,
+    "marketSpreadBps": 2.7379920201417125,
+    "volatilitySpreadMultiplier": 1,
+    "maximumAbsPositionBase": 0.00096,
+    "makerFeeBps": 1.5,
+    "estimatedGasCostUsd": 0.0003722594,
+    "adverseSelectionBufferBps": 6.803026917245262,
+    "safetyMarginBps": 1,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 72.578736,
+      "maximumAbsPositionBase": 0.00096,
+      "availableMarginUsd": 4.1116665125,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 37.0453965
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 1,
+      "askDistanceMultiplier": 1,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 50,
+      "minimumRestingAgeMs": 30000,
+      "maximumInventoryPriceSkewBps": 2,
+      "volatilitySpreadMultiplier": 1
+    },
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 8.432221801162257,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.2040051348998637,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.926874449839246,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.2041104637724693,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 11.408300083925406,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.204214891635935,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 12.902952732602396,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.2043202832875877,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 14.384378366688557,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.204424773402349,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 15.879031015365545,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.204530227889192,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 18.855109298128696,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.204740297689173,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 4.027625942672411,
+        "adverseSelectionBps": 6.803026917245262,
+        "lifecycleCostBps": 9.512469392079957,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 5.032879051517622,
+        "adverseSelectionBps": 6.803026917245262,
+        "lifecycleCostBps": 9.51244834840109,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.0249051457720055,
+        "adverseSelectionBps": 6.803026917245262,
+        "lifecycleCostBps": 9.512427585757946,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 7.030158254615292,
+        "adverseSelectionBps": 6.803026917245262,
+        "lifecycleCostBps": 9.512406550478778,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 8.022184348869676,
+        "adverseSelectionBps": 6.803026917245262,
+        "lifecycleCostBps": 9.512385796122327,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 9.027437457714887,
+        "adverseSelectionBps": 6.803026917245262,
+        "lifecycleCostBps": 9.51236476923783,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 11.024716660812558,
+        "adverseSelectionBps": 6.803026917245262,
+        "lifecycleCostBps": 9.512323004668264,
+        "adverseSource": "GLOBAL_FALLBACK"
+      }
+    ],
+    "authenticatedPositionBase": 0.00047,
+    "bidEligibilityReason": "INVENTORY_EXIT_COVERAGE_REQUIRED",
+    "askEligibilityReason": "TP_COVERAGE_REPAIR_ELIGIBLE",
+    "desiredBid": null,
+    "desiredAsk": {
+      "side": "SELL",
+      "price": 75717.9,
+      "quantity": 0.00047,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "SELL-CANDIDATE-7"
+    },
+    "recordedOrders": []
+  },
+  "tpReview": {
+    "timestamp": 1793987998390,
+    "bestBid": 75681,
+    "bestAsk": 75683.3,
+    "bookObservedAt": 1793987997796,
+    "fairPrice": 75682.15,
+    "marketSpreadBps": 0.3039025714785997,
+    "volatilitySpreadMultiplier": 1,
+    "maximumAbsPositionBase": 0.0009600000000000001,
+    "makerFeeBps": 1.5,
+    "estimatedGasCostUsd": 0.0003722594,
+    "adverseSelectionBufferBps": 6.658881440168762,
+    "safetyMarginBps": 1,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 72.654864,
+      "maximumAbsPositionBase": 0.0009600000000000001,
+      "availableMarginUsd": 4.1107347375000005,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 37.08425350000001
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 1,
+      "askDistanceMultiplier": 1,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 50,
+      "minimumRestingAgeMs": 30000,
+      "maximumInventoryPriceSkewBps": 2,
+      "volatilitySpreadMultiplier": 1
+    },
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 8.436599647339733,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.203267784196607,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 9.916473038885439,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.203371962232572,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 11.409559585713577,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.2034771017135117,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 12.902646132541713,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.2035822726314827,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 14.395732679369852,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.203687475000586,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 15.875606070915559,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.2037917774240263,
+        "adverseSource": "NOT_APPLIED"
+      },
+      {
+        "distanceBps": 18.86177916456991,
+        "adverseSelectionBps": 0,
+        "lifecycleCostBps": 3.2040023389875256,
+        "adverseSource": "NOT_APPLIED"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 4.0234057832674734,
+        "adverseSelectionBps": 6.658881440168762,
+        "lifecycleCostBps": 9.36810454876515,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 5.027605584672596,
+        "adverseSelectionBps": 6.658881440168762,
+        "lifecycleCostBps": 9.368083549142522,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.0318053860796415,
+        "adverseSelectionBps": 6.658881440168762,
+        "lifecycleCostBps": 9.368062553734914,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 7.022792032204256,
+        "adverseSelectionBps": 6.658881440168762,
+        "lifecycleCostBps": 9.368041838713626,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 8.026991833611302,
+        "adverseSelectionBps": 6.658881440168762,
+        "lifecycleCostBps": 9.368020851676835,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 9.031191635016425,
+        "adverseSelectionBps": 6.658881440168762,
+        "lifecycleCostBps": 9.367999868851278,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 11.026378082548083,
+        "adverseSelectionBps": 6.658881440168762,
+        "lifecycleCostBps": 9.367958191780508,
+        "adverseSource": "GLOBAL_FALLBACK"
+      }
+    ],
+    "authenticatedPositionBase": 0.00047,
+    "bidEligibilityReason": "POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED",
+    "askEligibilityReason": "TP_COVERAGE_REPAIR_ELIGIBLE",
+    "desiredBid": null,
+    "desiredAsk": {
+      "side": "SELL",
+      "price": 75765.6,
+      "quantity": 0.00047,
+      "postOnly": true,
+      "timeInForce": "PostOnly",
+      "levelId": "SELL-CANDIDATE-7"
+    },
+    "recordedOrders": [
+      {
+        "ORDER_ROLE": "REDUCE_ONLY_EXIT",
+        "RESTING_PRICE": 75717.9,
+        "CANDIDATE_PRICE": 75765.6,
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN",
+        "RESTING_ENTRY_ECONOMICS": null
+      }
+    ]
+  },
+  "reportedCapital": {
+    "equityUsdApprox": 5.7,
+    "availableMarginUsd": 4.842113,
+    "strategyAllocationRemainingUsd": 0.7932247750000001,
+    "maximumTotalExposureUsd": 67.42315150000002,
+    "pendingGrossNotionalUsd": 68.271009,
+    "combinedPendingRiskUsd": 35.6054845
+  }
+}

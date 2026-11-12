@@ -29,7 +29,9 @@ export function getSafeProductionLiveFailureV1(error: unknown): Readonly<{
   });
 }
 
-async function loadSource(modulePath: string | null): Promise<DecibelProductionLiveStateSourceV1> {
+export async function loadDecibelProductionLiveSourceV1(
+  modulePath: string | null,
+): Promise<DecibelProductionLiveStateSourceV1> {
   if (modulePath === null) return createDecibelProductionLiveStateSourceV1();
   const imported = (await import(pathToFileURL(resolve(modulePath)).href)) as {
     createDecibelProductionLiveStateSourceV1?: () => DecibelProductionLiveStateSourceV1;
@@ -56,7 +58,7 @@ export async function runDecibelProductionLiveV1(environment: NodeJS.ProcessEnv)
   try {
     const [executor, source] = await Promise.all([
       loadDecibelProductionExecutorV1(configuration.executorModulePath),
-      loadSource(configuration.sourceModulePath),
+      loadDecibelProductionLiveSourceV1(configuration.sourceModulePath),
     ]);
     Journal = new decibel_execution_lifecycle_journal_v1(resolve(configuration.journalPath));
     const Orchestrator = new decibel_production_live_orchestrator_v1(
@@ -65,10 +67,15 @@ export async function runDecibelProductionLiveV1(environment: NodeJS.ProcessEnv)
       executor,
       configuration,
       {
-        maxPlaceAttemptsPerMinute: 1,
-        maxCancelAttemptsPerMinute: 1,
-        maxTotalMutationAttemptsPerMinute: 1,
+        maxPlaceAttemptsPerMinute: Math.max(15, configuration.maximumLadderLevelsPerSide * 5),
+        maxCancelAttemptsPerMinute: Math.max(15, configuration.maximumLadderLevelsPerSide * 5),
+        maxTotalMutationAttemptsPerMinute: Math.max(
+          30,
+          configuration.maximumLadderLevelsPerSide * 10,
+        ),
         maxConsecutiveUnknownOutcomes: 1,
+        maxKnownLiveOrders: 2,
+        submissionTimeoutMs: configuration.submissionTimeoutMs,
       },
     );
     Journal = null;

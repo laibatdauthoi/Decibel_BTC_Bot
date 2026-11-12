@@ -1,0 +1,49 @@
+{
+  "provenance": "Sanitized read-only production journal and runtime log, PID 26824. No historical authenticated position entry_price was persisted; reconstructed basis is conditional analysis only.",
+  "fills": [
+    {
+      "quantity": 0.00072,
+      "price": 80466.8,
+      "timestamp": 1793116093691,
+      "version": "7789286361",
+      "tradeId": "129207631542125867557934325760004"
+    },
+    {
+      "quantity": 0.00019,
+      "price": 80407.6,
+      "timestamp": 1793116740129,
+      "version": "7789388557",
+      "tradeId": "129207678122873819043167371526145"
+    },
+    {
+      "quantity": 0.00013,
+      "price": 80346.7,
+      "timestamp": 1793117521062,
+      "version": "7789521413",
+      "tradeId": "129207734395007376256359970897922"
+    }
+  ],
+  "positionBefore": 0.00091,
+  "positionAfter": 0.00104,
+  "restingPrice": 80577.4,
+  "candidatePrices": [80431.2, 80353.8],
+  "candidateProvenance": [
+    "Operator-reported; exact decision timestamp not recovered",
+    "Journal decision at 1793117599909"
+  ],
+  "bestBid": 80329.4,
+  "bestAsk": 80330,
+  "makerFeeBps": 1.5,
+  "takerFeeBps": 4.5,
+  "gasUsd": 0.0004583624,
+  "adverseSelectionBps": 5.79383670486129,
+  "safetyBps": 1,
+  "lotSize": 0.00001,
+  "minimumSize": 0.00002,
+  "cancelPreparedAt": 1793117531991,
+  "cancelSdkAckAt": 1793117535495,
+  "cancelTerminalAt": 1793117544537,
+  "replacementPreparedAt": 1793117554803,
+  "replacementSdkAckAt": 1793117559759,
+  "replacementAuthenticatedOpenAt": 1793117569328
+}

@@ -1,0 +1,162 @@
+{
+  "provenance": "PID 34312, session-1793981549008-b428785a-32ac-4d74-8c5e-66c771dd5361; immutable read-only production journal strategy_decision_snapshots cycle 402663; no modified production data. Replay adapts archived economics to controlled fresh account/capacity evidence; not a claim of live execution authorization.",
+  "snapshot": {
+    "cycleSequence": 402663,
+    "timestamp": 1793981560975,
+    "authenticatedPositionBase": 0,
+    "bestBid": 75378.7,
+    "bestAsk": 75380.2,
+    "bookObservedAt": 1793981559954,
+    "fairPrice": 75379.45,
+    "maximumAbsPositionBase": 0.0009500000000000001,
+    "makerFeeBps": 1.5,
+    "estimatedGasCostUsd": 0.0004002999,
+    "adverseSelectionBufferBps": 16.23002839758855,
+    "safetyMarginBps": 1,
+    "bidLifecycleCostBps": 18.956118840170447,
+    "askLifecycleCostBps": 18.95573448342229,
+    "bidCandidateCosts": [
+      {
+        "distanceBps": 5.007996211168959,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.956118840170447,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.002962345838289,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.956141348915736,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 7.0111946956353846,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.9561641623499,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 8.006160830304715,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.95618668012077,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 9.001126964974045,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.956209202376556,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 10.009359314773072,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.95623202950548,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 12.012557799239497,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.956277397080804,
+        "adverseSource": "GLOBAL_FALLBACK"
+      }
+    ],
+    "askCandidateCosts": [
+      {
+        "distanceBps": 5.007996211168959,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.9558925015048,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 6.002962345838289,
+        "adverseSelectionBps": 21.926182081990238,
+        "lifecycleCostBps": 24.652023726675232,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 7.011194695637315,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.9558472881417,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 8.006160830306644,
+        "adverseSelectionBps": 20.87334581401814,
+        "lifecycleCostBps": 23.599142254330445,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 9.001126964975974,
+        "adverseSelectionBps": 23.43110037817634,
+        "lifecycleCostBps": 26.15687437271123,
+        "adverseSource": "CANDIDATE_P95"
+      },
+      {
+        "distanceBps": 10.009359314775,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.955779651620727,
+        "adverseSource": "GLOBAL_FALLBACK"
+      },
+      {
+        "distanceBps": 12.012557799241426,
+        "adverseSelectionBps": 16.23002839758855,
+        "lifecycleCostBps": 18.95573448342229,
+        "adverseSource": "GLOBAL_FALLBACK"
+      }
+    ],
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 71.6104775,
+      "maximumAbsPositionBase": 0.0009500000000000001,
+      "availableMarginUsd": 5,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 71.6104775
+    },
+    "quoteSizing": {
+      "BUY": {
+        "side": "BUY",
+        "price": 75341.7,
+        "proposedSizeBtc": 0.0004752379990098445,
+        "proposedNotionalUsd": 35.80523875,
+        "finalSizeBtc": 0.00047,
+        "finalNotionalUsd": 35.410599,
+        "bindingConstraint": "STRATEGY_ALLOCATION",
+        "positionBudgetBtc": 0.00095,
+        "positionBudgetUsd": 71.574615,
+        "marginBudgetUsd": 200,
+        "volumeBudgetUsd": 500,
+        "pendingExposureBtc": 0,
+        "reductionBudgetBtc": 0,
+        "reduceOnly": false,
+        "pendingVolumeUsd": 0,
+        "remainingTargetUsd": 500,
+        "minimumExecutableSizeBtc": 0.00014,
+        "lotSize": 1e-5,
+        "roundingReason": "ROUNDED_DOWN_TO_LOT"
+      },
+      "SELL": {
+        "side": "SELL",
+        "price": 75417.2,
+        "proposedSizeBtc": 0.0004747622392504628,
+        "proposedNotionalUsd": 35.80523875,
+        "finalSizeBtc": 0.00047,
+        "finalNotionalUsd": 35.446084,
+        "bindingConstraint": "STRATEGY_ALLOCATION",
+        "positionBudgetBtc": 0.00095,
+        "positionBudgetUsd": 71.64634,
+        "marginBudgetUsd": 200,
+        "volumeBudgetUsd": 500,
+        "pendingExposureBtc": 0,
+        "reductionBudgetBtc": 0,
+        "reduceOnly": false,
+        "pendingVolumeUsd": 0,
+        "remainingTargetUsd": 500,
+        "minimumExecutableSizeBtc": 0.00014,
+        "lotSize": 1e-5,
+        "roundingReason": "ROUNDED_DOWN_TO_LOT"
+      }
+    },
+    "bidEligibilityReason": "LIFECYCLE_COST_BUDGET_EXCEEDED",
+    "askEligibilityReason": "LIFECYCLE_COST_BUDGET_EXCEEDED"
+  }
+}

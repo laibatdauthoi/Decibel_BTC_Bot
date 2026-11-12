@@ -6,8 +6,25 @@
   },
   "include": [
     "src/run_decibel_production_live_v1.ts",
+    "src/run_decibel_production_live_shadow_v1.ts",
+    "src/run_decibel_production_normal_mm_replay_v1.ts",
+    "src/run_decibel_production_economic_inputs_audit_v1.ts",
+    "src/run_decibel_production_economic_viability_v1.ts",
+    "src/run_decibel_sparse_passive_shadow_study_v1.ts",
+    "src/run_decibel_regime_edge_out_of_sample_v1.ts",
+    "src/run_decibel_market_state_policy_search_v1.ts",
+    "src/run_decibel_directional_passive_forward_shadow_v1.ts",
+    "src/run_decibel_lifecycle_economic_policy_search_v1.ts",
+    "src/run_decibel_passive_lifecycle_frontier_v1.ts",
+    "src/run_decibel_sticky_forward_shadow_v1.ts",
+    "src/run_decibel_sticky_forward_shadow_v1.ts",
+    "src/run_decibel_passive_lifecycle_frontier_v1.ts",
+    "src/run_decibel_production_live_tui_v1.ts",
+    "src/run_decibel_production_live_tui_node22_bridge_v1.ts",
+    "src/run_decibel_production_web_v1.ts",
     "src/run_decibel_authenticated_btc_activity_resync_v1.ts",
     "src/run_decibel_execution_journal_resolve_pre_submission_failure_v1.ts",
-    "src/decibel_external_production_executor_v1.ts"
+    "src/decibel_external_production_executor_v1.ts",
+    "src/decibel_authenticated_http_worker_v1.mjs"
   ]
 }

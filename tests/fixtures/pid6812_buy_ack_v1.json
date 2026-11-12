@@ -1,0 +1,42 @@
+{
+  "intent": {
+    "sessionId": "session-1793926264057-e34bd5ed-ab7b-4333-8ece-845595459ead",
+    "cycleSequence": 392259,
+    "action": "PLACE",
+    "market": "BTC/USD",
+    "side": "BUY",
+    "price": 76071.40000000001,
+    "quantity": 0.00047,
+    "tickSize": 0.1,
+    "lotSize": 0.00001,
+    "priceDecimals": 6,
+    "sizeDecimals": 8,
+    "clientOrderId": "d1b813e285e3f2561b458561abca330e",
+    "sourceStateHash": "fd6d7803e6d03d9f4c73bee6a5d7ae11e5a38835acfda4e23fca6289de4a72fd",
+    "strategyDecisionHash": "e1ccb2943041e5631ac81b4aba801caa945b927aaa2d6166d5faf6daba15b142",
+    "createdAt": 1793926997236,
+    "executionRole": "STANDARD_MAKER",
+    "reduceOnly": false,
+    "timeInForce": "PostOnly",
+    "intentId": "intent-813e285e3f2561b458561abc",
+    "mutationKey": "813e285e3f2561b458561abca330e4621e7584148a23d4cab522af95a74465a4",
+    "priceTicks": 760714,
+    "quantityLots": 47,
+    "expectedPreviousVenueOrderId": null,
+    "status": "PREPARED",
+    "type": "LIMIT",
+    "postOnly": true,
+    "selfTradePermitted": false,
+    "externalCounterpartyRequired": true
+  },
+  "venueOrderId": "170141604320468511673305822468631429120",
+  "outcome": {
+    "outcome": "PLACE_ACCEPTED",
+    "venueOrderId": "170141604320468511673305822468631429120",
+    "transactionHash": "0x1300413245362b51bbd54ae1d585a84413a18aef8ccedec47cef93ef7e2f6a17",
+    "expirationTimestampMs": 1793927021000
+  },
+  "ackAt": 1793927004059,
+  "unresolvedAt": 1793927005032,
+  "openAt": 1793927006373
+}

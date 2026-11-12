@@ -1,13 +1,14 @@
 import { readFile } from 'node:fs/promises';
-import { registerHooks } from 'node:module';
+import { createRequire, registerHooks } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 export const DECIBEL_SDK_RUNTIME_V1 = 'DECIBEL_SDK_0_7_0_WINDOWS_ESM_COMPATIBILITY_V1';
 export const DECIBEL_SDK_REQUIRED_VERSION_V1 = '0.7.0';
 
 type sdk_runtime_symbols_v1 = Readonly<{
   DecibelWriteDex: typeof import('@decibeltrade/sdk').DecibelWriteDex;
+  DecibelReadDex: typeof import('@decibeltrade/sdk').DecibelReadDex;
   MAINNET_CONFIG: typeof import('@decibeltrade/sdk').MAINNET_CONFIG;
 }>;
 
@@ -40,8 +41,8 @@ function fail(blocker: string): never {
 }
 
 async function resolveSdk(): Promise<sdk_resolution_v1> {
-  const entrypointUrl = import.meta.resolve('@decibeltrade/sdk');
-  const sdkEntrypoint = fileURLToPath(entrypointUrl);
+  const ProjectRequire = createRequire(pathToFileURL(path.resolve('package.json')));
+  const sdkEntrypoint = ProjectRequire.resolve('@decibeltrade/sdk');
   const packageRoot = path.resolve(path.dirname(sdkEntrypoint), '..');
   const packageJsonPath = path.join(packageRoot, 'package.json');
   const packageDocument: unknown = JSON.parse(await readFile(packageJsonPath, 'utf8'));
@@ -101,10 +102,15 @@ export async function loadDecibelSdkRuntimeV1(): Promise<sdk_runtime_symbols_v1>
       validateDecibelSdkVersionV1(resolution.sdkVersion);
       registerSdkCompatibilityHooks(resolution.packageDistUrl);
       const sdk = await import('@decibeltrade/sdk');
-      if (typeof sdk.DecibelWriteDex !== 'function' || typeof sdk.MAINNET_CONFIG !== 'object')
+      if (
+        typeof sdk.DecibelWriteDex !== 'function' ||
+        typeof sdk.DecibelReadDex !== 'function' ||
+        typeof sdk.MAINNET_CONFIG !== 'object'
+      )
         return fail('SDK_RUNTIME_UNAVAILABLE');
       return Object.freeze({
         DecibelWriteDex: sdk.DecibelWriteDex,
+        DecibelReadDex: sdk.DecibelReadDex,
         MAINNET_CONFIG: sdk.MAINNET_CONFIG,
       });
     } catch (error) {

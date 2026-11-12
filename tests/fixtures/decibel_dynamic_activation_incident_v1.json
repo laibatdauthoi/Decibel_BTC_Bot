@@ -1,0 +1,21 @@
+{
+  "source": "Sanitized read-only PID 24208 incident observations",
+  "positionBase": 0.00073,
+  "entryPrice": 80391.3,
+  "bestBid": 80353.3,
+  "bestAsk": 80353.7,
+  "aggregateCapacityUsd": 118.119351,
+  "placementHeadroomUsd": 59.461442,
+  "availableMarginUsd": 6.533552275,
+  "selectedLeverage": 40,
+  "minimumNotionalUsd": 10,
+  "lotSize": 1e-5,
+  "minimumSize": 2e-5,
+  "targetUsd": 201,
+  "executedVolumeUsd": 58.685649,
+  "collateralFraction": 0.5,
+  "legacyTerminalStatus": "FULL_FILL",
+  "legacyRemainingQuantity": 0.00073,
+  "legacyTransactionVersion": "1793008399547",
+  "authenticatedTransactionVersion": "7771963901"
+}

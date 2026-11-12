@@ -1,0 +1,151 @@
+{
+  "global": {
+    "__variant__": "V1",
+    "collateral": {
+      "__variant__": "V1",
+      "balance_table": {
+        "handle": "0xed020b955efd12844a4206909d2b92ee597baade6dce82889c0a0dc1dbe04f53"
+      },
+      "primary_asset_type": {
+        "inner": "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+      },
+      "primary_store": {
+        "__variant__": "PairedV1",
+        "asset_precision": { "decimals": 6, "multiplier": "1000000" },
+        "asset_type": {
+          "inner": "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+        },
+        "conversion_config": { "__variant__": "StablecoinV1" },
+        "paired_config": {
+          "__variant__": "V1",
+          "allow_direct_below_preferred_on_withdrawal": true,
+          "auto_convert_on_deposit": true,
+          "prefer_direct_withdrawal_if_above": "1000000000000",
+          "refill_on_deposit_up_to": "2000000000000"
+        },
+        "paired_store": {
+          "inner": "0x98bc8413ac659b3b63d8803f9d69b380049f72c0be7c151d59332fb0d3f4d9bb"
+        },
+        "store": { "inner": "0xe16a858661bf74702611c836df8d7fcbf61d9a7a1382a82f586e412478f043d8" },
+        "store_extend_ref": {
+          "self": "0x836e0558f907fe74488d455d729bd8b6752fb7d218665852dba7d2aa9f9cfd0a"
+        }
+      },
+      "secondary_stores": {
+        "handle": "0x2c4bea77d50c013434a2f41fc93587195e674ca479693d257e42e8781f5fcc71"
+      }
+    },
+    "liquidation_config": {
+      "__variant__": "V1",
+      "backstop_liquidator": "0xd6b4dccb59e8c9bd451e2e7d935039bef1e6de51ffbab2f77b1e9de73996b301",
+      "backstop_margin_maintenance_divisor": "3",
+      "backstop_margin_maintenance_multiplier": "1",
+      "maintenance_margin_leverage_divisor": "2",
+      "maintenance_margin_leverage_multiplier": "1"
+    }
+  },
+  "market": {
+    "__variant__": "V1",
+    "info": { "__variant__": "V1", "name": "BTC/USD" },
+    "precision": {
+      "__variant__": "V1",
+      "lot_size": "1000",
+      "min_size": "2000",
+      "sz_precision": { "decimals": 8, "multiplier": "100000000" },
+      "ticker_size": "100000"
+    },
+    "risk": {
+      "__variant__": "V1",
+      "is_isolated_only": false,
+      "liquidation_details": {
+        "__variant__": "V1",
+        "cooldown_period_micros": "1000000",
+        "margin_call_backstop_pct": "100",
+        "margin_call_fee_pct": "5000",
+        "slippage_increment_pct": "1250",
+        "starting_slippage_pct": "1000"
+      },
+      "max_leverage": 40
+    },
+    "state": {
+      "__variant__": "V1",
+      "adl_trigger_threshold": "894300000000",
+      "mode": { "__variant__": "Open" },
+      "previous_market_mode": { "vec": [] }
+    }
+  },
+  "interest": {
+    "__variant__": "V1",
+    "current_open_interest": "1154900000",
+    "lot_size": "1000",
+    "max_notional_open_interest": "18446744073709551615",
+    "max_open_interest": "28542850000"
+  },
+  "prices": {
+    "__variant__": "V1",
+    "funding_rate_history": {
+      "__variant__": "V1",
+      "charging_mode": {
+        "__variant__": "PeriodicV2",
+        "funding_period_us": "3600000000",
+        "last_funding_charged_us": "1792987200000000",
+        "outstanding_funding": "953475370885"
+      },
+      "funding_rate_pause_timeout_us": "360000000",
+      "instant_rate_adjustment": { "__variant__": "INSTANT" },
+      "last_funding_calculated_us": "1792990395138213"
+    },
+    "price_config": {
+      "__variant__": "V1",
+      "max_leverage": 40,
+      "size_multiplier": "100000000",
+      "unrealized_pnl_haircut_bps": "0",
+      "withdrawable_margin_leverage": 40
+    },
+    "price_history": {
+      "__variant__": "V3",
+      "book_mid_30_ema": {
+        "__variant__": "EMA",
+        "ema": "79968181163",
+        "last_observation_time_us": "1792990395138213",
+        "lookback_window_seconds": "30",
+        "observation_count": "26434582"
+      },
+      "book_mid_px": "79997850000",
+      "book_oracle_ratio_cap_bps": "100",
+      "committed_snapshot": {
+        "__variant__": "V1",
+        "funding_index": { "index": "2865837658356156" },
+        "mark_px": "79997900000"
+      },
+      "last_oracle_update_us": "1792990395138213",
+      "oracle_price_details": {
+        "__variant__": "V1",
+        "is_oracle_healthy": true,
+        "price": "80004155538",
+        "valid_for_secs": "56"
+      },
+      "pending_snapshots": [],
+      "ratio_mid_vs_oracle_150_ema": {
+        "__variant__": "Ratio",
+        "ratio_moving_average": {
+          "__variant__": "EMA",
+          "ema": "999862942422",
+          "last_observation_time_us": "1792990395138213",
+          "lookback_window_seconds": "150",
+          "observation_count": "26434581"
+        }
+      }
+    },
+    "price_state": {
+      "__variant__": "V2",
+      "long_accumulative_index": { "index": "2865837658356156" },
+      "long_mark_px": "79997900000",
+      "short_accumulative_index": { "index": "2865837658356156" },
+      "short_mark_px": "79997900000"
+    }
+  },
+  "observedAt": 1792990394955,
+  "ledgerVersion": "7769191834",
+  "expectedPrimaryAssetType": "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
+}

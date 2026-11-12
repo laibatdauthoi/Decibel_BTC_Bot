@@ -1,0 +1,14 @@
+{
+  "provenance": "User-reported PID 14112 order facts. Relative timestamps only; BBO spread and fee/reserve inputs are a deterministic reconstruction, not an authenticated historical tape.",
+  "side": "SELL",
+  "restingPrice": 75854.8,
+  "quantity": 0.00047,
+  "tickSize": 0.1,
+  "bestAskAtReview": 75834.2,
+  "frames": [
+    { "elapsedMs": 7568, "midpointOffset": 0, "candidatePrice": 75854.7 },
+    { "elapsedMs": 8568, "midpointOffset": -0.1, "candidatePrice": 75854.6 },
+    { "elapsedMs": 9568, "midpointOffset": -0.2, "candidatePrice": 75854.5 }
+  ],
+  "syntheticCancelFinalityMs": 2000
+}

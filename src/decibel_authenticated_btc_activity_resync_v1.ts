@@ -6,6 +6,10 @@ export const DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1 =
   'DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1' as const;
 export const DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V2 =
   'DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V2' as const;
+export type decibel_btc_resync_cycle_disposition_v1 =
+  | 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY'
+  | 'CYCLE_NOT_INTERRUPTED'
+  | 'RECONCILED_AND_CHECKPOINTED';
 
 export type decibel_authenticated_btc_resync_checkpoint_v1 = Readonly<{
   schemaVersion: typeof DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1;
@@ -14,7 +18,7 @@ export type decibel_authenticated_btc_resync_checkpoint_v1 = Readonly<{
   strategyFillIds: readonly string[];
   outOfBandFillIds: readonly string[];
   currentPositionBase: 0;
-  cycleDisposition: 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY' | 'CYCLE_NOT_INTERRUPTED';
+  cycleDisposition: decibel_btc_resync_cycle_disposition_v1;
   completedRecycleCycles: 0;
   strategyMakerVolumeUsd: number;
   resyncTimestamp: number;
@@ -34,7 +38,7 @@ export type decibel_authenticated_btc_resync_checkpoint_v2 = Readonly<{
   strategyFillIds: readonly string[];
   outOfBandFillIds: readonly string[];
   currentPositionBase: 0;
-  cycleDisposition: 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY';
+  cycleDisposition: decibel_btc_resync_cycle_disposition_v1;
   completedRecycleCycles: 0;
   strategyMakerVolumeUsd: number;
   resyncTimestamp: number;
@@ -85,7 +89,11 @@ export function validateDecibelAuthenticatedBtcResyncCheckpointV1(
     !Array.isArray(checkpoint.allAccountFillIds) ||
     !Array.isArray(checkpoint.outOfBandFillIds) ||
     checkpoint.currentPositionBase !== 0 ||
-    checkpoint.cycleDisposition !== 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY' ||
+    ![
+      'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY',
+      'CYCLE_NOT_INTERRUPTED',
+      'RECONCILED_AND_CHECKPOINTED',
+    ].includes(checkpoint.cycleDisposition as string) ||
     checkpoint.liveExecutionEnabled !== false ||
     checkpoint.venueMutationEnabled !== false
   )
@@ -107,7 +115,11 @@ function validateCheckpointCommon(checkpoint: Record<string, unknown>): void {
     !Array.isArray(checkpoint.strategyFillIds) ||
     !Array.isArray(checkpoint.outOfBandFillIds) ||
     checkpoint.currentPositionBase !== 0 ||
-    checkpoint.cycleDisposition !== 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY' ||
+    ![
+      'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY',
+      'CYCLE_NOT_INTERRUPTED',
+      'RECONCILED_AND_CHECKPOINTED',
+    ].includes(checkpoint.cycleDisposition as string) ||
     checkpoint.completedRecycleCycles !== 0 ||
     checkpoint.liveExecutionEnabled !== false ||
     checkpoint.venueMutationEnabled !== false
@@ -147,8 +159,8 @@ export function validateDecibelAuthenticatedBtcResyncCheckpointV2(
     throw new Error('BTC_RESYNC_CHECKPOINT_CHAIN_REMOVED_FILL');
   const added = currentIds.filter((fillId) => !previousIds.has(fillId));
   if (
-    added.length === 0 ||
-    JSON.stringify(added) !== JSON.stringify(checkpoint.newlyAttributedFillIds)
+    JSON.stringify(added) !== JSON.stringify(checkpoint.newlyAttributedFillIds) ||
+    (added.length === 0 && checkpoint.cycleDisposition !== 'RECONCILED_AND_CHECKPOINTED')
   )
     throw new Error('BTC_RESYNC_CHECKPOINT_CHAIN_NEW_FILL_MISMATCH');
   return checkpoint as unknown as decibel_authenticated_btc_resync_checkpoint_v2;
@@ -158,11 +170,11 @@ export function createDecibelAuthenticatedBtcResyncCheckpointRolloverV2(input: {
   previous: decibel_authenticated_btc_resync_checkpoint;
   next: decibel_authenticated_btc_resync_checkpoint_v1;
   checkpointSequence: number;
+  allowReconciledIdentityRollover?: boolean;
 }): decibel_authenticated_btc_resync_checkpoint_v2 {
   const previousIds = new Set(input.previous.allAccountFillIds);
   if (
     input.next.priorFrozenManifestBodyHash !== input.previous.priorFrozenManifestBodyHash ||
-    input.next.cycleDisposition !== 'CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY' ||
     input.previous.allAccountFillIds.some(
       (fillId) => !input.next.allAccountFillIds.includes(fillId),
     )
@@ -171,7 +183,8 @@ export function createDecibelAuthenticatedBtcResyncCheckpointRolloverV2(input: {
   const newlyAttributedFillIds = input.next.allAccountFillIds.filter(
     (fillId) => !previousIds.has(fillId),
   );
-  if (newlyAttributedFillIds.length === 0) throw new Error('BTC_RESYNC_CHECKPOINT_ROLLOVER_EMPTY');
+  if (newlyAttributedFillIds.length === 0 && input.allowReconciledIdentityRollover !== true)
+    throw new Error('BTC_RESYNC_CHECKPOINT_ROLLOVER_EMPTY');
   const nextBody = { ...input.next } as Record<string, unknown>;
   delete nextBody.checkpointBodyHashSha256;
   delete nextBody.schemaVersion;
@@ -181,6 +194,10 @@ export function createDecibelAuthenticatedBtcResyncCheckpointRolloverV2(input: {
     previousCheckpointBodyHashSha256: input.previous.checkpointBodyHashSha256,
     newlyAttributedFillIds: Object.freeze(newlyAttributedFillIds),
     ...nextBody,
+    cycleDisposition:
+      newlyAttributedFillIds.length === 0
+        ? ('RECONCILED_AND_CHECKPOINTED' as const)
+        : input.next.cycleDisposition,
   });
   const checkpointBodyHashSha256 = createHash('sha256')
     .update(canonicalizeDecibelAuthenticatedLiveCanarySuccessV1(body))
@@ -250,6 +267,7 @@ export function deriveDecibelAuthenticatedBtcActivityResyncV1(input: {
   activeBtcTwapCount: number;
   activeBtcTpSlCount: number;
   activeBtcBulkOrderCount: number;
+  allowOutOfBandReconciliation?: boolean;
   resyncTimestamp: number;
   sourceHashes: Readonly<Record<string, string>>;
 }) {
@@ -328,10 +346,36 @@ export function deriveDecibelAuthenticatedBtcActivityResyncV1(input: {
   if (input.activeBtcTwapCount !== 0) blockers.push('BTC_RESYNC_ACTIVE_TWAP');
   if (input.activeBtcTpSlCount !== 0) blockers.push('BTC_RESYNC_ACTIVE_TP_SL');
   if (input.activeBtcBulkOrderCount !== 0) blockers.push('BTC_RESYNC_ACTIVE_BULK_ORDER');
+  const flatAttributionBypass =
+    input.allowOutOfBandReconciliation === true &&
+    normalizedCurrentPosition === 0 &&
+    input.btcOpenOrderCount === 0 &&
+    input.activeBtcTwapCount === 0 &&
+    input.activeBtcTpSlCount === 0 &&
+    input.activeBtcBulkOrderCount === 0;
+  const warnings: string[] = [];
+  if (flatAttributionBypass && blockers.includes('BTC_FILL_ATTRIBUTION_INCOMPLETE')) {
+    warnings.push('BTC_FILL_ATTRIBUTION_INCOMPLETE_AUTHENTICATED_FLAT_WARNING');
+    for (const warningCode of [
+      'BTC_FILL_ATTRIBUTION_INCOMPLETE',
+      'BTC_ACCOUNT_POSITION_CONSERVATION_FAILED',
+    ]) {
+      let index = blockers.indexOf(warningCode);
+      while (index >= 0) {
+        blockers.splice(index, 1);
+        index = blockers.indexOf(warningCode);
+      }
+    }
+  }
   const cycleDisposition =
-    outOfBandFillIds.length > 0
-      ? ('CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY' as const)
-      : ('CYCLE_NOT_INTERRUPTED' as const);
+    (outOfBandFillIds.length > 0 || warnings.length > 0) &&
+    input.allowOutOfBandReconciliation === true
+      ? ('RECONCILED_AND_CHECKPOINTED' as const)
+      : outOfBandFillIds.length > 0
+        ? ('CYCLE_INTERRUPTED_BY_OUT_OF_BAND_ACTIVITY' as const)
+        : ('CYCLE_NOT_INTERRUPTED' as const);
+  if (outOfBandFillIds.length > 0 && input.allowOutOfBandReconciliation !== true)
+    blockers.push('BTC_OUT_OF_BAND_RECONCILIATION_CONFIRMATION_REQUIRED');
   const ready = blockers.length === 0;
   const checkpointBody = Object.freeze({
     schemaVersion: DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1,
@@ -362,6 +406,7 @@ export function deriveDecibelAuthenticatedBtcActivityResyncV1(input: {
     outOfBandFillIds: checkpointBody.outOfBandFillIds,
     cycleDisposition,
     blockers: Object.freeze([...new Set(blockers)]),
+    warnings: Object.freeze(warnings),
     checkpoint: ready
       ? (Object.freeze({
           ...checkpointBody,
@@ -376,5 +421,202 @@ export function deriveDecibelAuthenticatedBtcActivityResyncV1(input: {
       replacedOrders: 0 as const,
       venueMutations: 0 as const,
     }),
+  });
+}
+/** Pure recovery planning. Authenticated facts must be normalized by the existing reader.
+ * No journal/session mutation, no inferred ownership or terminal ACK from FLAT.
+ */
+export function planDecibelHistoricalFillRecoveryV1(
+  input: Readonly<{
+    baseline: unknown;
+    fragments: readonly Readonly<{
+      executionId: string;
+      canonicalFillId?: string;
+      fillId: string;
+      orderId: string;
+      clientOrderId: string | null;
+      action: 'OpenLong' | 'CloseShort' | 'OpenShort' | 'CloseLong';
+      quantity: number;
+      price: number;
+      feeUsd: number;
+      timestamp: number;
+      transactionVersion: string;
+      terminal: Readonly<{
+        status: string;
+        remaining: number;
+        orderId: string;
+        clientOrderId: string | null;
+        timestamp: number;
+      }> | null;
+      candidates: readonly Readonly<{
+        intentId: string;
+        sessionId: string | null;
+        side: 'BUY' | 'SELL';
+        quantity: number;
+      }>[];
+    }>[];
+  }>,
+) {
+  const baseline = validateDecibelAuthenticatedBtcResyncCheckpointV1(input.baseline);
+  const seen = new Map<string, string>();
+  const records = [];
+  let inventory: number = baseline.currentPositionBase;
+  for (const fragment of [...input.fragments].sort(
+    (a, b) => a.timestamp - b.timestamp || a.executionId.localeCompare(b.executionId),
+  )) {
+    const encoded = JSON.stringify(fragment);
+    const previous = seen.get(fragment.executionId);
+    if (previous !== undefined) {
+      if (previous !== encoded) throw new Error('HISTORY_EXECUTION_IDENTITY_CONFLICT');
+      continue;
+    }
+    seen.set(fragment.executionId, encoded);
+    if (
+      !['OpenLong', 'CloseShort', 'OpenShort', 'CloseLong'].includes(fragment.action) ||
+      !fragment.executionId ||
+      !fragment.fillId ||
+      !fragment.orderId ||
+      !/^\d+$/.test(fragment.transactionVersion) ||
+      BigInt(fragment.transactionVersion) <= 0n ||
+      !Number.isSafeInteger(fragment.timestamp) ||
+      fragment.timestamp <= baseline.resyncTimestamp ||
+      ![fragment.quantity, fragment.price].every((v) => Number.isFinite(v) && v > 0) ||
+      !Number.isFinite(fragment.feeUsd)
+    )
+      throw new Error('HISTORY_FILL_PROVENANCE_INVALID');
+    if (fragment.canonicalFillId !== undefined) {
+      try {
+        const key: unknown = JSON.parse(fragment.canonicalFillId);
+        if (
+          !Array.isArray(key) ||
+          key.length !== 3 ||
+          key[0] !== fragment.orderId ||
+          key[1] !== fragment.fillId ||
+          typeof key[2] !== 'string'
+        )
+          throw new Error('key');
+        const raw: unknown = JSON.parse(key[2]);
+        if (
+          !Array.isArray(raw) ||
+          raw.length !== 13 ||
+          raw[3] !== fragment.fillId ||
+          raw[4] !== fragment.orderId ||
+          raw[5] !== fragment.clientOrderId ||
+          String(raw[6]) !== fragment.transactionVersion ||
+          raw[7] !== fragment.timestamp ||
+          raw[8] !== fragment.action ||
+          raw[9] !== fragment.quantity ||
+          raw[10] !== fragment.price ||
+          typeof raw[11] !== 'number' ||
+          typeof raw[12] !== 'boolean' ||
+          (raw[12] ? -raw[11] : raw[11]) !== fragment.feeUsd
+        )
+          throw new Error('fragment');
+      } catch {
+        throw new Error('HISTORY_CANONICAL_FILL_PROVENANCE_CONFLICT');
+      }
+    }
+    const side =
+      fragment.action === 'OpenLong' || fragment.action === 'CloseShort' ? 'BUY' : 'SELL';
+    inventory = Number(
+      (inventory + (side === 'BUY' ? fragment.quantity : -fragment.quantity)).toFixed(12),
+    );
+    const owner = fragment.candidates.length === 1 ? fragment.candidates[0] : undefined;
+    const terminal = fragment.terminal;
+    const blockers: string[] = [];
+    if (!owner)
+      blockers.push(
+        fragment.candidates.length ? 'AMBIGUOUS_INTENT_ATTRIBUTION' : 'MISSING_INTENT_ATTRIBUTION',
+      );
+    else if (!owner.sessionId || owner.side !== side || fragment.quantity > owner.quantity + 1e-12)
+      blockers.push('SESSION_FILL_IDENTITY_CONFLICT');
+    if (
+      !terminal ||
+      !['Filled', 'Cancelled'].includes(terminal.status) ||
+      terminal.remaining !== 0 ||
+      terminal.orderId !== fragment.orderId ||
+      terminal.clientOrderId !== fragment.clientOrderId ||
+      terminal.timestamp < fragment.timestamp
+    )
+      blockers.push('TERMINAL_ORDER_PROVENANCE_REQUIRED');
+    records.push(
+      Object.freeze({
+        ...fragment,
+        side,
+        intentId: owner?.intentId ?? null,
+        sessionId: owner?.sessionId ?? null,
+        executedVolumeUsd: fragment.quantity * fragment.price,
+        blockers: Object.freeze(blockers),
+      }),
+    );
+  }
+  for (const record of records) {
+    const owner = record.candidates.length === 1 ? record.candidates[0] : undefined;
+    if (
+      owner &&
+      records.filter((r) => r.orderId === record.orderId).reduce((sum, r) => sum + r.quantity, 0) >
+        owner.quantity + 1e-12
+    )
+      throw new Error('HISTORY_ORDER_FILL_QUANTITY_CONFLICT');
+  }
+  return Object.freeze({
+    baselineHash: baseline.checkpointBodyHashSha256,
+    inventory,
+    records: Object.freeze(records),
+    ready: records.every((r) => r.blockers.length === 0),
+  });
+}
+/** Historical ownership gaps are diagnostics, never fabricated live mutation ACKs.
+ * Current readiness must separately pass authenticated exposure and accounting checks.
+ */
+export function assessDecibelHistoricalRecoveryReadinessV1(
+  input: Readonly<{
+    plan: ReturnType<typeof planDecibelHistoricalFillRecoveryV1>;
+    now: number;
+    observedAt: number;
+    maximumAgeMs: number;
+    sessionBoundary: number;
+    activeSessionId: string | null;
+    currentPositionBase: number;
+    openOrderCount: number;
+    nonterminalIntentCount: number;
+    accountingComplete: boolean;
+  }>,
+) {
+  const unresolved = input.plan.records.filter((record) => record.blockers.length > 0);
+  const current = unresolved.filter(
+    (record) =>
+      record.timestamp >= input.sessionBoundary ||
+      (input.activeSessionId !== null &&
+        record.candidates.some((candidate) => candidate.sessionId === input.activeSessionId)),
+  );
+  const blockers: string[] = [];
+  if (
+    ![input.now, input.observedAt, input.maximumAgeMs, input.sessionBoundary].every(
+      Number.isSafeInteger,
+    ) ||
+    input.maximumAgeMs <= 0 ||
+    input.sessionBoundary <= 0 ||
+    input.observedAt > input.now ||
+    input.now - input.observedAt > input.maximumAgeMs
+  )
+    blockers.push('CURRENT_AUTHENTICATED_EVIDENCE_STALE_OR_MISSING');
+  if (
+    !Number.isFinite(input.currentPositionBase) ||
+    ![input.openOrderCount, input.nonterminalIntentCount].every(
+      (v) => Number.isSafeInteger(v) && v >= 0,
+    )
+  )
+    blockers.push('CURRENT_EXECUTION_EVIDENCE_INVALID');
+  if (input.nonterminalIntentCount > 0) blockers.push('CURRENT_NONTERMINAL_EXECUTION_INTENTS');
+  if (current.length > 0) blockers.push('CURRENT_SESSION_ACCOUNTING_ATTRIBUTION_UNRESOLVED');
+  if (!input.accountingComplete) blockers.push('CURRENT_ACCOUNTING_INVARIANT_UNRESOLVED');
+  return Object.freeze({
+    currentReadiness: blockers.length === 0 ? ('READY' as const) : ('BLOCKED' as const),
+    historicalDiscrepancyCount: unresolved.length - current.length,
+    currentDiscrepancyCount: current.length,
+    currentPositionBase: input.currentPositionBase,
+    openOrderCount: input.openOrderCount,
+    blockers: Object.freeze(blockers),
   });
 }

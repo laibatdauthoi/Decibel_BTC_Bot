@@ -1,3 +1,4 @@
+import { getDecibelQuantityUnitsV1 } from './decibel_chain_units_v1.js';
 import { createHash } from 'node:crypto';
 
 export const DECIBEL_ACTUAL_FILL_TRUTH_V1 = 'DECIBEL_ACTUAL_FILL_TRUTH_V1' as const;
@@ -14,6 +15,7 @@ export type decibel_actual_fill_truth_v1 = Readonly<{
   makerOrTaker: 'MAKER' | 'TAKER';
   receivedAt: Date;
   venueTimestamp: Date | null;
+  transactionVersion?: string;
   fee: Readonly<{
     availability: 'AVAILABLE' | 'UNAVAILABLE';
     amount: number | null;
@@ -24,6 +26,12 @@ export type decibel_actual_fill_truth_v1 = Readonly<{
     amount: number | null;
     currency: string | null;
   }>;
+  executionFragments?: readonly Readonly<{
+    fragmentId: string;
+    quantity: number;
+    price: number;
+    feeUsd: number | null;
+  }>[];
   executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM';
 }>;
 
@@ -98,7 +106,18 @@ function sameFill(
   left: decibel_actual_fill_truth_v1,
   right: decibel_actual_fill_truth_v1,
 ): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return (
+    left.venueFillId === right.venueFillId &&
+    left.venueOrderId === right.venueOrderId &&
+    left.localExecutionRequestId === right.localExecutionRequestId &&
+    left.marketAddress === right.marketAddress &&
+    left.side === right.side &&
+    left.executedPrice === right.executedPrice &&
+    left.executedBaseQuantity === right.executedBaseQuantity &&
+    left.executedUsdNotional === right.executedUsdNotional &&
+    left.makerOrTaker === right.makerOrTaker &&
+    left.venueTimestamp?.getTime() === right.venueTimestamp?.getTime()
+  );
 }
 
 export function applyDecibelActualFillTruthV1(
@@ -112,7 +131,9 @@ export function applyDecibelActualFillTruthV1(
     fill.executedUsdNotional !== fill.executedPrice * fill.executedBaseQuantity
   )
     throw new Error('DECIBEL_ACTUAL_FILL_INVALID');
-  const duplicate = previous.fills.find((value) => value.venueFillId === fill.venueFillId);
+  const duplicate = previous.fills.find(
+    (value) => value.venueFillId === fill.venueFillId && value.venueOrderId === fill.venueOrderId,
+  );
   if (duplicate !== undefined) {
     if (!sameFill(duplicate, fill)) throw new Error('DECIBEL_ACTUAL_FILL_ID_CONFLICT');
     return previous;
@@ -127,14 +148,20 @@ export function applyDecibelActualFillTruthV1(
     throw new Error('DECIBEL_ACTUAL_FILL_ORDER_LINEAGE_INVALID');
   const alreadyFilled = previous.fills
     .filter((value) => value.venueOrderId === fill.venueOrderId)
-    .reduce((sum, value) => sum + value.executedBaseQuantity, 0);
-  if (alreadyFilled + fill.executedBaseQuantity > order.requestedQuantity + Number.EPSILON)
+    .reduce((sum, value) => sum + getDecibelQuantityUnitsV1(value.executedBaseQuantity), 0n);
+  if (
+    alreadyFilled + getDecibelQuantityUnitsV1(fill.executedBaseQuantity) >
+    getDecibelQuantityUnitsV1(order.requestedQuantity)
+  )
     throw new Error('DECIBEL_ACTUAL_FILL_OVERFILLS_ORDER');
 
   const signedQuantity =
     fill.side === 'BUY' ? fill.executedBaseQuantity : -fill.executedBaseQuantity;
   const before = previous.inventoryBase;
-  const after = before + signedQuantity;
+  const beforeUnits = getDecibelQuantityUnitsV1(Math.abs(before)) * (before < 0 ? -1n : 1n);
+  const signedUnits =
+    getDecibelQuantityUnitsV1(fill.executedBaseQuantity) * (fill.side === 'BUY' ? 1n : -1n);
+  const after = Number(beforeUnits + signedUnits) / 1e8;
   let averageEntryPrice = previous.averageEntryPrice;
   let realizedPnlUsd = previous.realizedPnlUsd;
   if (before === 0 || Math.sign(before) === Math.sign(signedQuantity)) {
@@ -150,7 +177,7 @@ export function applyDecibelActualFillTruthV1(
     else if (Math.sign(after) !== Math.sign(before)) averageEntryPrice = fill.executedPrice;
   }
   const application = Object.freeze({
-    applicationId: hash('decibel_actual_fill_application', [fill.venueFillId]),
+    applicationId: hash('decibel_actual_fill_application', [fill.venueOrderId, fill.venueFillId]),
     venueFillId: fill.venueFillId,
     venueOrderId: fill.venueOrderId,
     side: fill.side,

@@ -15,10 +15,23 @@ export type production_execution_result_v1 = Readonly<{
     | 'CANCEL_REJECTED'
     | 'CANCEL_OUTCOME_UNKNOWN';
   venueOrderId?: string;
+  transactionHash?: string;
+  expirationTimestampMs?: number;
 }>;
 export interface DecibelProductionExecutionExecutorV1 {
   placePostOnlyLimit(intent: place_intent_v1): Promise<production_execution_result_v1>;
+  placeReduceOnlyImmediateOrCancel?(
+    intent: place_intent_v1,
+  ): Promise<production_execution_result_v1>;
   cancelExactOrder(intent: cancel_intent_v1): Promise<production_execution_result_v1>;
+  readAccountDiagnostics?(): Promise<
+    Readonly<{
+      primaryAccountAddress: string;
+      subaccountAddress: string;
+      primaryAccountAptBalance: number;
+      subaccountAptBalance: number;
+    }>
+  >;
 }
 export type decibel_production_executor_gate_config_v1 = Readonly<{
   executorEnabled: boolean;
@@ -60,6 +73,21 @@ export class decibel_production_executor_gate_v1 implements DecibelExecutionExec
       this.outstandingMutation = false;
     }
   }
+  async placeReduceOnlyImmediateOrCancel(intent: place_intent_v1): Promise<execution_result_v1> {
+    this.assertEnabled();
+    this.validatePlace(intent);
+    this.assertCanary();
+    this.outstandingMutation = true;
+    try {
+      if (this.External.placeReduceOnlyImmediateOrCancel === undefined)
+        throw new Error('EXECUTION_SESSION_UNWIND_IOC_UNSUPPORTED');
+      const result = await this.External.placeReduceOnlyImmediateOrCancel(intent);
+      this.haltCanary();
+      return mapResult(result);
+    } finally {
+      this.outstandingMutation = false;
+    }
+  }
   async cancelExactOrder(intent: cancel_intent_v1): Promise<execution_result_v1> {
     this.assertEnabled();
     this.validateCancel(intent);
@@ -76,6 +104,9 @@ export class decibel_production_executor_gate_v1 implements DecibelExecutionExec
   haltAfterAuthenticatedStateChange(): void {
     this.haltCanary();
   }
+  acknowledgeAuthenticatedReconciliation(): void {
+    this.canaryHalted = false;
+  }
   private assertEnabled(): void {
     if (!this.Config.executorEnabled) throw new Error('EXECUTION_KILL_SWITCH_ACTIVE');
   }
@@ -91,7 +122,9 @@ export class decibel_production_executor_gate_v1 implements DecibelExecutionExec
     if (
       intent.market !== 'BTC/USD' ||
       intent.type !== 'LIMIT' ||
-      !intent.postOnly ||
+      (intent.executionRole === 'SESSION_UNWIND_IOC'
+        ? intent.timeInForce !== 'ImmediateOrCancel' || intent.postOnly || !intent.reduceOnly
+        : intent.timeInForce !== 'PostOnly' || !intent.postOnly) ||
       intent.selfTradePermitted ||
       !intent.externalCounterpartyRequired ||
       !intent.clientOrderId ||
@@ -118,11 +151,21 @@ function mapResult(result: production_execution_result_v1): execution_result_v1 
       return {
         outcome: 'PLACE_ACCEPTED',
         ...(result.venueOrderId ? { venueOrderId: result.venueOrderId } : {}),
+        ...(result.transactionHash ? { transactionHash: result.transactionHash } : {}),
+        ...(result.expirationTimestampMs
+          ? { expirationTimestampMs: result.expirationTimestampMs }
+          : {}),
       };
     case 'PLACE_REJECTED':
       return { outcome: 'PLACE_REJECTED' };
     case 'PLACE_OUTCOME_UNKNOWN':
-      return { outcome: 'PLACE_TIMEOUT_UNKNOWN' };
+      return {
+        outcome: 'PLACE_TIMEOUT_UNKNOWN',
+        ...(result.transactionHash ? { transactionHash: result.transactionHash } : {}),
+        ...(result.expirationTimestampMs
+          ? { expirationTimestampMs: result.expirationTimestampMs }
+          : {}),
+      };
     case 'CANCEL_CONFIRMED':
       return { outcome: 'CANCEL_CONFIRMED' };
     case 'CANCEL_REJECTED':

@@ -1,0 +1,23 @@
+{
+  "provenance": "Historical PID21712 read-only decision journal; numeric market/economic fields only",
+  "at": 1793851439461,
+  "authenticatedPositionBase": 0.00044,
+  "bestBid": 80376.1,
+  "bestAsk": 80376.2,
+  "fairPrice": 80376.15,
+  "makerFeeBps": 1.5,
+  "estimatedGasCostUsd": 0.00039530189999999996,
+  "adverseSelectionBufferBps": 3.725638978131741,
+  "safetyMarginBps": 1,
+  "sizingInputs": {
+    "minimumNotionalUsd": 10,
+    "maximumNotionalUsd": 72.33853500000001,
+    "maximumAbsPositionBase": 0.0009000000000000002,
+    "availableMarginUsd": 4.1158623500000004,
+    "maximumEffectiveLeverage": 40,
+    "capacityBlocker": null,
+    "availableHeadroomUsd": 36.97302900000001
+  },
+  "askEligibilityReason": "TP_NET_PROFIT_NOT_POSITIVE:NET=-0.0253381661908933:REQUIRED=0:BASIS=80434.3:PRICE=80464.8:QTY=0.00044",
+  "bidEligibilityReason": "INVENTORY_EXIT_COVERAGE_REQUIRED"
+}

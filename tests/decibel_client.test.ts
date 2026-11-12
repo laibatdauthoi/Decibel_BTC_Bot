@@ -63,6 +63,469 @@ function makeReader(): decibel_market_reader {
 }
 
 describe('decibel_client', () => {
+  it.each([50, 0])(
+    'measures the identical replay with a %i ms publication timer policy',
+    async (delay) => {
+      vi.useFakeTimers();
+      try {
+        const { Client, callbacks, makeBook, FetchHTTP } = createDepthReplay();
+        const initial = Client.getBTCStreamingBook('0xbtc');
+        await vi.advanceTimersByTimeAsync(0);
+        // Controlled baseline: inject the original 50 ms scheduling policy into
+        // the same adapter. This measures timer delay, not live network latency.
+        const schedule = globalThis.setTimeout;
+        const Timer = vi
+          .spyOn(globalThis, 'setTimeout')
+          .mockImplementation((callback: () => void) => schedule(callback, delay));
+        const start = Date.now();
+        for (let index = 0; index < 1000; index++) callbacks[0]!(makeBook(100 + index));
+        Timer.mockRestore();
+        await vi.advanceTimersByTimeAsync(delay);
+        await expect(initial).resolves.toMatchObject({ best_bid: 1099 });
+        const diagnostics = Client.getBTCMarketDataDiagnostics();
+        expect(diagnostics.lastReceiveToVerifiedMs).toBe(delay);
+        expect(diagnostics.wsStatesVerified).toBe(1);
+        expect(diagnostics.wsMessagesCoalesced).toBe(999);
+        expect(FetchHTTP).not.toHaveBeenCalled();
+        console.info(
+          JSON.stringify({
+            replay: '1000 complete states in one event-loop turn',
+            timerPolicyMs: delay,
+            receiveToVerifiedMs: Date.now() - start,
+            statesVerified: diagnostics.wsStatesVerified,
+            coalesced: diagnostics.wsMessagesCoalesced,
+            httpBookRequests: FetchHTTP.mock.calls.length,
+          }),
+        );
+        Client.closeWebSocket();
+      } finally {
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  function createDepthReplay() {
+    const Reader = makeReader();
+    const ReadMetadata = vi.fn().mockResolvedValue([market]);
+    Reader.markets.getAll = ReadMetadata;
+    const callbacks: Array<(message: unknown) => void> = [];
+    const unsubscribes: ReturnType<typeof vi.fn>[] = [];
+    let emitError = () => {};
+    Reader.marketDepth.subscribeByName = vi.fn(
+      (_name: string, _aggregation: number, callback: (message: unknown) => void) => {
+        callbacks.push(callback);
+        const unsubscribe = vi.fn();
+        unsubscribes.push(unsubscribe);
+        return unsubscribe;
+      },
+    );
+    const FetchHTTP = vi.fn<HTTP_fetch>();
+    const Client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      (_configuration, options) => {
+        emitError = () => options.onWsError?.(new Error('REPLAY_SOCKET_ERROR'));
+        return Reader;
+      },
+      FetchHTTP,
+    );
+    const makeBook = (bid = 100, timestamp = Date.now()) => ({
+      market: '0xbtc',
+      bids: [{ price: bid, size: 2 }],
+      asks: [{ price: bid + 1, size: 3 }],
+      best_bid: bid,
+      best_ask: bid + 1,
+      unix_ms: timestamp,
+    });
+    return {
+      Reader,
+      ReadMetadata,
+      Client,
+      callbacks,
+      unsubscribes,
+      FetchHTTP,
+      makeBook,
+      emitError: () => emitError(),
+    };
+  }
+
+  it('replays 1000 superseding states once, yields to critical events, and performs no REST reads', async () => {
+    vi.useFakeTimers();
+    try {
+      const { Reader, ReadMetadata, Client, callbacks, FetchHTTP, makeBook } = createDepthReplay();
+      const pending = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      const criticalEvents: string[] = [];
+      queueMicrotask(() => criticalEvents.push('PARTIAL_FILL', 'ACK', 'FINALITY'));
+      for (let index = 0; index < 1000; index++) callbacks[0]!(makeBook(100 + index));
+      expect(Client.getBTCMarketDataDiagnostics().wsStatesVerified).toBe(0);
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(pending).resolves.toMatchObject({ best_bid: 1099, best_ask: 1100 });
+      expect(criticalEvents).toEqual(['PARTIAL_FILL', 'ACK', 'FINALITY']);
+      expect(Client.getBTCMarketDataDiagnostics()).toMatchObject({
+        wsMessagesReceived: 1000,
+        wsMessagesCoalesced: 999,
+        wsStatesVerified: 1,
+        lastReceiveToVerifiedMs: 0,
+      });
+      await Promise.all(Array.from({ length: 100 }, () => Client.getBTCStreamingBook('0xbtc')));
+      expect(Reader.marketDepth.subscribeByName).toHaveBeenCalledOnce();
+      expect(ReadMetadata).toHaveBeenCalledOnce();
+      expect(FetchHTTP).not.toHaveBeenCalled();
+      Client.closeWebSocket();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('discards queued and late old-generation frames after a socket error', async () => {
+    vi.useFakeTimers();
+    try {
+      const { Client, callbacks, unsubscribes, makeBook, emitError } = createDepthReplay();
+      const initial = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks[0]!(makeBook());
+      emitError();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(Client.getBTCMarketDataDiagnostics()).toMatchObject({
+        wsConnectionState: 'DISCONNECTED',
+        wsStatesVerified: 0,
+      });
+      const recovered = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks[1]!(makeBook(200));
+      callbacks[0]!(makeBook(900));
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(Promise.all([initial, recovered])).resolves.toEqual([
+        expect.objectContaining({ best_bid: 200 }),
+        expect.objectContaining({ best_bid: 200 }),
+      ]);
+      expect(unsubscribes[0]).toHaveBeenCalledOnce();
+      Client.closeWebSocket();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('replaces complete depth states without retaining removed levels or old liquidity', async () => {
+    vi.useFakeTimers();
+    try {
+      const { Client, callbacks, makeBook } = createDepthReplay();
+      const initial = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks[0]!({
+        ...makeBook(),
+        bids: [
+          { price: 99, size: 5 },
+          { price: 100, size: 2 },
+        ],
+        asks: [
+          { price: 102, size: 7 },
+          { price: 101, size: 3 },
+        ],
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(initial).resolves.toMatchObject({ best_bid: 100, best_ask: 101 });
+      callbacks[0]!({
+        ...makeBook(99),
+        bids: [
+          { price: 98, size: 4 },
+          { price: 99, size: 6 },
+        ],
+        asks: [
+          { price: 102, size: 8 },
+          { price: 100, size: 2 },
+        ],
+      });
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(Client.getBTCStreamingBook('0xbtc')).resolves.toMatchObject({
+        bids: [
+          { price: 99, size: 6 },
+          { price: 98, size: 4 },
+        ],
+        asks: [
+          { price: 100, size: 2 },
+          { price: 102, size: 8 },
+        ],
+        best_bid: 99,
+        best_ask: 100,
+        best_bid_size: 6,
+        best_ask_size: 2,
+        microprice: 99.75,
+        top_book_imbalance: 0,
+      });
+      Client.closeWebSocket();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not open a subscription after close invalidates pending metadata initialization', async () => {
+    const Reader = makeReader();
+    let resolveMetadata: (value: unknown) => void = () => {};
+    Reader.markets.getAll = () =>
+      new Promise((resolve) => {
+        resolveMetadata = resolve;
+      });
+    const Client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => Reader,
+    );
+    const pending = expect(Client.getBTCStreamingBook('0xbtc')).rejects.toThrow(
+      'invalidated during initialization',
+    );
+    Client.closeWebSocket();
+    resolveMetadata([market]);
+    await pending;
+    expect(Reader.marketDepth.subscribeByName).not.toHaveBeenCalled();
+  });
+
+  it('retains background coalescing under a sustained 1 ms stream', async () => {
+    vi.useFakeTimers();
+    try {
+      const { Client, callbacks, makeBook } = createDepthReplay();
+      const initial = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks[0]!(makeBook());
+      await vi.advanceTimersByTimeAsync(0);
+      await initial;
+      for (let index = 0; index < 1000; index++) {
+        callbacks[0]!(makeBook(100 + index));
+        await vi.advanceTimersByTimeAsync(1);
+      }
+      expect(Client.getBTCMarketDataDiagnostics()).toMatchObject({
+        wsMessagesReceived: 1001,
+        wsStatesVerified: 21,
+        wsMessagesCoalesced: 980,
+      });
+      await expect(Client.getBTCStreamingBook('0xbtc')).resolves.toMatchObject({ best_bid: 1099 });
+      Client.closeWebSocket();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rejects regressing timestamps without claiming sequence or duplicate verification', async () => {
+    vi.useFakeTimers();
+    try {
+      const { Client, callbacks, makeBook } = createDepthReplay();
+      const timestamp = Date.now();
+      const initial = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks[0]!(makeBook(100, timestamp));
+      await vi.advanceTimersByTimeAsync(0);
+      await initial;
+      callbacks[0]!(makeBook(90, timestamp - 1));
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(Client.getBTCStreamingBook('0xbtc')).resolves.toMatchObject({ best_bid: 100 });
+      // Same timestamp may contain a different complete state; it is not a sequence ID.
+      callbacks[0]!(makeBook(110, timestamp));
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(Client.getBTCStreamingBook('0xbtc')).resolves.toMatchObject({ best_bid: 110 });
+      expect(Client.getBTCMarketDataDiagnostics().wsMessagesRejected).toBe(1);
+      Client.closeWebSocket();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(['crossed', 'malformed', 'wrong market'])(
+    'blocks access after %s depth until a new complete state is verified',
+    async (kind) => {
+      vi.useFakeTimers();
+      try {
+        const { Client, callbacks, makeBook } = createDepthReplay();
+        const initial = Client.getBTCStreamingBook('0xbtc');
+        await vi.advanceTimersByTimeAsync(0);
+        callbacks[0]!(makeBook());
+        await vi.advanceTimersByTimeAsync(0);
+        await initial;
+        callbacks[0]!(
+          kind === 'malformed'
+            ? {}
+            : kind === 'wrong market'
+              ? { ...makeBook(), market: '0xother' }
+              : { ...makeBook(), asks: [{ price: 99, size: 1 }], best_ask: 99 },
+        );
+        await vi.advanceTimersByTimeAsync(50);
+        expect(Client.getBTCMarketDataDiagnostics().wsConnectionState).toBe('STALLED');
+        const blocked = expect(Client.getBTCStreamingBook('0xbtc', 10)).rejects.toThrow(
+          'CURRENT_BOOK_WS_BBO_STALE',
+        );
+        await vi.advanceTimersByTimeAsync(10);
+        await blocked;
+        callbacks.at(-1)!(makeBook(200));
+        await vi.advanceTimersByTimeAsync(0);
+        await expect(Client.getBTCStreamingBook('0xbtc')).resolves.toMatchObject({ best_bid: 200 });
+        Client.closeWebSocket();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it('aborts a bounded market-rules read and fetches fresh mode on the next attempt', async () => {
+    const Reader = makeReader();
+    Reader.markets.getAll = (input) =>
+      new Promise((_resolve, reject) => {
+        const signal = input?.fetchOptions.signal;
+        signal?.addEventListener(
+          'abort',
+          () =>
+            reject(signal.reason instanceof Error ? signal.reason : new Error('METADATA_ABORTED')),
+          { once: true },
+        );
+      });
+    const Client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => Reader,
+    );
+    const Controller = new AbortController();
+    const pending = expect(Client.getBTCMarketMetadata(Controller.signal)).rejects.toThrow(
+      'METADATA_CANCELLED',
+    );
+    Controller.abort(new Error('METADATA_CANCELLED'));
+    await pending;
+    Reader.markets.getAll = vi.fn().mockResolvedValue([{ ...market, mode: 'Halt' }]);
+    await expect(Client.getBTCMarketMetadata()).resolves.toMatchObject({ mode: 'Halt' });
+  });
+
+  it('resubscribes the single authoritative depth feed after a valid-BBO stall', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+    try {
+      const Reader = makeReader();
+      const callbacks: Array<(message: unknown) => void> = [];
+      const unsubscribes: ReturnType<typeof vi.fn>[] = [];
+      Reader.marketDepth.subscribeByName = vi.fn(
+        (_name: string, _aggregation: number, onData: (message: unknown) => void) => {
+          callbacks.push(onData);
+          const unsubscribe = vi.fn();
+          unsubscribes.push(unsubscribe);
+          return unsubscribe;
+        },
+      );
+      const Client = new decibel_client(
+        { network: 'testnet', marketSymbol: 'BTC/USD' },
+        () => Reader,
+      );
+      const makeBook = (timestamp: number) => ({
+        market: '0xbtc',
+        bids: [{ price: 100, size: 1 }],
+        asks: [{ price: 101, size: 1 }],
+        best_bid: 100,
+        best_ask: 101,
+        unix_ms: timestamp,
+      });
+
+      const first = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks[0]!(makeBook(Date.now()));
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(first).resolves.toMatchObject({ best_bid: 100, best_ask: 101 });
+      expect(Client.getBTCMarketDataDiagnostics()).toMatchObject({
+        wsConnectionState: 'CONNECTED',
+        wsSubscriptionState: 'SUBSCRIBED',
+        wsReconnectCount: 0,
+      });
+
+      await vi.advanceTimersByTimeAsync(5_001);
+      const recovered = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(unsubscribes[0]).toHaveBeenCalledOnce();
+      expect(callbacks).toHaveLength(2);
+      callbacks[1]!(makeBook(Date.now()));
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(recovered).resolves.toMatchObject({ best_bid: 100, best_ask: 101 });
+      expect(Client.getBTCMarketDataDiagnostics()).toMatchObject({
+        wsConnectionState: 'CONNECTED',
+        wsSubscriptionState: 'SUBSCRIBED',
+        wsReconnectCount: 1,
+      });
+      expect(Reader.marketDepth.subscribeByName).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('singleflights concurrent requests onto one depth subscription', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_800_000_000_000);
+    try {
+      const Reader = makeReader();
+      let callback: ((message: unknown) => void) | null = null;
+      Reader.marketDepth.subscribeByName = vi.fn(
+        (_name: string, _aggregation: number, onData: (message: unknown) => void) => {
+          callback = onData;
+          return vi.fn();
+        },
+      );
+      const Client = new decibel_client(
+        { network: 'testnet', marketSymbol: 'BTC/USD' },
+        () => Reader,
+      );
+
+      const first = Client.getBTCStreamingBook('0xbtc');
+      const second = Client.getBTCStreamingBook('0xbtc');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(Reader.marketDepth.subscribeByName).toHaveBeenCalledOnce();
+      expect(callback).not.toBeNull();
+      (callback as (message: unknown) => void)({
+        market: '0xbtc',
+        bids: [{ price: 100, size: 1 }],
+        asks: [{ price: 101, size: 1 }],
+        best_bid: 100,
+        best_ask: 101,
+        best_bid_size: 1,
+        best_ask_size: 1,
+        unix_ms: Date.now(),
+      });
+      await vi.advanceTimersByTimeAsync(50);
+      await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses fresh authoritative WebSocket depth without waiting for REST', async () => {
+    const Reader = makeReader();
+    Reader.marketDepth.subscribeByName = vi.fn(
+      (_name: string, _aggregation: number, onData: (message: unknown) => void) => {
+        queueMicrotask(() =>
+          onData({
+            market: '0xbtc',
+            bids: [{ price: 100, size: 1 }],
+            asks: [{ price: 101, size: 1 }],
+            best_bid: 100,
+            best_ask: 101,
+            unix_ms: 1_700_000_000_000,
+          }),
+        );
+        return vi.fn();
+      },
+    );
+    const fetchHTTP = vi.fn<HTTP_fetch>();
+    const Client = new decibel_client(
+      { network: 'testnet', marketSymbol: 'BTC/USD' },
+      () => Reader,
+      fetchHTTP,
+    );
+
+    await expect(Client.getBTCStreamingBook('0xbtc')).resolves.toEqual({
+      market: '0xbtc',
+      bids: [{ price: 100, size: 1 }],
+      asks: [{ price: 101, size: 1 }],
+      best_bid: 100,
+      best_ask: 101,
+      best_bid_size: 1,
+      best_ask_size: 1,
+      microprice: 100.5,
+      top_book_imbalance: 0,
+      unix_ms: 1_700_000_000_000,
+    });
+    expect(fetchHTTP).not.toHaveBeenCalled();
+  });
+
   it('fetches only the current BTC book snapshot by concrete market address', async () => {
     const fetchHTTP = vi.fn<HTTP_fetch>().mockResolvedValue(
       new Response(
@@ -87,6 +550,10 @@ describe('decibel_client', () => {
       bids: [{ price: 100, size: 1 }],
       best_ask: 101,
       best_bid: 100,
+      best_ask_size: 1,
+      best_bid_size: 1,
+      microprice: 100.5,
+      top_book_imbalance: 0,
       unix_ms: 1_700_000_000_000,
     });
     expect(fetchHTTP).toHaveBeenCalledWith(

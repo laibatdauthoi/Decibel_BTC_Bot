@@ -96,6 +96,8 @@ export type normalized_trade = {
 };
 
 export type order_book_snapshot = {
+  bids?: readonly Readonly<{ price: number; size: number }>[];
+  asks?: readonly Readonly<{ price: number; size: number }>[];
   marketAddress: string;
   exchangeTimestamp: Date;
   receivedAt: Date;
@@ -170,6 +172,8 @@ export function normalizeDepthPayload(
   const topSize = bestBidLevel.size + bestAskLevel.size;
   const totalDepth = bidSize + askSize;
   return {
+    bids,
+    asks,
     marketAddress,
     exchangeTimestamp: new Date(depth.unix_ms),
     receivedAt,

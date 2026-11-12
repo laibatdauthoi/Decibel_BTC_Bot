@@ -1,0 +1,367 @@
+import { deriveDecibelDCACycleV1 } from '../src/decibel_dca_opportunity_v1.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { decibel_execution_lifecycle_journal_v1 } from '../src/decibel_execution_lifecycle_journal_v1.js';
+import { buildDecibelExecutionIntentV1 } from '../src/decibel_execution_intent_v1.js';
+import { projectDecibelNextSessionEntrySizeUsdV1 } from '../src/run_decibel_production_web_v1.js';
+import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_orchestrator_v1.js';
+import { describe, expect, it } from 'vitest';
+import {
+  calculateDecibelEntrySizeV1,
+  calculateDecibelPreferredEntrySizeUsdV1,
+} from '../src/decibel_entry_size_v1.js';
+import { calculateDecibelRiskCapacityV1 } from '../src/decibel_risk_capacity_v1.js';
+
+function assessTestCycle(input: {
+  positionBase: number;
+  fills: readonly {
+    fillId: string;
+    intentId: string;
+    side: 'BUY' | 'SELL';
+    quantity: number;
+    price?: number;
+    timestamp?: number;
+  }[];
+}) {
+  return deriveDecibelDCACycleV1(
+    input.fills.map((fill, index) => ({
+      ...fill,
+      price: fill.price ?? 80000,
+      timestamp: fill.timestamp ?? index,
+    })),
+    input.positionBase,
+  );
+}
+
+const size = {
+  preferredEntrySizeUsd: 15,
+  price: 80000,
+  minimumSize: 0.00002,
+  minimumNotionalUsd: 0,
+  lotSize: 0.00001,
+  maximumExecutableNotionalUsd: 100,
+};
+const capacity = {
+  now: 10000,
+  capitalUsd: 8,
+  availableMarginUsd: 8,
+  leverage: 40,
+  maxLossUsd: 0.2,
+  netSessionPnlAfterFeesUsd: 0,
+  midpoint: 80000,
+  lotSize: 0.00001,
+  collateralFraction: 0.5,
+  safetyNotionalCeilingUsd: 160,
+  positionBase: 0,
+  orders: [],
+  observations: {
+    accountObservedAt: 10000,
+    marketObservedAt: 10000,
+    maximumAgeMs: 5000,
+    actualLeverage: 40,
+    venueMaximumLeverage: 40,
+    maintenanceMarginUsd: 0,
+    marginDeficitUsd: 0,
+    equityUsd: 8,
+    liquidationPrice: null,
+    bids: [{ price: 79999, size: 1 }],
+    asks: [{ price: 80001, size: 1 }],
+    recentMidpoints: [80000],
+  },
+};
+describe('Dynamic entry allocation and independent hard risk', () => {
+  it('reproduces the $5 capital / $0.20 loss fixture with an independent USD calculation', () => {
+    const result = calculateDecibelRiskCapacityV1({
+      ...capacity,
+      capitalUsd: 5,
+      availableMarginUsd: 5.437,
+      sizingPolicyVersion: 1,
+    });
+    // 1% move + two 0.1% fee legs + 0.25% slippage + 0.08% selection.
+    const lossRate = 0.01 + 0.001 + 0.001 + 0.0025 + 0.0008;
+    expect(result.riskCapacityUsd).toBeCloseTo((0.2 - 0.01) / lossRate, 12);
+    expect(result.marginCapacityUsd).toBeCloseTo((2.5 - 0.25) / (1 / 40 + 0.0045));
+    expect(15 * lossRate + 0.01).toBeCloseTo(0.2395);
+    expect(result.lossModel).toMatchObject({
+      lossRemainingUsd: 0.19,
+      lossBps: 153,
+      stressMoveFraction: 0.01,
+      stressSource: 'POLICY_FLOOR_AND_RECENT_RANGE',
+    });
+    expect(result.riskCapacityUsd).toBeLessThan(14.4);
+  });
+  it('debits net losses once, does not enlarge risk with leverage or credit session gains', () => {
+    const base = calculateDecibelRiskCapacityV1({ ...capacity, sizingPolicyVersion: 1 });
+    for (const leverage of [10, 40]) {
+      const loss = calculateDecibelRiskCapacityV1({
+        ...capacity,
+        leverage,
+        sizingPolicyVersion: 1,
+        netSessionPnlAfterFeesUsd: -0.05,
+      });
+      expect(loss.riskCapacityUsd).toBeCloseTo((0.2 - 0.05 - 0.01) / 0.0153);
+    }
+    expect(
+      calculateDecibelRiskCapacityV1({ ...capacity, netSessionPnlAfterFeesUsd: 1 }).riskCapacityUsd,
+    ).toBe(base.riskCapacityUsd);
+  });
+  it.each([1, -1])('counts position and pending opening subsets symmetrically (%s)', (sign) => {
+    const result = calculateDecibelRiskCapacityV1({
+      ...capacity,
+      positionBase: sign * 0.0001,
+      observations: { ...capacity.observations, liquidationPrice: sign > 0 ? 70000 : 90000 },
+      orders: [{ side: sign > 0 ? 'BUY' : 'SELL', quantity: 0.00005, price: 80000 }],
+    });
+    expect(result.worstCaseExposureUsd).toBeCloseTo(12);
+    expect(result.riskCapacityUsd).toBeCloseTo(0.19 / 0.0153);
+  });
+  it.each([
+    [100, 10],
+    [300, 15],
+    [500, 25],
+    [1000, 50],
+  ])('target %s prefers %s', (target, expected) => {
+    expect(
+      calculateDecibelPreferredEntrySizeUsdV1({
+        targetTradingVolumeUsd: target,
+        capitalToUseUsd: 8,
+        collateralFraction: 0.5,
+      }),
+    ).toBe(expected);
+  });
+  it('uses the configured capital allocation divided across four entries without a synthetic target', () => {
+    expect(
+      calculateDecibelPreferredEntrySizeUsdV1({
+        targetTradingVolumeUsd: -1,
+        capitalToUseUsd: 200,
+        collateralFraction: 0.5,
+      }),
+    ).toBe(25);
+  });
+  it('raises preferred size to a lot-aligned venue minimum', () => {
+    expect(calculateDecibelEntrySizeV1({ ...size, minimumSize: 0.0003 })).toMatchObject({
+      quantity: 0.0003,
+      reason: 'VENUE_MINIMUM',
+    });
+    expect(calculateDecibelEntrySizeV1({ ...size, minimumNotionalUsd: 16.1 })).toMatchObject({
+      quantity: 0.00021,
+      entrySizeUsd: 16.8,
+    });
+  });
+  it('adapts to actual margin, rounds down and blocks below the venue minimum', () => {
+    const adapted = calculateDecibelEntrySizeV1({ ...size, maximumExecutableNotionalUsd: 12.1 });
+    expect(adapted.quantity).toBe(0.00015);
+    expect(adapted.entrySizeUsd).toBeCloseTo(12);
+    expect(adapted.reason).toBe('MARGIN_ADAPTED');
+    expect(calculateDecibelEntrySizeV1({ ...size, maximumExecutableNotionalUsd: 1 })).toMatchObject(
+      { quantity: 0, entrySizeUsd: null, reason: 'AVAILABLE_MARGIN_BELOW_VENUE_MINIMUM' },
+    );
+  });
+  it('keeps executable sizing independent of Max Loss while retaining a stricter risk assessment', () => {
+    const a = calculateDecibelRiskCapacityV1({ ...capacity, sizingPolicyVersion: 1 });
+    const b = calculateDecibelRiskCapacityV1({
+      ...capacity,
+      sizingPolicyVersion: 1,
+      maxLossUsd: 2,
+    });
+    expect(a.capacityBlocker).toBeNull();
+    expect(a.effectivePositionLimitUsd).toBe(b.effectivePositionLimitUsd);
+    expect(a.riskCapacityUsd).toBeLessThan(15);
+    expect(b.riskCapacityUsd).toBeGreaterThan(15);
+    expect(
+      calculateDecibelEntrySizeV1({
+        ...size,
+        maximumExecutableNotionalUsd: a.effectivePositionLimitUsd,
+      }).quantity,
+    ).toBe(0.00018);
+    expect(calculateDecibelRiskCapacityV1(capacity).effectivePositionLimitUsd).toBeLessThan(
+      a.effectivePositionLimitUsd,
+    );
+  });
+  it('projects the same venue-rounded Entry Size for Settings independently of Max Loss', () => {
+    const now = Date.now();
+    const snapshot = {
+      availableMarginUsd: 8,
+      maximumEffectiveLeverage: 40,
+      accountMetrics: { collateralUsd: 8 },
+      practicalCapacityInputs: {
+        ...capacity.observations,
+        accountObservedAt: now,
+        marketObservedAt: now,
+        postOrderMargin: {
+          source: 'AUTHENTICATED_POST_ORDER_MARGIN_TIER',
+          observedAt: now,
+          validUntil: now + 5000,
+          maximumNotionalUsd: 160,
+          initialMarginRate: 0.025,
+          reservedCollateralUsd: 0,
+          liquidationDistanceBps: 1000,
+          maintenanceMarginUsd: 0,
+          tierBoundaryNotionalUsd: 160,
+        },
+      },
+      input: {
+        now,
+        actualInventoryBase: 0,
+        openOrders: [],
+        book: { bestBid: 80000, bestAsk: 80000 },
+        metadata: { lotSize: 0.00001, minimumSize: 0.00002 },
+      },
+    } as unknown as decibel_production_live_snapshot_v1;
+    const settings = {
+      capitalToUseUsd: 8,
+      maxLossUsd: 0.2,
+      targetMakerVolumeUsd: 300,
+      orderNotionalUsd: 10,
+      maxPositionUsd: 11.91,
+    };
+    const input = {
+      settings,
+      snapshot,
+      accountReady: true,
+      marketReady: true,
+      venueMaximumNotionalUsd: 160,
+      maximumAggregateCollateralFraction: 0.5,
+    };
+    expect(projectDecibelNextSessionEntrySizeUsdV1(input)).toBeCloseTo(14.4);
+    expect(
+      projectDecibelNextSessionEntrySizeUsdV1({
+        ...input,
+        settings: { ...settings, maxLossUsd: 2 },
+      }),
+    ).toBeCloseTo(14.4);
+    expect(projectDecibelNextSessionEntrySizeUsdV1({ ...input, accountReady: false })).toBeNull();
+    expect(
+      projectDecibelNextSessionEntrySizeUsdV1({
+        ...input,
+        settings: { ...settings, capitalToUseUsd: 0.01, maxLossUsd: 0.001 },
+      }),
+    ).toBeNull();
+  });
+  it.each(['BUY', 'SELL'] as const)(
+    'replays initial plus three additions, grouped partial fills, across restart (%s)',
+    (side) => {
+      const sign = side === 'BUY' ? 1 : -1;
+      const fills = Array.from({ length: 8 }, (_, index) => ({
+        fillId: String(index),
+        intentId: String(Math.floor(index / 2)),
+        side,
+        quantity: 0.001,
+      }));
+      expect(assessTestCycle({ positionBase: sign * 0.008, fills })).toMatchObject({
+        increases: 4,
+        additions: 3,
+        blocker: 'DCA_THREE_ADDITIONS_REACHED',
+      });
+      expect(
+        assessTestCycle(
+          JSON.parse(JSON.stringify({ positionBase: sign * 0.008, fills })) as Parameters<
+            typeof assessTestCycle
+          >[0],
+        ),
+      ).toEqual(assessTestCycle({ positionBase: sign * 0.008, fills }));
+      expect(
+        assessTestCycle({
+          positionBase: sign * 0.002,
+          fills: [...fills.slice(0, 2), fills[0]!],
+        }),
+      ).toMatchObject({ increases: 1, additions: 0, blocker: null });
+      const closed = [
+        ...fills,
+        {
+          fillId: 'close',
+          intentId: 'close',
+          side: side === 'BUY' ? ('SELL' as const) : ('BUY' as const),
+          quantity: 0.008,
+        },
+      ];
+      expect(assessTestCycle({ positionBase: 0, fills: closed })).toMatchObject({
+        increases: 0,
+        additions: 0,
+        blocker: null,
+      });
+      expect(
+        assessTestCycle({
+          positionBase: sign * 0.001,
+          fills: [...closed, { fillId: 'new', intentId: 'new', side, quantity: 0.001 }],
+        }),
+      ).toMatchObject({ increases: 1, blocker: null });
+    },
+  );
+  it('recovers DCA count from SQLite after closing and reopening the journal', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'entry-cycle-')), 'journal.sqlite');
+    const Journal = new decibel_execution_lifecycle_journal_v1(path);
+    try {
+      for (let index = 0; index < 5; index++) {
+        const intent = buildDecibelExecutionIntentV1({
+          sessionId: 'entry-cycle',
+          cycleSequence: index + 1,
+          action: 'PLACE',
+          market: 'BTC/USD',
+          side: 'BUY',
+          price: 80000,
+          quantity: 0.0002,
+          tickSize: 0.1,
+          lotSize: 0.00001,
+          clientOrderId: `test-entry-${index}`,
+          knownVenueOrderId: null,
+          sourceStateHash: 'test-state',
+          strategyDecisionHash: 'test-decision',
+          createdAt: index,
+        });
+        Journal.prepare(intent);
+        // The fifth unfilled replacement consumes no addition.
+        if (index === 4) continue;
+        for (let part = 0; part < 2; part++)
+          Journal.applyFill({
+            fillId: `fill-${index}-${part}`,
+            intentId: intent.intentId,
+            side: 'BUY',
+            quantity: 0.0001,
+            price: 80000,
+            strategyLineage: true,
+            makerProven: true,
+            externalCounterparty: true,
+            observedAt: index * 2 + part,
+          });
+      }
+    } finally {
+      Journal.close();
+    }
+    const Recovered = new decibel_execution_lifecycle_journal_v1(path);
+    try {
+      expect(
+        assessTestCycle({
+          positionBase: 0.0008,
+          fills: Recovered.getSessionEntryCycleFills('entry-cycle'),
+        }),
+      ).toMatchObject({
+        increases: 4,
+        additions: 3,
+        blocker: 'DCA_THREE_ADDITIONS_REACHED',
+      });
+      expect(Recovered.getSessionEntryCycleFills('other-session')).toEqual([]);
+    } finally {
+      Recovered.close();
+    }
+  });
+  it('does not count unfilled cancellations and refuses incomplete or reversed history', () => {
+    expect(assessTestCycle({ positionBase: 0, fills: [] })).toMatchObject({
+      increases: 0,
+      blocker: null,
+    });
+    expect(assessTestCycle({ positionBase: 1, fills: [] }).blocker).toBe(
+      'DCA_FILL_HISTORY_RECONCILIATION_REQUIRED',
+    );
+    expect(
+      assessTestCycle({
+        positionBase: -1,
+        fills: [
+          { fillId: '1', intentId: '1', side: 'BUY', quantity: 1 },
+          { fillId: '2', intentId: '2', side: 'SELL', quantity: 2 },
+        ],
+      }).blocker,
+    ).toBe('DCA_DIRECTION_REVERSAL_RECONCILIATION_REQUIRED');
+  });
+});

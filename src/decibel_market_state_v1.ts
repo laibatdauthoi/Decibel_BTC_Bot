@@ -73,6 +73,7 @@ export type decibel_market_state_configuration = Readonly<{
   maximumTradeAgeMs: number;
   maximumClockSkewMs: number;
   tradesRequired: boolean;
+  pricesRequired?: boolean;
 }>;
 
 export type decibel_market_state_input = Readonly<{
@@ -243,8 +244,9 @@ export function buildDecibelMarketStateV1(
     if (input.book.bestBid >= input.book.bestAsk) found.add('BOOK_CROSSED');
     if (!bookFreshness.fresh) found.add('BOOK_STALE');
   }
-  if (input.prices === null) found.add('PRICE_STATE_MISSING');
-  else if (!priceFreshness.fresh) found.add('PRICE_STATE_STALE');
+  if (input.prices === null) {
+    if (input.configuration.pricesRequired !== false) found.add('PRICE_STATE_MISSING');
+  } else if (!priceFreshness.fresh) found.add('PRICE_STATE_STALE');
   if (input.configuration.tradesRequired && trades.length === 0) found.add('TRADE_STATE_MISSING');
   if (input.configuration.tradesRequired && trades.length > 0 && !tradeFreshness.fresh)
     found.add('TRADE_STATE_STALE');

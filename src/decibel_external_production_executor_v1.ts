@@ -1,12 +1,14 @@
 import type { PlaceOrderResult } from '@decibeltrade/sdk';
 import type {
+  AccountAuthenticator,
   AccountAddress,
   InputGenerateTransactionPayloadData,
+  PendingTransactionResponse,
   SimpleTransaction,
 } from '@aptos-labs/ts-sdk';
 
 import type { cancel_intent_v1, place_intent_v1 } from './decibel_execution_intent_v1.js';
-import { scaleDecimalToChainUnitsV1 } from './decibel_chain_units_v1.js';
+import { scaleDecimalToChainUnitsV1, getDecibelQuantityUnitsV1 } from './decibel_chain_units_v1.js';
 import {
   DECIBEL_PRODUCTION_EXECUTOR_HANDOFF_V1,
   type DecibelProductionExecutionExecutorV1,
@@ -18,9 +20,11 @@ export const DECIBEL_EXTERNAL_PRODUCTION_EXECUTOR_V1 = DECIBEL_PRODUCTION_EXECUT
 
 const BTC_USD_MARKET_ADDRESS = '0x5e0e16f34adfb4b316f8d532d68acbfa206826feaaa418d3938046bdc2044861';
 const DECIBEL_POST_ONLY_TIME_IN_FORCE = 1;
+const DECIBEL_IMMEDIATE_OR_CANCEL_TIME_IN_FORCE = 2;
 const BTC_USD_PRICE_DECIMALS = 6;
 const BTC_USD_SIZE_DECIMALS = 8;
 export const DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1 = 200_000;
+export const DECIBEL_PRODUCTION_CANCEL_TRANSPORT_TIMEOUT_MS_V1 = 20_000;
 const APT_OCTAS_PER_APT = 100_000_000;
 
 type decibel_chain_unit = bigint;
@@ -37,7 +41,9 @@ export interface DecibelProductionWriteClientV1 {
     isReduceOnly: boolean;
     clientOrderId?: string;
     subaccountAddr?: string;
-  }): Promise<PlaceOrderResult>;
+  }): Promise<
+    PlaceOrderResult & Readonly<{ transactionHash?: string; expirationTimestampMs?: number }>
+  >;
   cancelOrder(input: {
     orderId: string;
     marketAddr: string;
@@ -45,7 +51,7 @@ export interface DecibelProductionWriteClientV1 {
   }): Promise<unknown>;
 }
 
-type decibel_execution_gas_diagnostics_v1 = Readonly<{
+export type decibel_execution_gas_diagnostics_v1 = Readonly<{
   primaryAccountAddress: string;
   subaccountAddress: string;
   primaryAccountAptBalance: number;
@@ -90,11 +96,20 @@ function assertClientOrderId(value: string): void {
 }
 
 function validatePlaceIntent(intent: place_intent_v1): void {
+  const sessionUnwindIoc = intent.executionRole === 'SESSION_UNWIND_IOC';
   if (
     intent.market !== 'BTC/USD' ||
     intent.action !== 'PLACE' ||
     intent.type !== 'LIMIT' ||
-    !intent.postOnly ||
+    (sessionUnwindIoc
+      ? intent.timeInForce !== 'ImmediateOrCancel' || intent.postOnly || !intent.reduceOnly
+      : intent.timeInForce !== 'PostOnly' || !intent.postOnly) ||
+    ![
+      'STANDARD_MAKER',
+      'INVENTORY_REDUCING_MAKER',
+      'TAKE_PROFIT_MAKER',
+      'SESSION_UNWIND_IOC',
+    ].includes(intent.executionRole) ||
     intent.selfTradePermitted ||
     !intent.externalCounterpartyRequired ||
     !Number.isFinite(intent.price) ||
@@ -125,6 +140,34 @@ function validateCancelIntent(intent: cancel_intent_v1): void {
   );
 }
 
+/** Independent read-only RPCs; every existing gas/object check still completes before submission. */
+export async function readDecibelGasAccountEvidenceV1(
+  readers: Readonly<{
+    readPrimaryBalance: () => Promise<number>;
+    readSubaccountBalance: () => Promise<number>;
+    readSubaccountExists: () => Promise<boolean>;
+    readMarketExists: () => Promise<boolean>;
+  }>,
+) {
+  const [
+    primaryAccountAptBalance,
+    subaccountAptBalance,
+    subaccountObjectExists,
+    marketObjectExists,
+  ] = await Promise.all([
+    readers.readPrimaryBalance(),
+    readers.readSubaccountBalance(),
+    readers.readSubaccountExists(),
+    readers.readMarketExists(),
+  ]);
+  return Object.freeze({
+    primaryAccountAptBalance,
+    subaccountAptBalance,
+    subaccountObjectExists,
+    marketObjectExists,
+  });
+}
+
 async function createWriteClient(
   environment: decibel_production_executor_environment_v1,
 ): Promise<decibel_production_write_connection_v1> {
@@ -142,6 +185,8 @@ async function createWriteClient(
     privateKey: new Ed25519PrivateKey(privateKey),
   });
   class decibel_capped_gas_write_dex_v1 extends DecibelWriteDex {
+    public latestTransactionHash: string | null = null;
+    public latestExpirationTimestampMs: number | null = null;
     public override buildTx(
       payload: InputGenerateTransactionPayloadData & {
         maxGasAmount?: number;
@@ -149,28 +194,54 @@ async function createWriteClient(
       },
       sender: AccountAddress,
     ): Promise<SimpleTransaction> {
-      return super.buildTx(
-        {
-          ...payload,
-          maxGasAmount: capDecibelProductionMaxGasAmountV1(payload.maxGasAmount),
-        },
-        sender,
-      );
+      return super
+        .buildTx(
+          {
+            ...payload,
+            maxGasAmount: capDecibelProductionMaxGasAmountV1(payload.maxGasAmount),
+          },
+          sender,
+        )
+        .then((transaction) => {
+          this.latestExpirationTimestampMs =
+            Number(transaction.rawTransaction.expiration_timestamp_secs) * 1_000;
+          return transaction;
+        });
+    }
+    public override async submitTx(
+      transaction: SimpleTransaction,
+      senderAuthenticator: AccountAuthenticator,
+    ): Promise<PendingTransactionResponse> {
+      const pending = await super.submitTx(transaction, senderAuthenticator);
+      this.latestTransactionHash = pending.hash;
+      return pending;
     }
   }
   const Client = new decibel_capped_gas_write_dex_v1(MAINNET_CONFIG, Signer, {
     ...(environment.DECIBEL_NODE_API_KEY ? { nodeApiKey: environment.DECIBEL_NODE_API_KEY } : {}),
   });
   const WriteClient: DecibelProductionWriteClientV1 = {
-    placeOrder: (input) =>
-      Client.placeOrder({
+    placeOrder: async (input) => {
+      Client.latestTransactionHash = null;
+      Client.latestExpirationTimestampMs = null;
+      const result = await Client.placeOrder({
         ...input,
         // SDK 0.7.0 declares human-unit numbers but forwards these values directly
         // to Move u64 arguments. BigInt chain units are required at this boundary.
         price: input.price as unknown as number,
         size: input.size as unknown as number,
         accountOverride: Signer,
-      }),
+      });
+      return {
+        ...result,
+        ...(Client.latestTransactionHash === null
+          ? {}
+          : { transactionHash: Client.latestTransactionHash }),
+        ...(Client.latestExpirationTimestampMs === null
+          ? {}
+          : { expirationTimestampMs: Client.latestExpirationTimestampMs }),
+      };
+    },
     cancelOrder: (input) => Client.cancelOrder({ ...input, accountOverride: Signer }),
   };
   const getAptBalance = async (accountAddress: string | AccountAddress): Promise<number> =>
@@ -198,23 +269,29 @@ async function createWriteClient(
   return Object.freeze({
     client: WriteClient,
     subaccount,
-    getGasDiagnostics: async () =>
-      Object.freeze({
+    getGasDiagnostics: async () => {
+      const evidence = await readDecibelGasAccountEvidenceV1({
+        readPrimaryBalance: () => getAptBalance(Signer.accountAddress),
+        readSubaccountBalance: () => getAptBalance(subaccount),
+        readSubaccountExists: () =>
+          hasObjectResource(
+            subaccount,
+            `${MAINNET_CONFIG.deployment.package}::dex_accounts::Subaccount`,
+          ),
+        readMarketExists: () =>
+          hasObjectResource(
+            resolvedMarketAddress,
+            `${MAINNET_CONFIG.deployment.package}::perp_market::PerpMarket`,
+          ),
+      });
+      return Object.freeze({
         primaryAccountAddress: Signer.accountAddress.toString(),
         subaccountAddress: subaccount,
-        primaryAccountAptBalance: await getAptBalance(Signer.accountAddress),
-        subaccountAptBalance: await getAptBalance(subaccount),
+        ...evidence,
         maxGasAmount: DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1,
         resolvedMarketAddress,
-        subaccountObjectExists: await hasObjectResource(
-          subaccount,
-          `${MAINNET_CONFIG.deployment.package}::dex_accounts::Subaccount`,
-        ),
-        marketObjectExists: await hasObjectResource(
-          resolvedMarketAddress,
-          `${MAINNET_CONFIG.deployment.package}::perp_market::PerpMarket`,
-        ),
-      }),
+      });
+    },
   });
 }
 
@@ -224,12 +301,30 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
   constructor(
     private readonly GetConnection: () =>
       decibel_production_write_connection_v1 | Promise<decibel_production_write_connection_v1>,
+    private readonly CancelTransportTimeoutMs = DECIBEL_PRODUCTION_CANCEL_TRANSPORT_TIMEOUT_MS_V1,
+    private readonly getNow: () => number = Date.now,
   ) {}
 
   async placePostOnlyLimit(intent: place_intent_v1): Promise<production_execution_result_v1> {
+    return this.placeOrder(intent, DECIBEL_POST_ONLY_TIME_IN_FORCE);
+  }
+
+  async placeReduceOnlyImmediateOrCancel(
+    intent: place_intent_v1,
+  ): Promise<production_execution_result_v1> {
+    return this.placeOrder(intent, DECIBEL_IMMEDIATE_OR_CANCEL_TIME_IN_FORCE);
+  }
+
+  private async placeOrder(
+    intent: place_intent_v1,
+    timeInForce: 1 | 2,
+  ): Promise<production_execution_result_v1> {
     validatePlaceIntent(intent);
+    const startedAt = this.getNow();
     try {
+      this.logSubmissionStage(intent, 'CONNECTION_RESOLUTION', startedAt);
       const { client, subaccount } = await this.getConnection();
+      this.logSubmissionStage(intent, 'GAS_DIAGNOSTICS', startedAt);
       await this.logGasDiagnostics();
       console.info(
         JSON.stringify({
@@ -241,54 +336,93 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
             intent.price,
             BTC_USD_PRICE_DECIMALS,
           ).toString(),
-          sizeChainUnits: scaleDecimalToChainUnitsV1(
+          sizeChainUnits: getDecibelQuantityUnitsV1(
             intent.quantity,
             BTC_USD_SIZE_DECIMALS,
           ).toString(),
           isBuy: intent.side === 'BUY',
-          timeInForce: DECIBEL_POST_ONLY_TIME_IN_FORCE,
-          isReduceOnly: false,
+          timeInForce,
+          isReduceOnly: intent.reduceOnly,
           clientOrderId: intent.clientOrderId,
         }),
       );
+      this.logSubmissionStage(intent, 'SDK_PLACE_ORDER', startedAt);
       const result = await client.placeOrder({
         marketName: 'BTC/USD',
         price: scaleDecimalToChainUnitsV1(intent.price, BTC_USD_PRICE_DECIMALS),
-        size: scaleDecimalToChainUnitsV1(intent.quantity, BTC_USD_SIZE_DECIMALS),
+        size: getDecibelQuantityUnitsV1(intent.quantity, BTC_USD_SIZE_DECIMALS),
         isBuy: intent.side === 'BUY',
-        timeInForce: DECIBEL_POST_ONLY_TIME_IN_FORCE,
-        isReduceOnly: false,
+        timeInForce,
+        isReduceOnly: intent.reduceOnly,
         clientOrderId: intent.clientOrderId,
         subaccountAddr: subaccount,
       });
+      this.logSubmissionStage(intent, 'SDK_PLACE_ORDER_COMPLETE', startedAt);
       if (!result.success || !result.orderId)
-        return Object.freeze({ outcome: 'PLACE_OUTCOME_UNKNOWN' });
+        return Object.freeze({
+          outcome: 'PLACE_OUTCOME_UNKNOWN',
+          ...('transactionHash' in result ? { transactionHash: result.transactionHash } : {}),
+          ...(result.expirationTimestampMs === undefined
+            ? {}
+            : { expirationTimestampMs: result.expirationTimestampMs }),
+        });
       return Object.freeze({
         outcome: 'PLACE_ACKNOWLEDGED',
         venueOrderId: result.orderId,
+        transactionHash: result.transactionHash,
+        ...(result.expirationTimestampMs === undefined
+          ? {}
+          : { expirationTimestampMs: result.expirationTimestampMs }),
       });
-    } catch {
+    } catch (error) {
+      this.logSubmissionFailure(intent, error);
       return Object.freeze({ outcome: 'PLACE_OUTCOME_UNKNOWN' });
     }
   }
 
   async cancelExactOrder(intent: cancel_intent_v1): Promise<production_execution_result_v1> {
     validateCancelIntent(intent);
+    const startedAt = this.getNow();
+    let Timeout: ReturnType<typeof setTimeout> | undefined;
     try {
+      this.logCancelStage(intent, 'CONNECTION_RESOLUTION', startedAt);
       const { client, subaccount } = await this.getConnection();
+      this.logCancelStage(intent, 'GAS_DIAGNOSTICS', startedAt);
       await this.logGasDiagnostics();
-      await client.cancelOrder({
-        orderId: intent.expectedPreviousVenueOrderId,
-        marketAddr: BTC_USD_MARKET_ADDRESS,
-        subaccountAddr: subaccount,
+      this.logCancelStage(intent, 'SDK_CANCEL_ORDER_START', startedAt);
+      const timeout = new Promise<'TIMEOUT'>((resolve) => {
+        Timeout = setTimeout(() => resolve('TIMEOUT'), this.CancelTransportTimeoutMs);
       });
+      const result = await Promise.race([
+        client.cancelOrder({
+          orderId: intent.expectedPreviousVenueOrderId,
+          marketAddr: BTC_USD_MARKET_ADDRESS,
+          subaccountAddr: subaccount,
+        }),
+        timeout,
+      ]);
+      if (result === 'TIMEOUT') {
+        this.logCancelStage(intent, 'SDK_CANCEL_ORDER_TIMEOUT', startedAt);
+        return Object.freeze({ outcome: 'CANCEL_OUTCOME_UNKNOWN' });
+      }
+      this.logCancelStage(intent, 'SDK_CANCEL_ORDER_COMPLETE', startedAt);
       return Object.freeze({
         outcome: 'CANCEL_CONFIRMED',
         venueOrderId: intent.expectedPreviousVenueOrderId,
       });
-    } catch {
+    } catch (error) {
+      this.logCancelStage(intent, 'SDK_CANCEL_ORDER_ERROR', startedAt, error);
       return Object.freeze({ outcome: 'CANCEL_OUTCOME_UNKNOWN' });
+    } finally {
+      if (Timeout !== undefined) clearTimeout(Timeout);
     }
+  }
+
+  public async readAccountDiagnostics(): Promise<decibel_execution_gas_diagnostics_v1> {
+    const connection = await this.getConnection();
+    if (connection.getGasDiagnostics === undefined)
+      throw new Error('PRODUCTION_EXECUTOR_GAS_DIAGNOSTICS_UNAVAILABLE');
+    return connection.getGasDiagnostics();
   }
 
   private async getConnection() {
@@ -312,6 +446,69 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
       diagnostics.resolvedMarketAddress.toLowerCase() !== BTC_USD_MARKET_ADDRESS
     )
       throw new Error('PRODUCTION_EXECUTOR_BTC_MARKET_IDENTITY_MISMATCH');
+  }
+
+  private logSubmissionStage(
+    intent: place_intent_v1,
+    stage:
+      'CONNECTION_RESOLUTION' | 'GAS_DIAGNOSTICS' | 'SDK_PLACE_ORDER' | 'SDK_PLACE_ORDER_COMPLETE',
+    startedAt: number,
+  ): void {
+    const observedAt = this.getNow();
+    console.info(
+      JSON.stringify({
+        event: 'DECIBEL_EXECUTION_SUBMISSION_STAGE',
+        intentId: intent.intentId,
+        clientOrderId: intent.clientOrderId,
+        stage,
+        observedAt,
+        elapsedMs: Math.max(0, observedAt - startedAt),
+      }),
+    );
+  }
+
+  private logSubmissionFailure(intent: place_intent_v1, error: unknown): void {
+    const name = error instanceof Error ? error.name : 'UnknownError';
+    const message =
+      error instanceof Error
+        ? error.message.replace(/0x[a-fA-F0-9]{32,}/g, '[REDACTED_HEX]').slice(0, 300)
+        : 'UNKNOWN_EXECUTOR_FAILURE';
+    console.error(
+      JSON.stringify({
+        event: 'DECIBEL_EXECUTION_SUBMISSION_FAILED',
+        intentId: intent.intentId,
+        clientOrderId: intent.clientOrderId,
+        errorName: name,
+        errorMessage: message,
+      }),
+    );
+  }
+
+  private logCancelStage(
+    intent: cancel_intent_v1,
+    stage:
+      | 'CONNECTION_RESOLUTION'
+      | 'GAS_DIAGNOSTICS'
+      | 'SDK_CANCEL_ORDER_START'
+      | 'SDK_CANCEL_ORDER_COMPLETE'
+      | 'SDK_CANCEL_ORDER_TIMEOUT'
+      | 'SDK_CANCEL_ORDER_ERROR',
+    startedAt: number,
+    error?: unknown,
+  ): void {
+    console.info(
+      JSON.stringify({
+        event: 'DECIBEL_EXECUTION_CANCEL_STAGE',
+        intentId: intent.intentId,
+        clientOrderId: intent.clientOrderId,
+        venueOrderId: intent.expectedPreviousVenueOrderId,
+        stage,
+        elapsedMs: Math.max(0, this.getNow() - startedAt),
+        ...(error instanceof Error
+          ? { errorName: error.name, errorMessage: error.message.slice(0, 200) }
+          : {}),
+      }),
+    );
   }
 }
 

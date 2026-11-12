@@ -1,0 +1,126 @@
+{
+  "provenance": "Read-only journal frame and authenticated venue fills; public/numeric fields only. Historical, not current venue state.",
+  "frame": {
+    "timestamp": 1793821051935,
+    "authenticatedPositionBase": 0.0007,
+    "bestBid": 80078.8,
+    "bestAsk": 80078.9,
+    "bookObservedAt": 1793821050353,
+    "fairPrice": 80078.85,
+    "inventoryPressure": 0.7777777777777777,
+    "maximumAbsPositionBase": 0.0009000000000000001,
+    "makerFeeBps": 1.5,
+    "estimatedGasCostUsd": 0.00040755420000000004,
+    "adverseSelectionBufferBps": 4.80896810258691,
+    "safetyMarginBps": 1,
+    "sizingInputs": {
+      "minimumNotionalUsd": 10,
+      "maximumNotionalUsd": 72.07096500000002,
+      "maximumAbsPositionBase": 0.0009000000000000001,
+      "availableMarginUsd": 2.193118125,
+      "maximumEffectiveLeverage": 40,
+      "capacityBlocker": null,
+      "availableHeadroomUsd": 16.01577000000001
+    },
+    "bidEligibilityReason": "NO_QUOTE_CANDIDATE",
+    "askEligibilityReason": "TP_NET_PROFIT_NOT_POSITIVE:NET=-0.07092238533670264:REQUIRED=0:BASIS=80167.987143:PRICE=80162.5:QTY=0.0007",
+    "BID_RAW_BUDGET_USD": null,
+    "ASK_RAW_BUDGET_USD": 64.06308000000001,
+    "quoteSizing": {
+      "BUY": null,
+      "SELL": {
+        "side": "SELL",
+        "price": 80106.5,
+        "proposedSizeBtc": 0.0007,
+        "proposedNotionalUsd": 56.07455,
+        "finalSizeBtc": 0.0007,
+        "finalNotionalUsd": 56.07455,
+        "bindingConstraint": "STRATEGY_ALLOCATION",
+        "positionBudgetBtc": 0.0007,
+        "positionBudgetUsd": 56.07455,
+        "marginBudgetUsd": 226.27004999599998,
+        "volumeBudgetUsd": 233.50933100000003,
+        "pendingExposureBtc": 0,
+        "reductionBudgetBtc": 0.0007,
+        "reduceOnly": true,
+        "pendingVolumeUsd": 0,
+        "remainingTargetUsd": 233.50933100000003,
+        "minimumExecutableSizeBtc": 0.00002,
+        "lotSize": 0.00001,
+        "roundingReason": "LOT_ALIGNED"
+      }
+    },
+    "operationalMarketRegimePolicy": {
+      "bidDistanceMultiplier": 1,
+      "askDistanceMultiplier": 1,
+      "sizeMultiplier": 1,
+      "repriceMinimumTicks": 50,
+      "minimumRestingAgeMs": 30000,
+      "maximumInventoryPriceSkewBps": 2,
+      "volatilitySpreadMultiplier": 1
+    },
+    "orderDecisions": [
+      {
+        "ORDER_ID": "170141604320468507528212794363007205376",
+        "ORDER_ROLE": "REDUCE_ONLY_EXIT",
+        "ORDER_AGE_MS": 21885,
+        "RESTING_PRICE": 80314.4,
+        "CANDIDATE_PRICE": null,
+        "DELTA_TICKS": null,
+        "EVIDENCE_VERSION": "f215ff9d7435f6453cdfeb1833a5463a92e8000cb63d340872bf4b3d02e096ac:1793821051935:1793821050353:1793821051286",
+        "PLAN_DECISION": "NO_OP",
+        "RISK_VALIDATION_DECISION": "NO_CONFIRMED_INVALIDATION",
+        "FINAL_KEEP_CANCEL_REPLACE_REASON": "KEEP:VALID_REDUCE_ONLY_EXIT",
+        "REPLACEMENT_NET_BENEFIT": null,
+        "ACK_RECONCILIATION_STATE": "ACKNOWLEDGED:OPEN"
+      }
+    ]
+  },
+  "config": {
+    "capitalToUseUsd": 5,
+    "maxLossUsd": 2,
+    "targetMakerVolumeUsd": 500,
+    "orderNotionalUsd": 10,
+    "maxPositionUsd": 50,
+    "capacityPolicyVersion": 1
+  },
+  "session": {
+    "status": "ENDED",
+    "stop_reason": "OPERATOR_END",
+    "unwind_reason": null,
+    "session_pnl_usd": 0.015470000000009629,
+    "fees_usd": 0.065193,
+    "gas_usd": null
+  },
+  "fills": [
+    {
+      "quantity": 0.00044,
+      "price": 80202.4,
+      "feeUsd": 0.005293,
+      "at": 1793818861051
+    },
+    {
+      "quantity": 0.00013,
+      "price": 80151.8,
+      "feeUsd": 0.001562,
+      "at": 1793820042211
+    },
+    {
+      "quantity": 0.00013,
+      "price": 80067.7,
+      "feeUsd": 0.001561,
+      "at": 1793821006198
+    }
+  ],
+  "positionBasis": 80167.987143,
+  "tp": {
+    "orderId": "170141604320468507528212794363007205376",
+    "clientOrderId": "d1s4a4b33426c0e5b8a6ca8164d877e2",
+    "quantity": 0.0007,
+    "price": 80314.4,
+    "reduceOnly": true
+  },
+  "availableVenueMargin": 4.2,
+  "collateralFraction": 0.5,
+  "leverage": 40
+}

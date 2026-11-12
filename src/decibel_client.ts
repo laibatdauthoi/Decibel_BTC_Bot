@@ -14,6 +14,7 @@ import {
   type candle_interval,
 } from './candle_interval.js';
 import type { application_config } from './config.js';
+import { normalizeDepthPayload } from './microstructure.js';
 
 const SDKMarketCandidateSchema = z.object({
   market_addr: z.string().min(1),
@@ -133,7 +134,7 @@ export type BTC_candlestick_history = {
 export type BTC_hourly_candlestick = BTC_candlestick;
 
 export interface decibel_market_reader {
-  markets: { getAll(): Promise<unknown> };
+  markets: { getAll(input?: { fetchOptions: { signal: AbortSignal } }): Promise<unknown> };
   candlesticks: {
     getByName(args: {
       marketName: string;
@@ -222,6 +223,39 @@ export class decibel_client {
   private readonly webSocketErrorHandlers = new Set<() => void>();
   private readonly tradingHTTPURL: string;
   private readonly nodeApiKey: string | undefined;
+  private latestBTCStreamingBook: {
+    bids?: readonly Readonly<{ price: number; size: number }>[];
+    asks?: readonly Readonly<{ price: number; size: number }>[];
+    market: string;
+    best_bid: number;
+    best_ask: number;
+    unix_ms: number;
+    best_bid_size: number;
+    best_ask_size: number;
+    microprice: number;
+    top_book_imbalance: number;
+  } | null = null;
+  private unsubscribeBTCDepth: (() => void) | null = null;
+  private BTCDepthSubscriptionInFlight: Promise<void> | null = null;
+  private BTCDepthSubscriptionGeneration = 0;
+  private BTCDepthHasSubscribed = false;
+  private BTCDepthConnectionState:
+    'INIT' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'STALLED' = 'INIT';
+  private BTCDepthSubscriptionState: 'UNSUBSCRIBED' | 'SUBSCRIBING' | 'SUBSCRIBED' = 'UNSUBSCRIBED';
+  private BTCDepthLastWsMessageAt: number | null = null;
+  private BTCDepthLastValidBboAt: number | null = null;
+  private BTCDepthReconnectCount = 0;
+  private BTCDepthLastDisconnectReason: string | null = null;
+  private pendingBTCDepthMessage: unknown = null;
+  private BTCDepthProcessingTimer: ReturnType<typeof setTimeout> | null = null;
+  private BTCDepthPendingReceivedAt = 0;
+  private BTCDepthMessagesReceived = 0;
+  private BTCDepthMessagesCoalesced = 0;
+  private BTCDepthStatesVerified = 0;
+  private BTCDepthMessagesRejected = 0;
+  private BTCDepthLastReceiveToVerifiedMs: number | null = null;
+  private BTCDepthMaximumReceiveToVerifiedMs = 0;
+  private readonly BTCDepthWaiters = new Set<() => void>();
   private exchangeSymbol: string | undefined;
 
   constructor(
@@ -235,6 +269,7 @@ export class decibel_client {
     const options = {
       ...(config.nodeApiKey === undefined ? {} : { nodeApiKey: config.nodeApiKey }),
       onWsError: () => {
+        this.invalidateBTCDepthSubscription('SDK_WS_ERROR');
         for (const handler of this.webSocketErrorHandlers) {
           handler();
         }
@@ -297,18 +332,224 @@ export class decibel_client {
       throw new decibel_current_book_error('CURRENT_BOOK_TICKER_MISMATCH', null);
     const bids = parsed.bids.map(([price, size]) => ({ price, size }));
     const asks = parsed.asks.map(([price, size]) => ({ price, size }));
+    const bestBid = bids.length === 0 ? null : Math.max(...bids.map((level) => level.price));
+    const bestAsk = asks.length === 0 ? null : Math.min(...asks.map((level) => level.price));
+    const bestBidSize = bids.find((level) => level.price === bestBid)?.size;
+    const bestAskSize = asks.find((level) => level.price === bestAsk)?.size;
+    const topSize = (bestBidSize ?? 0) + (bestAskSize ?? 0);
+    const topFiveBidSize = bids.slice(0, 5).reduce((sum, level) => sum + level.size, 0);
+    const topFiveAskSize = asks.slice(0, 5).reduce((sum, level) => sum + level.size, 0);
+    const topFiveSize = topFiveBidSize + topFiveAskSize;
     return {
       market: marketAddress,
       bids,
       asks,
-      best_bid: bids.length === 0 ? null : Math.max(...bids.map((level) => level.price)),
-      best_ask: asks.length === 0 ? null : Math.min(...asks.map((level) => level.price)),
+      best_bid: bestBid,
+      best_ask: bestAsk,
       unix_ms: parsed.timestamp,
+      ...(bestBidSize === undefined ? {} : { best_bid_size: bestBidSize }),
+      ...(bestAskSize === undefined ? {} : { best_ask_size: bestAskSize }),
+      ...(bestBid === null || bestAsk === null || topSize <= 0
+        ? {}
+        : { microprice: (bestAsk * (bestBidSize ?? 0) + bestBid * (bestAskSize ?? 0)) / topSize }),
+      ...(topFiveSize <= 0
+        ? {}
+        : { top_book_imbalance: (topFiveBidSize - topFiveAskSize) / topFiveSize }),
     };
   }
 
-  async getBTCMarketMetadata(): Promise<BTC_market_metadata> {
-    const market = selectPerpetualMarket(await this.reader.markets.getAll(), isBTCUSDMarket);
+  async getBTCStreamingBook(marketAddress: string, maximumWaitMs = 2_000): Promise<unknown> {
+    const maximumIdleMs = 5_000;
+    const now = Date.now();
+    if (
+      this.unsubscribeBTCDepth !== null &&
+      this.BTCDepthConnectionState !== 'CONNECTING' &&
+      (this.BTCDepthConnectionState === 'DISCONNECTED' ||
+        this.BTCDepthLastValidBboAt === null ||
+        now - this.BTCDepthLastValidBboAt > maximumIdleMs)
+    )
+      this.invalidateBTCDepthSubscription(
+        this.BTCDepthConnectionState === 'DISCONNECTED'
+          ? (this.BTCDepthLastDisconnectReason ?? 'SDK_WS_DISCONNECTED')
+          : 'VALID_BBO_IDLE_TIMEOUT',
+      );
+    await this.ensureBTCDepthSubscription(marketAddress);
+    if (this.latestBTCStreamingBook === null)
+      await new Promise<void>((resolveWait) => {
+        const finish = (): void => {
+          clearTimeout(timeout);
+          this.BTCDepthWaiters.delete(finish);
+          resolveWait();
+        };
+        const timeout = setTimeout(finish, maximumWaitMs);
+        this.BTCDepthWaiters.add(finish);
+      });
+    if (
+      this.latestBTCStreamingBook === null ||
+      this.BTCDepthConnectionState !== 'CONNECTED' ||
+      this.BTCDepthLastValidBboAt === null ||
+      Date.now() - this.BTCDepthLastValidBboAt > maximumIdleMs
+    ) {
+      this.BTCDepthConnectionState = 'STALLED';
+      this.BTCDepthLastDisconnectReason = 'VALID_BBO_IDLE_TIMEOUT';
+      throw new decibel_current_book_error('CURRENT_BOOK_WS_BBO_STALE', null);
+    }
+    return this.latestBTCStreamingBook;
+  }
+
+  getBTCMarketDataDiagnostics(): Readonly<{
+    wsConnectionState: 'INIT' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'STALLED';
+    wsSubscriptionState: 'UNSUBSCRIBED' | 'SUBSCRIBING' | 'SUBSCRIBED';
+    lastWsMessageAgeMs: number | null;
+    lastValidBboAgeMs: number | null;
+    wsReconnectCount: number;
+    wsLastDisconnectReason: string | null;
+    wsMessagesReceived: number;
+    wsMessagesCoalesced: number;
+    wsStatesVerified: number;
+    wsMessagesRejected: number;
+    lastReceiveToVerifiedMs: number | null;
+    maximumReceiveToVerifiedMs: number;
+  }> {
+    const now = Date.now();
+    return Object.freeze({
+      wsConnectionState: this.BTCDepthConnectionState,
+      wsSubscriptionState: this.BTCDepthSubscriptionState,
+      lastWsMessageAgeMs:
+        this.BTCDepthLastWsMessageAt === null
+          ? null
+          : Math.max(0, now - this.BTCDepthLastWsMessageAt),
+      lastValidBboAgeMs:
+        this.BTCDepthLastValidBboAt === null
+          ? null
+          : Math.max(0, now - this.BTCDepthLastValidBboAt),
+      wsReconnectCount: this.BTCDepthReconnectCount,
+      wsLastDisconnectReason: this.BTCDepthLastDisconnectReason,
+      wsMessagesReceived: this.BTCDepthMessagesReceived,
+      wsMessagesCoalesced: this.BTCDepthMessagesCoalesced,
+      wsStatesVerified: this.BTCDepthStatesVerified,
+      wsMessagesRejected: this.BTCDepthMessagesRejected,
+      lastReceiveToVerifiedMs: this.BTCDepthLastReceiveToVerifiedMs,
+      maximumReceiveToVerifiedMs: this.BTCDepthMaximumReceiveToVerifiedMs,
+    });
+  }
+
+  private ensureBTCDepthSubscription(marketAddress: string): Promise<void> {
+    if (this.unsubscribeBTCDepth !== null) return Promise.resolve();
+    if (this.BTCDepthSubscriptionInFlight !== null) return this.BTCDepthSubscriptionInFlight;
+    const Pending = this.openBTCDepthSubscription(marketAddress);
+    this.BTCDepthSubscriptionInFlight = Pending;
+    void Pending.finally(() => {
+      if (this.BTCDepthSubscriptionInFlight === Pending) this.BTCDepthSubscriptionInFlight = null;
+    }).catch(() => undefined);
+    return Pending;
+  }
+
+  private async openBTCDepthSubscription(marketAddress: string): Promise<void> {
+    this.BTCDepthConnectionState = 'CONNECTING';
+    this.BTCDepthSubscriptionState = 'SUBSCRIBING';
+    const generation = ++this.BTCDepthSubscriptionGeneration;
+    const metadata = await this.getBTCMarketMetadata();
+    if (generation !== this.BTCDepthSubscriptionGeneration)
+      throw new Error('Decibel BTC depth subscription was invalidated during initialization');
+    if (metadata.marketAddress !== marketAddress)
+      throw new Error('Decibel BTC depth market does not match metadata');
+    if (this.BTCDepthHasSubscribed) this.BTCDepthReconnectCount += 1;
+    this.BTCDepthHasSubscribed = true;
+    this.unsubscribeBTCDepth = this.subscribeBTCDepth(metadata.exchangeSymbol, (message) => {
+      if (generation !== this.BTCDepthSubscriptionGeneration) return;
+      this.BTCDepthLastWsMessageAt = Date.now();
+      this.BTCDepthMessagesReceived += 1;
+      // Coalesce a burst to its newest state. Parsing every raw depth frame can
+      // monopolize the main event loop and starve auth/timer delivery.
+      if (this.pendingBTCDepthMessage !== null) this.BTCDepthMessagesCoalesced += 1;
+      this.pendingBTCDepthMessage = message;
+      this.BTCDepthPendingReceivedAt = Date.now();
+      if (this.BTCDepthProcessingTimer !== null) return;
+      this.BTCDepthProcessingTimer = setTimeout(
+        () => {
+          this.BTCDepthProcessingTimer = null;
+          if (generation !== this.BTCDepthSubscriptionGeneration) return;
+          const latest = this.pendingBTCDepthMessage;
+          this.pendingBTCDepthMessage = null;
+          try {
+            const candidate =
+              typeof latest === 'object' && latest !== null && 'depth' in latest
+                ? latest.depth
+                : latest;
+            const depth = normalizeDepthPayload(candidate, marketAddress);
+            // A timestamp can reject regression, but cannot establish gap-free
+            // sequencing or uniqueness: the venue supplies no depth sequence.
+            if (
+              this.latestBTCStreamingBook !== null &&
+              depth.exchangeTimestamp.getTime() < this.latestBTCStreamingBook.unix_ms
+            ) {
+              this.BTCDepthMessagesRejected += 1;
+              return;
+            }
+            this.latestBTCStreamingBook = {
+              market: marketAddress,
+              ...(depth.bids === undefined ? {} : { bids: depth.bids }),
+              ...(depth.asks === undefined ? {} : { asks: depth.asks }),
+              best_bid: depth.bestBid,
+              best_ask: depth.bestAsk,
+              unix_ms: depth.exchangeTimestamp.getTime(),
+              best_bid_size: depth.bestBidSize,
+              best_ask_size: depth.bestAskSize,
+              microprice: depth.microprice,
+              top_book_imbalance: depth.top5DepthImbalance,
+            };
+            this.BTCDepthLastValidBboAt = Date.now();
+            this.BTCDepthStatesVerified += 1;
+            this.BTCDepthLastReceiveToVerifiedMs = Math.max(
+              0,
+              Date.now() - this.BTCDepthPendingReceivedAt,
+            );
+            this.BTCDepthMaximumReceiveToVerifiedMs = Math.max(
+              this.BTCDepthMaximumReceiveToVerifiedMs,
+              this.BTCDepthLastReceiveToVerifiedMs,
+            );
+            this.BTCDepthConnectionState = 'CONNECTED';
+            this.BTCDepthLastDisconnectReason = null;
+            for (const notify of this.BTCDepthWaiters) notify();
+            this.BTCDepthWaiters.clear();
+          } catch {
+            this.BTCDepthMessagesRejected += 1;
+            // Fail closed until a valid complete state arrives. There is no
+            // production REST fallback and no supported delta reconstruction.
+            this.latestBTCStreamingBook = null;
+            this.BTCDepthLastValidBboAt = null;
+            this.BTCDepthConnectionState = 'STALLED';
+            this.BTCDepthLastDisconnectReason = 'INVALID_DEPTH_STATE';
+          }
+          // Remove the fixed wait only when consumers have no usable state. Keep
+          // the established background burst window to avoid increasing parsing
+          // work or changing the steady-state controller's quote inputs.
+        },
+        this.latestBTCStreamingBook === null ? 0 : 50,
+      );
+    });
+    this.BTCDepthSubscriptionState = 'SUBSCRIBED';
+  }
+
+  private invalidateBTCDepthSubscription(reason: string): void {
+    this.BTCDepthSubscriptionGeneration += 1;
+    if (this.BTCDepthProcessingTimer !== null) clearTimeout(this.BTCDepthProcessingTimer);
+    this.BTCDepthProcessingTimer = null;
+    this.unsubscribeBTCDepth?.();
+    this.unsubscribeBTCDepth = null;
+    this.latestBTCStreamingBook = null;
+    this.pendingBTCDepthMessage = null;
+    this.BTCDepthConnectionState = reason === 'VALID_BBO_IDLE_TIMEOUT' ? 'STALLED' : 'DISCONNECTED';
+    this.BTCDepthSubscriptionState = 'UNSUBSCRIBED';
+    this.BTCDepthLastDisconnectReason = reason;
+  }
+
+  async getBTCMarketMetadata(signal?: AbortSignal): Promise<BTC_market_metadata> {
+    const market = selectPerpetualMarket(
+      await this.reader.markets.getAll(signal ? { fetchOptions: { signal } } : undefined),
+      isBTCUSDMarket,
+    );
 
     if (market === undefined) {
       throw new Error('Decibel BTC/USD perpetual market was not found');
@@ -506,6 +747,10 @@ export class decibel_client {
   }
 
   closeWebSocket(): void {
+    if (this.BTCDepthProcessingTimer !== null) clearTimeout(this.BTCDepthProcessingTimer);
+    this.BTCDepthProcessingTimer = null;
+    this.pendingBTCDepthMessage = null;
+    this.invalidateBTCDepthSubscription('CLIENT_CLOSED');
     this.reader.deps?.ws.close();
   }
 

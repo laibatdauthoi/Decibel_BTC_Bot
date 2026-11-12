@@ -1,0 +1,19 @@
+{
+  "provenance": "Read-only strategy_decision_snapshots frame matching the reported position, basis, TP and blocker; PID is supplied by the incident report, not stored in this frame.",
+  "timestamp": 1794095281688,
+  "positionBase": -0.00047,
+  "entryBasis": 75713.4,
+  "restingTP": 75681.4,
+  "bestBid": 75780.2,
+  "bestAsk": 75780.3,
+  "makerFeeBps": 1.5,
+  "estimatedGasCostUsd": 0.00039029810000000006,
+  "safetyMarginBps": 1,
+  "authenticatedResidualEntryFeeUsd": 0.005337,
+  "restingNetPnlUsd": 0.0000298393,
+  "oldCandidate": 75751.7,
+  "oldCandidateNetPnlUsd": -0.03301942095000137,
+  "oldCandidateBlocker": "TP_NET_PROFIT_NOT_POSITIVE",
+  "newMakerNetPnlUsd": -0.0464177697,
+  "replayLimitations": "Aggregate residual fill reconstructed from recorded basis/quantity/paid fee; original fill sequence and session loss budget are not stored in this decision frame. Lifecycle tests use explicit fixture Max Loss/PnL, not inferred production Settings."
+}
