@@ -1,8 +1,4 @@
 import {
-  deriveDecibelDCACycleV1,
-  assessDecibelDCAOpportunityV1,
-} from '../src/decibel_dca_opportunity_v1.js';
-import {
   assessDecibelProtectiveRecoveryV1,
   assertDecibelExposureRecoveryCompleteV1,
   assertDecibelRecoveryIntentV1,
@@ -3831,63 +3827,6 @@ describe('Decibel production live orchestrator V1', () => {
     expect(evaluation.desiredAskLadder.length).toBeGreaterThan(0);
   });
 
-  it('keeps both sides reachable and skews the inventory-increasing side', () => {
-    const snapshot = makeSnapshot();
-    snapshot.input = {
-      ...snapshot.input,
-      reductionOrderRules: buildFakeReductionRules(snapshot.input),
-    };
-    const evaluate = (actualInventoryBase: number) =>
-      evaluateDecibelAuthenticatedPassiveRecyclingV1(
-        { ...snapshot.input, actualInventoryBase },
-        {
-          minimumNotionalUsd: 0.01,
-          maximumNotionalUsd: 100,
-          availableMarginUsd: 100,
-          maximumEffectiveLeverage: 1,
-          maximumAbsPositionBase: 2,
-          maximumLadderLevelsPerSide: 3,
-          maximumAggregateCollateralFraction: 0.5,
-          ladderLevelAllocations: [0.5, 0.3, 0.2],
-          halfSpreadBps: 5,
-          makerFeeBps: 0,
-          estimatedGasCostUsd: 0,
-          adverseSelectionBufferBps: 0,
-          safetyMarginBps: 0,
-          maximumInventoryPriceSkewBps: 100,
-        },
-      );
-
-    const neutral = evaluate(0);
-    const long = evaluate(0.01);
-    expect(long.status).toBe('READY');
-    expect(long.operatingState).toBe('NORMAL_MM');
-    expect(long.desiredBidLadder.length).toBeGreaterThan(0);
-    expect(long.desiredAskLadder.length).toBeGreaterThan(0);
-    expect(long.desiredBidLadder[0]?.quantity).toBeLessThan(
-      long.desiredAskLadder[0]?.quantity ?? 0,
-    );
-    expect(long.desiredBidLadder[0]?.price).toBeLessThanOrEqual(
-      neutral.desiredBidLadder[0]?.price ?? 0,
-    );
-    expect(long.desiredAskLadder[0]?.price).toBeLessThanOrEqual(
-      neutral.desiredAskLadder[0]?.price ?? 0,
-    );
-    const short = evaluate(-0.01);
-    expect(short.status).toBe('READY');
-    expect(short.desiredBidLadder.length).toBeGreaterThan(0);
-    expect(short.desiredAskLadder.length).toBeGreaterThan(0);
-    expect(short.desiredAskLadder[0]?.quantity).toBeLessThan(
-      short.desiredBidLadder[0]?.quantity ?? 0,
-    );
-    expect(short.desiredAskLadder[0]?.price).toBeGreaterThanOrEqual(
-      neutral.desiredAskLadder[0]?.price ?? Number.POSITIVE_INFINITY,
-    );
-    expect(short.desiredBidLadder[0]?.price).toBeGreaterThanOrEqual(
-      neutral.desiredBidLadder[0]?.price ?? Number.POSITIVE_INFINITY,
-    );
-  });
-
   it('fails normal quote eligibility closed when economic edge inputs are unavailable', () => {
     const snapshot = makeSnapshot();
     const evaluation = evaluateDecibelAuthenticatedPassiveRecyclingV1(snapshot.input, {
@@ -6883,140 +6822,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     },
   );
 
-  it.each([1, -1])(
-    'admits a fresh DCA through independent maker/risk gates and blocks repeated opportunities (%s)',
-    (sign) => {
-      const side = sign > 0 ? ('BUY' as const) : ('SELL' as const);
-      const base = makeDecisionSnapshot();
-      const position = sign * 0.0001;
-      const fill = {
-        fillId: 'initial-fill',
-        intentId: 'initial',
-        side,
-        quantity: 0.0001,
-        price: 80000 + sign * 500,
-        timestamp: 19000,
-      };
-      const regime = classifyDecibelOperationalMarketRegimeV1(
-        [19000, 20000].map((at) => ({
-          at,
-          midpoint: 80000,
-          bestBid: 79999,
-          bestAsk: 80001,
-          bestBidSize: 1,
-          bestAskSize: 1,
-          microprice: null,
-          topBookImbalance: null,
-          recentTradeIntensity: null,
-        })),
-        position,
-      );
-      const snapshot: decibel_production_live_snapshot_v1 = {
-        ...base,
-        input: {
-          ...base.input,
-          actualInventoryBase: position,
-          reductionOrderRules: buildFakeReductionRules(base.input),
-          book: {
-            ...base.input.book,
-            depth: {
-              observedAt: 20000,
-              bids: [{ price: 79999, size: 1 }],
-              asks: [{ price: 80001, size: 1 }],
-            },
-          },
-          openOrders: [
-            {
-              venueOrderId: 'tp',
-              clientOrderId: 'test-tp',
-              market: base.input.market,
-              strategyConfigId: base.input.strategyConfigId,
-              side: sign > 0 ? 'SELL' : 'BUY',
-              price: 80000 + sign * 600,
-              quantity: 0.0001,
-              reduceOnly: true,
-              orderType: 'LIMIT',
-              timeInForce: 'PostOnly',
-              postOnly: true,
-            },
-          ],
-        },
-        sessionConfiguration: {
-          ...base.sessionConfiguration!,
-          sizingPolicyVersion: 1,
-          preferredEntrySizeUsd: 15,
-          entryCycleBlocker: null,
-          exposureLimits: { ...base.sessionConfiguration!.exposureLimits!, riskCapacityUsd: 100 },
-        },
-        dcaContext: {
-          cycle: deriveDecibelDCACycleV1([fill], position),
-          regime,
-          distinctObservationCount: 2,
-        },
-      };
-      const quantity = 0.00018,
-        price = sign > 0 ? 79900 : 80100;
-      const opportunity = assessDecibelDCAOpportunityV1({
-        positionBase: position,
-        side,
-        quantity,
-        price,
-        now: 20000,
-        maximumAgeMs: 5000,
-        ...snapshot.input.book,
-        sourceStateHash: snapshot.sourceStateHash,
-        ...snapshot.dcaContext!,
-      }).opportunity!;
-      expect(opportunity).not.toBeNull();
-      const candidate = {
-        side,
-        price,
-        quantity,
-        reduceOnly: false,
-        postOnly: true,
-        timeInForce: 'PostOnly' as const,
-        entryOpportunity: opportunity,
-      };
-      const decision = evaluateTradingDecision(snapshot, { ...context, candidate });
-      expect(side === 'BUY' ? decision.bidEligible : decision.askEligible).toBe(true);
-      const lowRisk = {
-        ...snapshot,
-        sessionConfiguration: {
-          ...snapshot.sessionConfiguration!,
-          exposureLimits: {
-            ...snapshot.sessionConfiguration!.exposureLimits!,
-            riskCapacityUsd: 11.91,
-          },
-        },
-      };
-      expect(evaluateTradingDecision(lowRisk, { ...context, candidate }).detailedReasons).toContain(
-        'RISK_BLOCKED',
-      );
-      const repeated = {
-        ...snapshot,
-        dcaContext: {
-          ...snapshot.dcaContext!,
-          cycle: deriveDecibelDCACycleV1([{ ...fill, price: 80000 }], position),
-        },
-      };
-      expect(
-        evaluateTradingDecision(repeated, { ...context, candidate }).detailedReasons,
-      ).toContain('DCA_NEW_ADVERSE_OPPORTUNITY_REQUIRED');
-      expect(
-        evaluateTradingDecision(snapshot, {
-          ...context,
-          candidate: { ...candidate, postOnly: false },
-        }).detailedReasons,
-      ).toContain('DCA_MAKER_POST_ONLY_REQUIRED');
-      const pending = evaluateTradingDecision(snapshot, {
-        ...context,
-        candidate,
-        unresolvedIntentCount: 1,
-      });
-      expect(side === 'BUY' ? pending.bidEligible : pending.askEligible).toBe(false);
-    },
-  );
-
   it('uses new ENTRY quantities in live quote construction, independent of Max Loss', () => {
     const base = twoSidedSnapshot();
     const snapshot: decibel_production_live_snapshot_v1 = {
@@ -8462,95 +8267,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       await test.orchestrator.close();
     }
   });
-
-  it.each([0, -0.00073, 0.00073])(
-    'plans both independently safe sides with inventory %s',
-    async (inventory) => {
-      const base = twoSidedSnapshot(inventory);
-      base.input = { ...base.input, reductionOrderRules: buildFakeReductionRules(base.input) };
-      const snapshot =
-        inventory === 0
-          ? base
-          : {
-              ...base,
-              input: {
-                ...base.input,
-                openOrders: [
-                  {
-                    venueOrderId: 'covered',
-                    clientOrderId: (inventory > 0 ? 'd1s' : 'd1b') + 'a'.repeat(29),
-                    strategyConfigId: base.input.strategyConfigId,
-                    market: base.input.market,
-                    side: inventory > 0 ? ('SELL' as const) : ('BUY' as const),
-                    price: inventory > 0 ? 80100 : 79900,
-                    quantity: Math.abs(inventory),
-                    reduceOnly: true,
-                    orderType: 'LIMIT' as const,
-                    timeInForce: 'PostOnly' as const,
-                    postOnly: true,
-                  },
-                ],
-              },
-            };
-      const test = make({ snapshots: [snapshot, snapshot], reconciliationState: 'ORDER_OPEN' });
-      for (const order of snapshot.input.openOrders) {
-        const intent = buildDecibelExecutionIntentV1({
-          sessionId: snapshot.input.sessionId,
-          cycleSequence: 0,
-          action: 'PLACE',
-          market: 'BTC/USD',
-          side: order.side,
-          price: order.price,
-          quantity: order.quantity,
-          tickSize: snapshot.input.metadata.tickSize,
-          lotSize: snapshot.input.metadata.lotSize,
-          clientOrderId: order.clientOrderId,
-          knownVenueOrderId: null,
-          sourceStateHash: 'covered',
-          strategyDecisionHash: 'covered',
-          createdAt: 19000,
-          reduceOnly: true,
-          executionRole: 'INVENTORY_REDUCING_MAKER',
-        });
-        test.journal.prepare(intent);
-        test.journal.transition(intent.intentId, 'ACKNOWLEDGED', 19000, order.venueOrderId);
-      }
-      const result = await test.orchestrator.evaluateOnce();
-      const e = result.evaluation!;
-      expect(
-        e.desiredBid,
-        JSON.stringify({ bid: e.bidEligibilityReason, ask: e.askEligibilityReason }),
-      ).not.toBeNull();
-      expect(
-        e.desiredAsk,
-        JSON.stringify({ bid: e.bidEligibilityReason, ask: e.askEligibilityReason }),
-      ).not.toBeNull();
-      expect(result.tradingDecision).toMatchObject({
-        state: 'TRADE',
-        bidEligible: true,
-        askEligible: true,
-        sideDiagnostics: {
-          BID_REDUCE_ONLY: inventory < 0,
-          ASK_REDUCE_ONLY: inventory > 0,
-          BID_BLOCKER: null,
-          ASK_BLOCKER: null,
-        },
-      });
-      const bid = e.desiredBid!.quantity,
-        ask = e.desiredAsk!.quantity;
-      for (const buy of [0, bid])
-        for (const sell of [0, ask]) {
-          const pos = inventory + buy - sell;
-          expect(Math.abs(pos) * 80000).toBeLessThanOrEqual(118.44 + 1e-8);
-        }
-      expect(result.tradingDecision.sideDiagnostics.COMBINED_PENDING_RISK).toBeLessThanOrEqual(
-        118.44 + 1e-8,
-      );
-      if (inventory < 0) expect(bid).toBeLessThanOrEqual(Math.abs(inventory));
-      if (inventory > 0) expect(ask).toBeLessThanOrEqual(inventory);
-      await test.orchestrator.close();
-    },
-  );
   it.each([null, 'CAPACITY_VENUE_MARGIN_RULES_STALE', 'SESSION_CAPACITY_EVIDENCE_REQUIRED'])(
     'replays FLAT two resting entries at 2397ms without false reduce-only invalidation: %s',
     async (capacityBlocker) => {
@@ -9934,10 +9650,24 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       }
     },
   );
-  it.each([1, -1])(
-    'blocks position growth at candidate and final admission without a protection contract (%s)',
-    async (sign) => {
-      const { snapshot } = tpPriceFixture(sign);
+  it.each([
+    [1, false],
+    [-1, false],
+    [1, true],
+    [-1, true],
+  ] as const)(
+    'blocks position growth at candidate and final admission (sign %s, protection contract %s)',
+    async (sign, withContract) => {
+      const fixture = tpPriceFixture(sign).snapshot;
+      const snapshot = withContract
+        ? {
+            ...fixture,
+            input: {
+              ...fixture.input,
+              reductionOrderRules: buildFakeReductionRules(fixture.input),
+            },
+          }
+        : fixture;
       const test = make({ snapshots: [snapshot] });
       try {
         const evaluation = test.orchestrator.evaluateAuthenticatedSnapshot(snapshot);
@@ -9945,7 +9675,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         expect(side === 'BUY' ? evaluation.desiredBid : evaluation.desiredAsk).toBeNull();
         expect(
           side === 'BUY' ? evaluation.bidEligibilityReason : evaluation.askEligibilityReason,
-        ).toBe('POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED');
+        ).toBe('POSITION_GROWTH_DISABLED');
         const decision = evaluateTradingDecision(snapshot, {
           now: snapshot.input.now,
           sessionId: snapshot.input.sessionId,
@@ -9958,72 +9688,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           },
         });
         expect(side === 'BUY' ? decision.bidEligible : decision.askEligible).toBe(false);
-        expect(decision.actionPlan[side].reason).toBe(
-          'POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED',
-        );
+        expect(decision.actionPlan[side].reason).toBe('POSITION_GROWTH_DISABLED');
         expect(test.submitted()).toEqual([]);
-      } finally {
-        await test.orchestrator.close();
-      }
-    },
-  );
-
-  it.each([1, -1])(
-    'PID21712 scopes a rejected TP to its own side when existing coverage permits ENTRY (%s)',
-    async (sign) => {
-      const { snapshot: base } = tpPriceFixture(sign);
-      base.input = { ...base.input, reductionOrderRules: buildFakeReductionRules(base.input) };
-      const snapshot = {
-        ...base,
-        reductionCapacity: {
-          maximumQuantityBtc: Math.abs(base.input.actualInventoryBase),
-          venueMaximumOrderNotionalUsd: null,
-          observedAt: base.input.now,
-        },
-      };
-      const test = make({ snapshots: [snapshot] });
-      try {
-        const evaluation = test.orchestrator.evaluateAuthenticatedSnapshot(snapshot);
-        const reducing = sign > 0 ? 'SELL' : 'BUY';
-        const planned = reducing === 'SELL' ? evaluation.desiredAsk : evaluation.desiredBid;
-        expect(planned).not.toBeNull();
-        const rejected = { ...planned!, price: sign > 0 ? 78000 : 82000 };
-        const decision = evaluateTradingDecision(snapshot, {
-          now: snapshot.input.now,
-          sessionId: snapshot.input.sessionId,
-          state: 'RUNNING',
-          blocker: 'TP_NET_PROFIT_NOT_POSITIVE:OTHER_SIDE',
-          evaluation: {
-            ...evaluation,
-            ...(reducing === 'SELL' ? { desiredAsk: rejected } : { desiredBid: rejected }),
-          },
-        });
-        expect(
-          sign > 0 ? decision.bidEligible : decision.askEligible,
-          JSON.stringify(decision),
-        ).toBe(true);
-        expect(sign > 0 ? decision.askEligible : decision.bidEligible).toBe(false);
-        expect(decision.actionPlan[reducing].reason).toContain('TP_NET_PROFIT_NOT_POSITIVE');
-        const staleEntry = {
-          ...snapshot,
-          practicalCapacityInputs: {
-            ...snapshot.practicalCapacityInputs,
-            venueMarginRules: {
-              ...snapshot.practicalCapacityInputs.venueMarginRules,
-              observedAt: snapshot.input.now - 5001,
-            },
-          },
-        };
-        const gated = evaluateTradingDecision(staleEntry, {
-          now: snapshot.input.now,
-          sessionId: snapshot.input.sessionId,
-          state: 'RUNNING',
-          evaluation: {
-            ...evaluation,
-            ...(reducing === 'SELL' ? { desiredAsk: rejected } : { desiredBid: rejected }),
-          },
-        });
-        expect(sign > 0 ? gated.bidEligible : gated.askEligible).toBe(false);
       } finally {
         await test.orchestrator.close();
       }
@@ -11596,7 +11262,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     },
   );
 
-  it.each(['ENTRY', 'DCA', 'CANCEL', 'RECONCILIATION'] as const)(
+  it.each(['ENTRY', 'POSITION_INCREASE', 'CANCEL', 'RECONCILIATION'] as const)(
     'does not report an unrelated %s acknowledgment as TP repair',
     (actionClass) => {
       const snapshot = pid18876Snapshot(1, true);
@@ -14175,96 +13841,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         coordinateDecibelInventoryExitV1(profitable, defensiveContext(profitable))
           .DEFENSIVE_EXIT_REASON,
       ).toBe('HOLD:ADVERSE_MOVEMENT_NOT_SUSTAINED');
-    },
-  );
-  it.each([1, -1])(
-    'preserves original DCA during adverse movement and after risk reduction/restart (%s)',
-    async (sign) => {
-      const initial = inventoryIncident(sign);
-      const path = join(mkdtempSync(join(tmpdir(), 'dca-scope-revert-')), 'journal.sqlite');
-      initial.input = {
-        ...initial.input,
-        reductionOrderRules: buildFakeReductionRules(initial.input),
-      };
-      const first = make({ snapshots: [initial], journalPath: path });
-      const sizing = {
-        minimumNotionalUsd: initial.minimumNotionalUsd,
-        maximumNotionalUsd: 100,
-        availableMarginUsd: 100,
-        maximumEffectiveLeverage: initial.maximumEffectiveLeverage,
-        maximumAbsPositionBase: 1,
-        entryHeadroomUsd: 100,
-        halfSpreadBps: 5,
-        makerFeeBps: 0,
-        estimatedGasCostUsd: 0,
-        adverseSelectionBufferBps: 0,
-        safetyMarginBps: 0,
-      };
-      for (const step of [0, 1, 2]) {
-        const snapshot = {
-          ...initial,
-          input: {
-            ...initial.input,
-            book: {
-              ...initial.input.book,
-              bestBid: initial.input.book.bestBid - sign * step,
-              bestAsk: initial.input.book.bestAsk - sign * step,
-            },
-            openOrders: initial.input.openOrders.map((order) => ({
-              ...order,
-              quantity: Math.abs(initial.input.actualInventoryBase),
-            })),
-          },
-        };
-        const original = evaluateDecibelAuthenticatedPassiveRecyclingV1(snapshot.input, sizing);
-        const entrySide = sign > 0 ? 'BUY' : 'SELL';
-        expect(sign > 0 ? original.desiredBid : original.desiredAsk).not.toBeNull();
-        expect(
-          original.actions.some(
-            (action) => action.side === entrySide && action.action === 'WOULD_PLACE',
-          ),
-        ).toBe(true);
-        expect(first.orchestrator['coordinateInventoryExit'](snapshot, original)).toBe(original);
-        const reducing = evaluateDecibelAuthenticatedPassiveRecyclingV1(snapshot.input, {
-          ...sizing,
-          riskReductionRequired: true,
-        });
-        expect(reducing.operatingState).toBe('RISK_REDUCTION');
-        expect(first.orchestrator['coordinateInventoryExit'](snapshot, reducing)).toBe(reducing);
-        expect(first.orchestrator['coordinateInventoryExit'](snapshot, original)).toBe(original);
-        for (const constrained of [
-          { ...sizing, entryHeadroomUsd: 0 },
-          { ...sizing, riskReductionRequired: true },
-          { ...sizing, sessionUnwindRequested: true },
-        ]) {
-          const unsafe = evaluateDecibelAuthenticatedPassiveRecyclingV1(
-            snapshot.input,
-            constrained,
-          );
-          expect(sign > 0 ? unsafe.desiredBid : unsafe.desiredAsk).toBeNull();
-          expect(first.orchestrator['coordinateInventoryExit'](snapshot, unsafe)).toBe(unsafe);
-        }
-      }
-      await first.orchestrator.close();
-      const restarted = make({ snapshots: [initial], journalPath: path });
-      for (const quantity of [0.0005, 0]) {
-        const filled = {
-          ...initial,
-          input: {
-            ...initial.input,
-            actualInventoryBase: sign * quantity,
-            openOrders:
-              quantity === 0
-                ? []
-                : initial.input.openOrders.map((order) => ({ ...order, quantity })),
-          },
-        };
-        const original = evaluateDecibelAuthenticatedPassiveRecyclingV1(filled.input, sizing);
-        expect(sign > 0 ? original.desiredBid : original.desiredAsk).not.toBeNull();
-        expect(restarted.orchestrator['coordinateInventoryExit'](filled, original)).toBe(original);
-      }
-      expect(restarted.submitted()).toEqual([]);
-      await restarted.orchestrator.close();
     },
   );
   it('fails closed for stale/depth/restart/reversal evidence and takes Max Loss from Settings', () => {

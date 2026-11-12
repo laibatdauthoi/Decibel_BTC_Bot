@@ -13,13 +13,13 @@ Evidence labels used below: **VERIFIED** (checked directly during this audit), *
 
 ## 0. Tóm tắt nhanh (tiếng Việt)
 
-- Bot không còn là market maker hai chiều đơn giản như bản 21/10. Luồng hiện tại là: **ENTRY maker (PostOnly) → TP reduce-only → tối đa 3 lần DCA**, có Max Loss theo session và Target Volume do người vận hành đặt trên dashboard.
+- Bot không còn là market maker hai chiều đơn giản như bản 21/10. Luồng hiện tại là: **ENTRY maker (PostOnly) → TP reduce-only**, có Max Loss theo session và Target Volume do người vận hành đặt trên dashboard.
 - **`.env` đang cấu hình giao dịch tiền thật trên mainnet**: `TRADING_MODE=mainnet`, `LIVE_TRADING_ENABLED=true`, `DECIBEL_EXECUTOR_ENABLED=true`, `DECIBEL_EXECUTOR_DRY_RUN=false`, `RELEASE_STAGE=CANARY`.
 - Bot **đang tắt**. Lần chạy cuối dừng bằng Ctrl+C lúc **2026-11-10 01:03** (giờ VN), trạng thái IDLE, không có session, không có owner.
 - Code sửa sau thời điểm đó (đến khoảng 19:12 ngày 10/11) **chưa từng chạy thật**.
 - Từ 21/10 đến nay **chưa có commit nào**. Có 32 file sửa (+34.973 / −1.274 dòng) và 213 mục chưa track, trong đó có khoảng 50 module `src` cốt lõi.
 - **Với Settings hiện tại (Capital $5, Max Loss $0,20, Target $300), bot gần như chắc chắn không vào lệnh được.** Kích thước entry ưu tiên là $15, vượt trần rủi ro stress-loss (khoảng $12,4), nên bị `RISK_BLOCKED`. 4 session gần nhất đều có 0 fill. Đây là cơ chế an toàn hoạt động đúng thiết kế, không phải bug. Muốn bot giao dịch thì bạn phải tự quyết thay đổi tham số.
-- **DCA đang bị khóa trên production** (`POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED`), vì chưa có nguồn dữ liệu chứng minh sàn hỗ trợ nhiều lệnh reduce-only.
+- **DCA đã bị xóa (2026-11-12, theo quyết định của user).** Bot không bao giờ tăng vị thế đang mở; lệnh tăng vị thế bị chặn với lý do `POSITION_GROWTH_DISABLED`. Phần đối chiếu lịch sử fill với vị thế được giữ lại trong `decibel_entry_cycle_v1.ts` (mã `ENTRY_CYCLE_*`).
 - Kết quả thực tế ghi trong DB: 64 session có PnL đầy đủ, **tổng −$5,77** trên khoảng $5.200 maker volume (xấp xỉ −11 bps/volume). Bot chưa có lãi.
 - Kiểm tra hôm nay: typecheck **PASS**; lint **FAIL** (2 file nháp `.tmp*`); format **FAIL** (4 file); `npm test` **chưa chạy lại được** (xem mục 9).
 - Xung đột stop-loss trong `AGENTS.md` **vẫn chưa giải quyết**. Không có logic stop-loss nào trong `src`.
@@ -35,7 +35,7 @@ Evidence labels used below: **VERIFIED** (checked directly during this audit), *
 | Untracked                | many                                               | **213 entries**, incl. ~50 production `src` modules, tests, ~75 docs, live state files (VERIFIED)                                                                                                                     |
 | `src` size               | 83 files / ~29k lines                              | **115 files / ~47.6k lines** (VERIFIED)                                                                                                                                                                               |
 | Tests                    | 22 files / 445 tests                               | **51 test files / ~44.4k lines; last recorded run 1,355 tests** (VERIFIED file count; test count from 2026-11-10 log)                                                                                                 |
-| Strategy                 | NORMAL_MM two-sided passive quoting                | **ENTRY → TP → DCA (≤3 additions)** with session Max Loss / Target Volume (DOCUMENTED + VERIFIED in source)                                                                                                           |
+| Strategy                 | NORMAL_MM two-sided passive quoting                | **ENTRY → TP** (DCA removed 2026-11-12) with session Max Loss / Target Volume (DOCUMENTED + VERIFIED in source)                                                                                                       |
 | Decision layer           | multiple strategic branches in orchestrator        | **`evaluateTradingDecision` in `decibel_trading_decision_v1.ts`** returns TRADE / WAIT / STOP (DOCUMENTED, file VERIFIED)                                                                                             |
 | Sizing                   | position headroom partly from `maxLoss × leverage` | **Dynamic entry size** (`decibel_entry_size_v1.ts`) independent of Max Loss; Max Loss now only feeds a separate stress-loss admission check (DOCUMENTED)                                                              |
 | Production entry command | `npm run decibel:production:web-v1`                | **`npm run decibel:production`** → `src/run_decibel_production_bootstrap_v1.mjs` (VERIFIED). Requires Node `v22.23.2` at `%LOCALAPPDATA%\DecibelTools\node-v22.23.2-win-x64\node.exe` or `DECIBEL_NODE22_EXECUTABLE`. |
@@ -65,7 +65,7 @@ Business flow per session (DOCUMENTED, `decibel_unified_trading_decision_v1.md`,
 2. **ENTRY**: a passive PostOnly maker order, priced at the nearest tick that still satisfies the lifecycle cost equation (maker fee + safety + 2 × gas/quantity), bounded by the BBO.
 3. **ENTRY lifecycle**: FLAT → PLACING → OPEN → (CANCELLING) → FLAT. A verified fill hands protection to the TP workflow. A partial fill keeps the residual OPEN and protects the filled part.
 4. **TP**: a reduce-only maker order with net ≥ 0 (breakeven allowed). It is repriced only by the **patient TP** rule: a significant adverse move measured against a persisted anchor, with no timers or cooldowns.
-5. **DCA**: at most 3 additions after an authenticated initial fill. Each needs a new adverse opportunity, a verified volatility regime and verified depth. It is **currently blocked in production** (see §8).
+5. **DCA**: removed on 2026-11-12. An open position is only reduced, never grown (`POSITION_GROWTH_DISABLED`).
 6. **Session end**: operator END, `TARGET_VOLUME_REACHED`, `MAX_LOSS_REACHED`, or `TARGET_UNREACHABLE_MINIMUM_ORDER`. The session terminalizes only after an authenticated FLAT position, zero orders, zero unresolved intents and a completed unwind.
 
 `evaluateTradingDecision(snapshot, session)` is pure and deterministic. It outputs TRADE / WAIT / STOP plus reasons, executable sizes and evidence timestamps. If mandatory evidence keeps failing, WAIT escalates to STOP after **60,000 ms** (`DECIBEL_EVIDENCE_FAILURE_STOP_AFTER_MS_V1`, VERIFIED).
@@ -79,7 +79,7 @@ The runtime model in the 21/10 handover §4 is still accurate. Treat that sectio
 - **Launch chain:** `npm run decibel:production` → `run_decibel_production_bootstrap_v1.mjs` (checks Node 22.23.2, native preflight for `better-sqlite3`/`esbuild`, refuses to install deps while a production process is running) → web launcher → `run_decibel_production_web_v1.ts` → orchestrator / state source / lifecycle / executor.
 - **Decision layer:** `decibel_trading_decision_v1.ts` (≈41 KB) is consumed by `decibel_production_live_orchestrator_v1.ts` (≈224 KB, the largest file) and by the final submission preflight.
 - **Sizing and risk modules:** `decibel_entry_size_v1.ts`, `decibel_dynamic_quote_size_v1.ts`, `decibel_risk_capacity_v1.ts`, `decibel_capacity_producers_v1.ts`, `decibel_operator_settings_v1.ts`, `decibel_session_capacity_projection_v1.ts`.
-- **TP/DCA/exit modules:** `decibel_exit_economics_v1.ts`, `decibel_dca_opportunity_v1.ts`, `decibel_exit_coverage_workflow_v1.ts`, `decibel_protective_recovery_admission_v1.ts`, `decibel_order_action_v1.ts`.
+- **TP/exit modules:** `decibel_exit_economics_v1.ts`, `decibel_entry_cycle_v1.ts` (fill-history reconciliation), `decibel_exit_coverage_workflow_v1.ts`, `decibel_protective_recovery_admission_v1.ts`, `decibel_order_action_v1.ts`.
 - **Session control:** `decibel_production_session_controller_v1.ts` (exclusive transition queue, idempotent START, session ID assigned before admission) and `decibel_production_session_v1.ts`.
 - **Hot spots** (large, regression-sensitive): orchestrator (224 KB), `run_decibel_production_web_v1.ts` (135 KB), `decibel_production_live_state_source_v1.ts` (128 KB), `decibel_execution_lifecycle_journal_v1.ts` (116 KB), and the orchestrator test file (**699 KB**).
 
@@ -129,7 +129,7 @@ Policy floors: adverse move `max(100 bps, 2 × recent midpoint range)`, fee 10 b
 All invariants in the 21/10 handover §6 still apply. In addition:
 
 - Max Loss must not determine the preferred entry size. The stress-loss check stays a separate hard gate.
-- No position growth (DCA, or an exposure-increasing replacement) without verified multi-reduce-only protection capability.
+- No position growth while a position is open. DCA was removed on 2026-11-12; growth is blocked unconditionally (`POSITION_GROWTH_DISABLED`).
 - Do not cancel an existing TP in order to "replace" it with a better one, because cancel + place is not atomic. Quantity repair returns `TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD` (DOCUMENTED, systemic audit).
 - The protective lane (reconciliation, safe cancel, reduce-only TP, canonical unwind) runs independently of entry admission. Entry, DCA and cancellation-first transitions cannot pass protective admission.
 - The patient TP anchor is persisted in the CANCEL intent. Restart and reconciliation must not reset it.
@@ -192,7 +192,7 @@ All invariants in the 21/10 handover §6 still apply. In addition:
 
 3. **The stop-loss policy conflict is still unresolved.** `AGENTS.md` says "Every new position must have a stop-loss". There is no stop-loss implementation anywhere in `src` (VERIFIED by search). Protection relies on TP, inventory/risk limits and canonical unwind. The user must decide whether market-making inventory is exempt.
 4. **The current Settings make entries impossible** (§4). This looks like "the bot does nothing" but is the intended outcome of the stress-loss gate.
-5. **DCA is blocked in production.** `supportsDecibelMultipleReductionsV1` needs `reductionOrderRules`, and no production producer populates them. The result is `POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED` (DOCUMENTED, `decibel_tp_decision_liveness_v1.md`). The DCA feature is effectively dormant.
+5. ~~DCA is blocked in production.~~ **Resolved 2026-11-12:** DCA removed at the user's request.
 6. **Economics are negative so far** (§7). The lifecycle cost sample was above budget (§4).
 7. **6 sessions are persisted as BLOCKED / `SESSION_UNWIND_COMPLETION_CONFLICT`.** Whether they hold stale ownership or need operator recovery is UNKNOWN. Review them before the next start.
 

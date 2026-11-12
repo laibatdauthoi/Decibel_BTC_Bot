@@ -1,7 +1,3 @@
-import {
-  deriveDecibelDCACycleV1,
-  assessDecibelDCAOpportunityV1,
-} from './decibel_dca_opportunity_v1.js';
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_workflow_v1.js';
 import {
@@ -216,11 +212,6 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
   practicalCapacityInputs?: import('./decibel_risk_capacity_v1.js').decibel_capacity_inputs_v1;
   capacityModelRequired?: boolean;
   capacityProduction?: ReturnType<typeof assembleDecibelCapacityCertificateV1>;
-  dcaContext?: Readonly<{
-    cycle: ReturnType<typeof deriveDecibelDCACycleV1>;
-    regime: decibel_market_regime_result_v1;
-    distinctObservationCount: number;
-  }>;
   sessionConfiguration?: Readonly<{
     sizingPolicyVersion?: 1;
     preferredEntrySizeUsd?: number;
@@ -1852,7 +1843,6 @@ export class decibel_production_live_orchestrator_v1 {
     snapshot: decibel_production_live_snapshot_v1,
     operationalRegime = this.LatestOperationalRegime ?? this.getOperationalMarketRegime(snapshot),
   ): DecibelAuthenticatedPassiveRecyclingEvaluationV1 {
-    snapshot = this.projectEntryEvidence(snapshot);
     this.LatestOperationalRegime = operationalRegime;
     const volatilitySpreadMultiplier = Math.min(
       this.Config.maximumVolatilitySpreadMultiplier,
@@ -1924,7 +1914,7 @@ export class decibel_production_live_orchestrator_v1 {
     if (coverage.UNCOVERED_INVENTORY_QTY > 0) this.CoverageGapObservedSince ??= snapshot.input.now;
     else this.CoverageGapObservedSince = undefined;
     // result() builds inventory diagnostics from the current snapshot and epoch.
-    // Inventory assessment is observational. Entry eligibility, sizing and DCA
+    // Inventory assessment is observational. Entry eligibility and sizing
     // remain owned by the pre-existing strategy and canonical risk checks.
     return evaluation;
   }
@@ -2052,54 +2042,12 @@ export class decibel_production_live_orchestrator_v1 {
       snapshot.terminalOrderEvidence ?? [],
     );
   }
-  private readonly DCAFrames: decibel_market_regime_observation_v1[] = [];
-
-  public projectEntryEvidence(
-    snapshot: decibel_production_live_snapshot_v1,
-  ): decibel_production_live_snapshot_v1 {
-    if (snapshot.sessionConfiguration?.sizingPolicyVersion !== 1) return snapshot;
-    const book = snapshot.input.book;
-    const last = this.DCAFrames.at(-1);
-    if (!last || book.observedAt > last.at)
-      this.DCAFrames.push({
-        at: book.observedAt,
-        midpoint: (book.bestBid + book.bestAsk) / 2,
-        bestBid: book.bestBid,
-        bestAsk: book.bestAsk,
-        bestBidSize: book.bestBidSize ?? null,
-        bestAskSize: book.bestAskSize ?? null,
-        microprice: book.microprice ?? null,
-        topBookImbalance: book.topBookImbalance ?? null,
-        recentTradeIntensity: book.recentTradeIntensity ?? null,
-      });
-    while (
-      this.DCAFrames.length > 1 &&
-      this.DCAFrames[0]!.at < snapshot.input.now - this.Config.volatilityLookbackMs
-    )
-      this.DCAFrames.shift();
-    return {
-      ...snapshot,
-      dcaContext: {
-        cycle: deriveDecibelDCACycleV1(
-          this.Journal.getSessionEntryCycleFills(snapshot.input.sessionId),
-          snapshot.input.actualInventoryBase,
-        ),
-        regime: classifyDecibelOperationalMarketRegimeV1(
-          this.DCAFrames,
-          snapshot.input.actualInventoryBase,
-        ),
-        distinctObservationCount: this.DCAFrames.length,
-      },
-    };
-  }
-
   private evaluateDecision(
     snapshot: decibel_production_live_snapshot_v1 | null,
     evaluation: DecibelAuthenticatedPassiveRecyclingEvaluationV1 | null,
     blocker: string | null = null,
     candidate?: place_intent_v1,
   ): trading_decision_v1 {
-    snapshot = snapshot ? this.projectEntryEvidence(snapshot) : null;
     const now = this.Config.dryRun
       ? (snapshot?.input.now ?? this.getDecisionNow())
       : this.getDecisionNow();
@@ -2349,7 +2297,7 @@ export class decibel_production_live_orchestrator_v1 {
           snapshot.input.actualFillLedger.fills.some(
             (fill) => fill.venueOrderId === currentEntry.venueOrderId,
           );
-        let entry = dynamicEntry
+        const entry = dynamicEntry
           ? calculateDecibelEntrySizeV1({
               preferredEntrySizeUsd: snapshot.sessionConfiguration.preferredEntrySizeUsd!,
               price: candidate.price,
@@ -2363,36 +2311,6 @@ export class decibel_production_live_orchestrator_v1 {
               ),
             })
           : null;
-        const cycle = snapshot.dcaContext?.cycle;
-        if (entry && cycle?.reference?.opportunity && snapshot.input.actualInventoryBase !== 0) {
-          const context = snapshot.dcaContext!;
-          const nextOpportunity = assessDecibelDCAOpportunityV1({
-            positionBase: snapshot.input.actualInventoryBase,
-            side: candidate.side,
-            quantity: entry.quantity,
-            price: candidate.price,
-            now: snapshot.input.now,
-            maximumAgeMs: snapshot.input.maxBboAgeMs,
-            ...snapshot.input.book,
-            sourceStateHash: snapshot.sourceStateHash,
-            cycle,
-            regime: context.regime,
-            distinctObservationCount: context.distinctObservationCount,
-          });
-          const remaining = Math.max(
-            0,
-            cycle.reference.opportunity.plannedNotionalUsd - cycle.reference.notional,
-          );
-          if (nextOpportunity.blocker && remaining >= entry.minimumExecutableNotionalUsd - 1e-9)
-            entry = calculateDecibelEntrySizeV1({
-              preferredEntrySizeUsd: remaining,
-              price: candidate.price,
-              minimumSize: snapshot.input.metadata.minimumSize,
-              minimumNotionalUsd: snapshot.input.metadata.minimumNotionalUsd ?? 0,
-              lotSize: snapshot.input.metadata.lotSize,
-              maximumExecutableNotionalUsd: Math.min(remaining, entry.entrySizeUsd ?? 0),
-            });
-        }
         let assessment = calculateDecibelDynamicQuoteSizeV1({
           side: candidate.side,
           ...(dynamicEntry
@@ -3610,36 +3528,7 @@ export class decibel_production_live_orchestrator_v1 {
         evaluation,
         0,
       );
-    let intent = buildIntent(action, evaluation, snapshot, this.cycleSequence);
-    if (
-      intent.action === 'PLACE' &&
-      !intent.reduceOnly &&
-      snapshot.sessionConfiguration?.sizingPolicyVersion === 1
-    ) {
-      const enriched = this.projectEntryEvidence(snapshot);
-      const context = enriched.dcaContext!;
-      const referenceOpportunity = context.cycle.reference?.opportunity;
-      const remainingContinuation =
-        referenceOpportunity &&
-        context.cycle.reference &&
-        context.cycle.reference.notional + intent.quantity * intent.price <=
-          referenceOpportunity.plannedNotionalUsd + 1e-9;
-      const opportunity = assessDecibelDCAOpportunityV1({
-        positionBase: snapshot.input.actualInventoryBase,
-        side: intent.side,
-        quantity: intent.quantity,
-        price: intent.price,
-        now: snapshot.input.now,
-        maximumAgeMs: snapshot.input.maxBboAgeMs,
-        ...snapshot.input.book,
-        sourceStateHash: snapshot.sourceStateHash,
-        regime: context.regime,
-        distinctObservationCount: context.distinctObservationCount,
-        cycle: context.cycle,
-        ...(remainingContinuation ? { persistedEvidence: referenceOpportunity } : {}),
-      }).opportunity;
-      if (opportunity) intent = Object.freeze({ ...intent, entryOpportunity: opportunity });
-    }
+    const intent = buildIntent(action, evaluation, snapshot, this.cycleSequence);
     if (this.HistoricalRecoveryBlocker !== null) {
       if (action.current?.reduceOnly === true)
         return this.result(

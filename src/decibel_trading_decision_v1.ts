@@ -1,16 +1,9 @@
 import {
-  assessDecibelDCAOpportunityV1,
-  type decibel_entry_opportunity_v1,
-} from './decibel_dca_opportunity_v1.js';
-import {
   assessDecibelTPActionV1,
   getDecibelReductionOrderLimitV1,
   isDecibelPositionReductionV1,
 } from './decibel_order_action_v1.js';
-import {
-  calculateDecibelExitCoverageV1,
-  supportsDecibelMultipleReductionsV1,
-} from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
+import { calculateDecibelExitCoverageV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import { calculateDecibelSidePositionBudgetBtcV1 } from './decibel_dynamic_quote_size_v1.js';
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 import type { DecibelAuthenticatedPassiveRecyclingEvaluationV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
@@ -107,7 +100,6 @@ export type trading_session_context_v1 = Readonly<{
   terminalReason?: string | null;
   settingsRevision?: number;
   candidate?: Readonly<{
-    entryOpportunity?: decibel_entry_opportunity_v1;
     postOnly?: boolean;
     timeInForce?: 'PostOnly' | 'ImmediateOrCancel';
     side: 'BUY' | 'SELL';
@@ -175,7 +167,7 @@ export function evaluateTradingDecision(
     );
   const entryCapacityOnly = (reason: string | null | undefined) =>
     reason != null &&
-    /^(RISK_BLOCKED|DCA_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
       reason,
     );
   if (candidate && snapshot && !positionReduction) {
@@ -417,16 +409,11 @@ export function evaluateTradingDecision(
         (source.actualInventoryBase > 0 && side === 'SELL')) &&
       order.quantity <= Math.abs(source.actualInventoryBase) + 1e-12 &&
       (!candidate || candidate.reduceOnly);
-    if (
-      !reducing &&
-      source &&
-      source.actualInventoryBase !== 0 &&
-      !supportsDecibelMultipleReductionsV1(source)
-    ) {
-      tpReasons[side] = 'POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED';
+    // DCA was removed: an open position is never grown, only reduced.
+    if (!reducing && source && source.actualInventoryBase !== 0) {
+      tpReasons[side] = 'POSITION_GROWTH_DISABLED';
       return null;
     }
-    let admittedEntryOpportunity: decibel_entry_opportunity_v1 | undefined;
     if (!reducing && snapshot.sessionConfiguration?.sizingPolicyVersion === 1) {
       const config = snapshot.sessionConfiguration;
       const riskCapacity = config.exposureLimits?.riskCapacityUsd;
@@ -449,60 +436,8 @@ export function evaluateTradingDecision(
             (o) => o.side === side && o.reduceOnly !== true && order.quantity <= o.quantity + 1e-12,
           )
         : undefined;
-      if (
-        candidate &&
-        source?.actualInventoryBase !== 0 &&
-        (candidate.postOnly !== true || candidate.timeInForce !== 'PostOnly')
-      ) {
-        tpReasons[side] = 'DCA_MAKER_POST_ONLY_REQUIRED';
-        addActionReason('DCA_MAKER_POST_ONLY_REQUIRED');
-        return null;
-      }
-      const previousReference = snapshot.dcaContext?.cycle.reference;
-      const continuationEvidence =
-        candidate?.entryOpportunity ??
-        (!candidate &&
-        previousReference?.opportunity &&
-        previousReference.notional + order.quantity * order.price <=
-          previousReference.opportunity.plannedNotionalUsd + 1e-9
-          ? previousReference.opportunity
-          : undefined);
-      const dcaAssessment =
-        !existing && source && source.actualInventoryBase !== 0
-          ? snapshot.dcaContext
-            ? assessDecibelDCAOpportunityV1({
-                positionBase: source.actualInventoryBase,
-                side,
-                quantity: order.quantity,
-                price: order.price,
-                now: session.now,
-                maximumAgeMs: source.maxBboAgeMs,
-                ...source.book,
-                sourceStateHash: snapshot.sourceStateHash,
-                cycle: snapshot.dcaContext.cycle,
-                regime: snapshot.dcaContext.regime,
-                distinctObservationCount: snapshot.dcaContext.distinctObservationCount,
-                ...(continuationEvidence ? { persistedEvidence: continuationEvidence } : {}),
-              })
-            : { blocker: 'DCA_CYCLE_MARKET_EVIDENCE_REQUIRED', opportunity: null }
-          : null;
-      admittedEntryOpportunity = dcaAssessment?.opportunity ?? undefined;
-      const dca =
-        dcaAssessment?.blocker ??
-        (candidate &&
-        source?.actualInventoryBase !== 0 &&
-        !candidate.entryOpportunity &&
-        admittedEntryOpportunity
-          ? 'DCA_PERSISTED_OPPORTUNITY_REQUIRED'
-          : null);
       const reason =
-        (existing ||
-        (continuationEvidence !== undefined &&
-          continuationEvidence.opportunityId ===
-            snapshot.dcaContext?.cycle.reference?.opportunity?.opportunityId)
-          ? null
-          : config.entryCycleBlocker) ??
-        dca ??
+        (existing ? null : config.entryCycleBlocker) ??
         (riskCapacity === undefined ||
         !Number.isFinite(riskCapacity) ||
         riskCapacity < 0 ||
@@ -608,7 +543,6 @@ export function evaluateTradingDecision(
           reduceOnly: false,
           postOnly: true,
           timeInForce: 'PostOnly',
-          ...(admittedEntryOpportunity ? { entryOpportunity: admittedEntryOpportunity } : {}),
         },
       });
       entryDecisions[side] = independent;
@@ -699,7 +633,7 @@ export function evaluateTradingDecision(
     ((source.actualInventoryBase < 0 && side === 'BUY') ||
       (source.actualInventoryBase > 0 && side === 'SELL'));
   const entryOnly = (reason: string) =>
-    /^(RISK_BLOCKED|DCA_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
       reason,
     );
   const executableReduction =
@@ -734,12 +668,7 @@ export function evaluateTradingDecision(
     if (state === 'STOP') return primaryReason;
     if (tpReasons[side]) return tpReasons[side];
     if (!reductionSide(side) && primaryReason.startsWith('TP_')) {
-      if (
-        source &&
-        source.actualInventoryBase !== 0 &&
-        !supportsDecibelMultipleReductionsV1(source)
-      )
-        return 'POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED';
+      if (source && source.actualInventoryBase !== 0) return 'POSITION_GROWTH_DISABLED';
       return entryDecisions[side]?.primaryReason ?? 'ENTRY_ADMISSION_NOT_PROVEN';
     }
     return primaryReason;

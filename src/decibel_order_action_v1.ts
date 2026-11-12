@@ -5,7 +5,7 @@ import {
 } from './decibel_exit_economics_v1.js';
 export type decibel_order_action_class_v1 =
   | 'ENTRY'
-  | 'DCA'
+  | 'POSITION_INCREASE'
   | 'TP_COVERAGE_REPAIR'
   | 'TP_PRICE_REPRICE'
   | 'DEFENSIVE_RISK_REDUCTION'
@@ -88,7 +88,7 @@ export function classifyDecibelOrderActionV1(
       : /TP_PRICE|REPRICE:TP/.test(input.reason ?? '')
         ? 'TP_PRICE_REPRICE'
         : 'TP_COVERAGE_REPAIR';
-  return input.position === 0 ? 'ENTRY' : 'DCA';
+  return input.position === 0 ? 'ENTRY' : 'POSITION_INCREASE';
 }
 export function getDecibelReductionOrderLimitV1(
   snapshot: decibel_production_live_snapshot_v1,

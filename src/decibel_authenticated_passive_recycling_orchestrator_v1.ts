@@ -1619,17 +1619,16 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     }
   }
   const coverage = calculateDecibelExitCoverageV1(input);
-  // DCA pricing/policy is unchanged. Admission requires a proven way to protect
-  // added lots without first removing the existing confirmed TP.
-  if (input.actualInventoryBase !== 0 && !supportsDecibelMultipleReductionsV1(input)) {
+  // DCA was removed: an open position is never grown, only reduced.
+  if (input.actualInventoryBase !== 0) {
     if (input.actualInventoryBase > 0 && desiredBid !== null) {
       desiredBid = null;
       desiredBidLadder = [];
-      bidEligibilityReason = 'POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED';
+      bidEligibilityReason = 'POSITION_GROWTH_DISABLED';
     } else if (input.actualInventoryBase < 0 && desiredAsk !== null) {
       desiredAsk = null;
       desiredAskLadder = [];
-      askEligibilityReason = 'POSITION_GROWTH_PROTECTION_CAPABILITY_UNVERIFIED';
+      askEligibilityReason = 'POSITION_GROWTH_DISABLED';
     }
   }
   if (sizing?.entryHeadroomUsd !== undefined && coverage.entryPaused && !sessionUnwind) {

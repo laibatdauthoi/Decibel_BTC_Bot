@@ -1,4 +1,3 @@
-import type { decibel_entry_opportunity_v1 } from './decibel_dca_opportunity_v1.js';
 import { createHash } from 'node:crypto';
 import { getDecibelQuantityUnitsV1 } from './decibel_chain_units_v1.js';
 
@@ -31,7 +30,6 @@ export type execution_intent_status_v1 =
   | 'SUPERSEDED';
 
 export type place_intent_v1 = Readonly<{
-  entryOpportunity?: decibel_entry_opportunity_v1;
   intentId: string;
   mutationKey: string;
   sessionId: string;

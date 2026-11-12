@@ -1,8 +1,4 @@
-import {
-  DecibelEntryOpportunitySchemaV1,
-  type decibel_entry_cycle_fill_v1,
-} from './decibel_dca_opportunity_v1.js';
-import { z } from 'zod';
+import type { decibel_entry_cycle_fill_v1 } from './decibel_entry_cycle_v1.js';
 import { getDecibelQuantityUnitsV1 } from './decibel_chain_units_v1.js';
 import { createHash } from 'node:crypto';
 import { planDecibelHistoricalFillRecoveryV1 } from './decibel_authenticated_btc_activity_resync_v1.js';
@@ -2296,25 +2292,16 @@ export class decibel_execution_lifecycle_journal_v1 {
     }>;
   }
 
-  /** Durable order identity preserves partial-fill grouping across recovery. */
+  /** Authenticated strategy fills for one session, used to reconcile fill history with the position. */
   getSessionEntryCycleFills(sessionId: string): readonly decibel_entry_cycle_fill_v1[] {
-    const rows = this.Database.prepare(
+    return this.Database.prepare(
       `
-      SELECT f.fill_id fillId,f.intent_id intentId,f.side,f.quantity,f.price,f.observed_at timestamp,i.body_json body
+      SELECT f.fill_id fillId,f.intent_id intentId,f.side,f.quantity,f.price,f.observed_at timestamp
       FROM authenticated_fills f JOIN execution_intents i ON i.intent_id=f.intent_id
       WHERE json_extract(i.body_json,'$.sessionId')=? AND f.strategy_lineage=1
         AND f.external_counterparty=1 ORDER BY f.observed_at,f.fill_id
     `,
-    ).all(sessionId) as Array<Omit<decibel_entry_cycle_fill_v1, 'opportunity'> & { body: string }>;
-    return rows.map(({ body, ...fill }) => {
-      const intent = z
-        .object({ entryOpportunity: DecibelEntryOpportunitySchemaV1.optional() })
-        .parse(JSON.parse(body));
-      return {
-        ...fill,
-        ...(intent.entryOpportunity ? { opportunity: intent.entryOpportunity } : {}),
-      };
-    });
+    ).all(sessionId) as decibel_entry_cycle_fill_v1[];
   }
 
   /** Reviewed inventory-only history append. Ownership uncertainty stays in durable

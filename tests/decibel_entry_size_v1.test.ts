@@ -1,4 +1,4 @@
-import { deriveDecibelDCACycleV1 } from '../src/decibel_dca_opportunity_v1.js';
+import { deriveDecibelEntryCycleV1 } from '../src/decibel_entry_cycle_v1.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,7 +24,7 @@ function assessTestCycle(input: {
     timestamp?: number;
   }[];
 }) {
-  return deriveDecibelDCACycleV1(
+  return deriveDecibelEntryCycleV1(
     input.fills.map((fill, index) => ({
       ...fill,
       price: fill.price ?? 80000,
@@ -240,7 +240,7 @@ describe('Dynamic entry allocation and independent hard risk', () => {
     ).toBeNull();
   });
   it.each(['BUY', 'SELL'] as const)(
-    'replays initial plus three additions, grouped partial fills, across restart (%s)',
+    'reconciles grouped partial fills, duplicates and closed cycles (%s)',
     (side) => {
       const sign = side === 'BUY' ? 1 : -1;
       const fills = Array.from({ length: 8 }, (_, index) => ({
@@ -249,24 +249,16 @@ describe('Dynamic entry allocation and independent hard risk', () => {
         side,
         quantity: 0.001,
       }));
-      expect(assessTestCycle({ positionBase: sign * 0.008, fills })).toMatchObject({
-        increases: 4,
-        additions: 3,
-        blocker: 'DCA_THREE_ADDITIONS_REACHED',
-      });
-      expect(
-        assessTestCycle(
-          JSON.parse(JSON.stringify({ positionBase: sign * 0.008, fills })) as Parameters<
-            typeof assessTestCycle
-          >[0],
-        ),
-      ).toEqual(assessTestCycle({ positionBase: sign * 0.008, fills }));
+      expect(assessTestCycle({ positionBase: sign * 0.008, fills })).toEqual({ blocker: null });
+      expect(assessTestCycle({ positionBase: sign * 0.007, fills }).blocker).toBe(
+        'ENTRY_CYCLE_FILL_HISTORY_RECONCILIATION_REQUIRED',
+      );
       expect(
         assessTestCycle({
           positionBase: sign * 0.002,
           fills: [...fills.slice(0, 2), fills[0]!],
         }),
-      ).toMatchObject({ increases: 1, additions: 0, blocker: null });
+      ).toEqual({ blocker: null });
       const closed = [
         ...fills,
         {
@@ -276,20 +268,16 @@ describe('Dynamic entry allocation and independent hard risk', () => {
           quantity: 0.008,
         },
       ];
-      expect(assessTestCycle({ positionBase: 0, fills: closed })).toMatchObject({
-        increases: 0,
-        additions: 0,
-        blocker: null,
-      });
+      expect(assessTestCycle({ positionBase: 0, fills: closed })).toEqual({ blocker: null });
       expect(
         assessTestCycle({
           positionBase: sign * 0.001,
           fills: [...closed, { fillId: 'new', intentId: 'new', side, quantity: 0.001 }],
         }),
-      ).toMatchObject({ increases: 1, blocker: null });
+      ).toEqual({ blocker: null });
     },
   );
-  it('recovers DCA count from SQLite after closing and reopening the journal', () => {
+  it('reads session fills from SQLite after closing and reopening the journal', () => {
     const path = join(mkdtempSync(join(tmpdir(), 'entry-cycle-')), 'journal.sqlite');
     const Journal = new decibel_execution_lifecycle_journal_v1(path);
     try {
@@ -311,7 +299,7 @@ describe('Dynamic entry allocation and independent hard risk', () => {
           createdAt: index,
         });
         Journal.prepare(intent);
-        // The fifth unfilled replacement consumes no addition.
+        // The fifth intent stays unfilled and contributes no fills.
         if (index === 4) continue;
         for (let part = 0; part < 2; part++)
           Journal.applyFill({
@@ -331,28 +319,21 @@ describe('Dynamic entry allocation and independent hard risk', () => {
     }
     const Recovered = new decibel_execution_lifecycle_journal_v1(path);
     try {
-      expect(
-        assessTestCycle({
-          positionBase: 0.0008,
-          fills: Recovered.getSessionEntryCycleFills('entry-cycle'),
-        }),
-      ).toMatchObject({
-        increases: 4,
-        additions: 3,
-        blocker: 'DCA_THREE_ADDITIONS_REACHED',
-      });
+      const fills = Recovered.getSessionEntryCycleFills('entry-cycle');
+      expect(fills).toHaveLength(8);
+      expect(assessTestCycle({ positionBase: 0.0008, fills })).toEqual({ blocker: null });
+      expect(assessTestCycle({ positionBase: 0.001, fills }).blocker).toBe(
+        'ENTRY_CYCLE_FILL_HISTORY_RECONCILIATION_REQUIRED',
+      );
       expect(Recovered.getSessionEntryCycleFills('other-session')).toEqual([]);
     } finally {
       Recovered.close();
     }
   });
-  it('does not count unfilled cancellations and refuses incomplete or reversed history', () => {
-    expect(assessTestCycle({ positionBase: 0, fills: [] })).toMatchObject({
-      increases: 0,
-      blocker: null,
-    });
+  it('refuses incomplete, reversed or ambiguous fill history', () => {
+    expect(assessTestCycle({ positionBase: 0, fills: [] })).toEqual({ blocker: null });
     expect(assessTestCycle({ positionBase: 1, fills: [] }).blocker).toBe(
-      'DCA_FILL_HISTORY_RECONCILIATION_REQUIRED',
+      'ENTRY_CYCLE_FILL_HISTORY_RECONCILIATION_REQUIRED',
     );
     expect(
       assessTestCycle({
@@ -362,6 +343,22 @@ describe('Dynamic entry allocation and independent hard risk', () => {
           { fillId: '2', intentId: '2', side: 'SELL', quantity: 2 },
         ],
       }).blocker,
-    ).toBe('DCA_DIRECTION_REVERSAL_RECONCILIATION_REQUIRED');
+    ).toBe('ENTRY_CYCLE_DIRECTION_REVERSAL_RECONCILIATION_REQUIRED');
+    expect(
+      assessTestCycle({
+        positionBase: 1,
+        fills: [{ fillId: '1', intentId: '1', side: 'BUY', quantity: Number.NaN }],
+      }).blocker,
+    ).toBe('ENTRY_CYCLE_FILL_EVIDENCE_INVALID');
+    expect(
+      assessTestCycle({
+        positionBase: 1,
+        fills: [
+          { fillId: '1', intentId: '1', side: 'BUY', quantity: 1, timestamp: 5 },
+          { fillId: '2', intentId: '2', side: 'SELL', quantity: 1, timestamp: 5 },
+          { fillId: '3', intentId: '3', side: 'BUY', quantity: 1, timestamp: 6 },
+        ],
+      }).blocker,
+    ).toBe('ENTRY_CYCLE_FILL_SEQUENCE_EVIDENCE_REQUIRED');
   });
 });

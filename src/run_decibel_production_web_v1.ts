@@ -1,4 +1,4 @@
-import { deriveDecibelDCACycleV1 } from './decibel_dca_opportunity_v1.js';
+import { deriveDecibelEntryCycleV1 } from './decibel_entry_cycle_v1.js';
 import {
   calculateDecibelPreferredEntrySizeUsdV1,
   calculateDecibelEntrySizeV1,
@@ -1636,7 +1636,7 @@ export async function runDecibelProductionWebV1(
                   collateralFraction: configuration.maximumAggregateCollateralFraction,
                 }),
                 entryCycleBlocker: (() => {
-                  const cycle = deriveDecibelDCACycleV1(
+                  const cycle = deriveDecibelEntryCycleV1(
                     TelemetryJournal.getSessionEntryCycleFills(session.sessionId),
                     candidate.input.actualInventoryBase,
                   );
@@ -1707,9 +1707,7 @@ export async function runDecibelProductionWebV1(
           (intent.reduceOnly && intent.executionRole === 'SESSION_UNWIND_IOC')
         )
           return;
-        const fresh = RuntimeOrchestrator.projectEntryEvidence(
-          await readProjectedSessionSnapshot(true),
-        );
+        const fresh = await readProjectedSessionSnapshot(true);
         assertDecibelSessionMutationOwnerV1(() => SessionController.ownsActiveRuntime());
         const protectiveProof =
           protectiveRecoveryBlocker === null
