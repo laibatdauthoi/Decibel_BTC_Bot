@@ -5,7 +5,7 @@
 **Branch:** `chore/production-cleanup-v1` (no upstream configured)
 **HEAD:** `471e9ef` — `feat: establish lean decibel btc market maker production bot` (committed 2026-09-05)
 **Supersedes:** `PROJECT_HANDOVER.md` (audit of 2026-10-21). That file is kept unchanged for history.
-**Audit method:** read-only. Source, docs, git state, runtime logs, persisted settings and a copy of the session database were inspected. `.env` was read for configuration *names* and for non-secret mode/limit values only; no credential value was read into this report. No order, session, journal, setting or process was touched.
+**Audit method:** read-only. Source, docs, git state, runtime logs, persisted settings and a copy of the session database were inspected. `.env` was read for configuration _names_ and for non-secret mode/limit values only; no credential value was read into this report. No order, session, journal, setting or process was touched.
 
 Evidence labels used below: **VERIFIED** (checked directly during this audit), **DOCUMENTED** (stated in a repository doc, not re-checked), **INFERRED** (conservative deduction), **UNKNOWN**, **CONFLICT**.
 
@@ -28,20 +28,20 @@ Evidence labels used below: **VERIFIED** (checked directly during this audit), *
 
 ## 1. What changed since the 2026-10-21 handover
 
-| Area | 2026-10-21 state | 2026-11-12 state |
-| --- | --- | --- |
-| Commits | HEAD `471e9ef` | **Unchanged.** All work since is uncommitted. |
-| Tracked diff | 28 files, ~12k insertions | **32 files, +34,973 / −1,274** (VERIFIED `git diff --shortstat`) |
-| Untracked | many | **213 entries**, incl. ~50 production `src` modules, tests, ~75 docs, live state files (VERIFIED) |
-| `src` size | 83 files / ~29k lines | **115 files / ~47.6k lines** (VERIFIED) |
-| Tests | 22 files / 445 tests | **51 test files / ~44.4k lines; last recorded run 1,355 tests** (VERIFIED file count; test count from 2026-11-10 log) |
-| Strategy | NORMAL_MM two-sided passive quoting | **ENTRY → TP → DCA (≤3 additions)** with session Max Loss / Target Volume (DOCUMENTED + VERIFIED in source) |
-| Decision layer | multiple strategic branches in orchestrator | **`evaluateTradingDecision` in `decibel_trading_decision_v1.ts`** returns TRADE / WAIT / STOP (DOCUMENTED, file VERIFIED) |
-| Sizing | position headroom partly from `maxLoss × leverage` | **Dynamic entry size** (`decibel_entry_size_v1.ts`) independent of Max Loss; Max Loss now only feeds a separate stress-loss admission check (DOCUMENTED) |
-| Production entry command | `npm run decibel:production:web-v1` | **`npm run decibel:production`** → `src/run_decibel_production_bootstrap_v1.mjs` (VERIFIED). Requires Node `v22.23.2` at `%LOCALAPPDATA%\DecibelTools\node-v22.23.2-win-x64\node.exe` or `DECIBEL_NODE22_EXECUTABLE`. |
-| CI | "no CI found" | `.github/workflows/quality.yml` **exists** (format, lint, typecheck, test, build on push/PR). It cannot pass on a clean clone today: untracked modules are missing and lint/format fail. |
-| Execution journal | ~713 MB | **~2.35 GB** `data/decibel_execution_v1.sqlite` (VERIFIED) |
-| `data/` | not measured | **~30 GB, 3,070 files**, incl. several ~1.28 GB `.tmp_*recovery*.sqlite` copies (VERIFIED) |
+| Area                     | 2026-10-21 state                                   | 2026-11-12 state                                                                                                                                                                                                      |
+| ------------------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commits                  | HEAD `471e9ef`                                     | **Unchanged.** All work since is uncommitted.                                                                                                                                                                         |
+| Tracked diff             | 28 files, ~12k insertions                          | **32 files, +34,973 / −1,274** (VERIFIED `git diff --shortstat`)                                                                                                                                                      |
+| Untracked                | many                                               | **213 entries**, incl. ~50 production `src` modules, tests, ~75 docs, live state files (VERIFIED)                                                                                                                     |
+| `src` size               | 83 files / ~29k lines                              | **115 files / ~47.6k lines** (VERIFIED)                                                                                                                                                                               |
+| Tests                    | 22 files / 445 tests                               | **51 test files / ~44.4k lines; last recorded run 1,355 tests** (VERIFIED file count; test count from 2026-11-10 log)                                                                                                 |
+| Strategy                 | NORMAL_MM two-sided passive quoting                | **ENTRY → TP → DCA (≤3 additions)** with session Max Loss / Target Volume (DOCUMENTED + VERIFIED in source)                                                                                                           |
+| Decision layer           | multiple strategic branches in orchestrator        | **`evaluateTradingDecision` in `decibel_trading_decision_v1.ts`** returns TRADE / WAIT / STOP (DOCUMENTED, file VERIFIED)                                                                                             |
+| Sizing                   | position headroom partly from `maxLoss × leverage` | **Dynamic entry size** (`decibel_entry_size_v1.ts`) independent of Max Loss; Max Loss now only feeds a separate stress-loss admission check (DOCUMENTED)                                                              |
+| Production entry command | `npm run decibel:production:web-v1`                | **`npm run decibel:production`** → `src/run_decibel_production_bootstrap_v1.mjs` (VERIFIED). Requires Node `v22.23.2` at `%LOCALAPPDATA%\DecibelTools\node-v22.23.2-win-x64\node.exe` or `DECIBEL_NODE22_EXECUTABLE`. |
+| CI                       | "no CI found"                                      | `.github/workflows/quality.yml` **exists** (format, lint, typecheck, test, build on push/PR). It cannot pass on a clean clone today: untracked modules are missing and lint/format fail.                              |
+| Execution journal        | ~713 MB                                            | **~2.35 GB** `data/decibel_execution_v1.sqlite` (VERIFIED)                                                                                                                                                            |
+| `data/`                  | not measured                                       | **~30 GB, 3,070 files**, incl. several ~1.28 GB `.tmp_*recovery*.sqlite` copies (VERIFIED)                                                                                                                            |
 
 Main work streams since 21/10 (DOCUMENTED in `docs/`, newest first):
 
@@ -89,13 +89,13 @@ The runtime model in the 21/10 handover §4 is still accurate. Treat that sectio
 
 ### Current persisted Settings (VERIFIED `config/production_state/decibel_operator_settings_v1.json`, revision 14, saved 2026-11-09 03:31)
 
-| Field | Value |
-| --- | --- |
-| capitalToUseUsd | 5 |
-| maxLossUsd | 0.20 |
-| targetMakerVolumeUsd | 300 |
-| orderNotionalUsd | 10 |
-| maxPositionUsd | 50 |
+| Field                | Value |
+| -------------------- | ----- |
+| capitalToUseUsd      | 5     |
+| maxLossUsd           | 0.20  |
+| targetMakerVolumeUsd | 300   |
+| orderNotionalUsd     | 10    |
+| maxPositionUsd       | 50    |
 
 `.env` limits (VERIFIED, non-secret): `DECIBEL_PRODUCTION_LIVE_MIN_NOTIONAL_USD=10`, `..._MAX_NOTIONAL_USD=50`, `MAX_EFFECTIVE_LEVERAGE=40`, `MARKET_SYMBOL=BTC/USD`.
 
@@ -140,16 +140,16 @@ All invariants in the 21/10 handover §6 still apply. In addition:
 
 ## 6. Live configuration and safety status
 
-| Item | Value | Label |
-| --- | --- | --- |
-| `TRADING_MODE` | `mainnet` | VERIFIED |
-| `LIVE_TRADING_ENABLED` | `true` | VERIFIED |
-| `DECIBEL_NETWORK` | `mainnet` | VERIFIED |
-| `DECIBEL_EXECUTION_MODE` | `production` | VERIFIED |
-| `DECIBEL_EXECUTOR_ENABLED` | `true` | VERIFIED |
-| `DECIBEL_EXECUTOR_DRY_RUN` | **`false`** | VERIFIED |
-| `DECIBEL_EXECUTION_RELEASE_STAGE` | `CANARY` | VERIFIED |
-| Credentials present in `.env` | `DECIBEL_PRIVATE_KEY`, `DECIBEL_NODE_API_KEY`, `DECIBEL_SUBACCOUNT_ADDRESS` (names only) | VERIFIED |
+| Item                              | Value                                                                                    | Label    |
+| --------------------------------- | ---------------------------------------------------------------------------------------- | -------- |
+| `TRADING_MODE`                    | `mainnet`                                                                                | VERIFIED |
+| `LIVE_TRADING_ENABLED`            | `true`                                                                                   | VERIFIED |
+| `DECIBEL_NETWORK`                 | `mainnet`                                                                                | VERIFIED |
+| `DECIBEL_EXECUTION_MODE`          | `production`                                                                             | VERIFIED |
+| `DECIBEL_EXECUTOR_ENABLED`        | `true`                                                                                   | VERIFIED |
+| `DECIBEL_EXECUTOR_DRY_RUN`        | **`false`**                                                                              | VERIFIED |
+| `DECIBEL_EXECUTION_RELEASE_STAGE` | `CANARY`                                                                                 | VERIFIED |
+| Credentials present in `.env`     | `DECIBEL_PRIVATE_KEY`, `DECIBEL_NODE_API_KEY`, `DECIBEL_SUBACCOUNT_ADDRESS` (names only) | VERIFIED |
 
 **Meaning:** pressing Start Session will submit real mainnet orders.
 
@@ -212,13 +212,13 @@ All invariants in the 21/10 handover §6 still apply. In addition:
 
 Run inside a Linux VM against the mounted Windows workspace, using the existing `node_modules` (Node v22.23.4 in the VM):
 
-| Command | Result |
-| --- | --- |
-| `tsc -p tsconfig.production.json --noEmit` (= `npm run typecheck`) | **PASS** |
-| `eslint .` (= `npm run lint`) | **FAIL**: 2 parsing errors, only the stray `.tmp_*` root files |
-| `prettier --check .` (= `npm run format:check`) | **FAIL**: 4 files (listed in §8) |
-| `npm test` | **NOT RUN.** `node_modules` contains only win32 `esbuild`/`rollup`/`better-sqlite3` binaries, and a separate Linux install could not finish within the tool's time limit. Run it on Windows. |
-| `npm run build` | **NOT RUN**: it emits `dist/`, and this audit was read-only. |
+| Command                                                            | Result                                                                                                                                                                                       |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tsc -p tsconfig.production.json --noEmit` (= `npm run typecheck`) | **PASS**                                                                                                                                                                                     |
+| `eslint .` (= `npm run lint`)                                      | **FAIL**: 2 parsing errors, only the stray `.tmp_*` root files                                                                                                                               |
+| `prettier --check .` (= `npm run format:check`)                    | **FAIL**: 4 files (listed in §8)                                                                                                                                                             |
+| `npm test`                                                         | **NOT RUN.** `node_modules` contains only win32 `esbuild`/`rollup`/`better-sqlite3` binaries, and a separate Linux install could not finish within the tool's time limit. Run it on Windows. |
+| `npm run build`                                                    | **NOT RUN**: it emits `dist/`, and this audit was read-only.                                                                                                                                 |
 
 ---
 
