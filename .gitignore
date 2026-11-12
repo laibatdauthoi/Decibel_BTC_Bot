@@ -13,3 +13,7 @@ data/*
 npm-debug.log*
 .DS_Store
 Thumbs.db
+# Local scratch and runtime state (never commit)
+.tmp*
+*_tmp.ts
+config/production_state/
