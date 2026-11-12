@@ -1,5 +1,6 @@
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_workflow_v1.js';
+import { calculateDecibelMidpointRangeBpsV1 } from './decibel_volatility_targets_v1.js';
 import {
   assessDecibelProtectiveRecoveryV1,
   assertDecibelRecoveryIntentV1,
@@ -187,6 +188,8 @@ export type decibel_production_live_configuration_v1 = Readonly<{
 
 export type decibel_production_live_snapshot_v1 = Readonly<{
   tpAdverseProgress?: import('./decibel_execution_intent_v1.js').tp_adverse_progress_v1 | null;
+  /** Midpoint range over the last 5 minutes (bps); null without enough history. */
+  priceRangeBps?: number | null;
   venueReadWindow?: Readonly<{
     account: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
     history?: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
@@ -4469,6 +4472,15 @@ export class decibel_production_live_orchestrator_v1 {
     }
   }
 
+  private withPriceRange(
+    snapshot: decibel_production_live_snapshot_v1,
+  ): decibel_production_live_snapshot_v1 {
+    return {
+      ...snapshot,
+      priceRangeBps: calculateDecibelMidpointRangeBpsV1(this.MidpointHistory, snapshot.input.now),
+    };
+  }
+
   private getOperationalMarketRegime(
     snapshot: decibel_production_live_snapshot_v1,
   ): decibel_market_regime_result_v1 {
@@ -4598,7 +4610,9 @@ export class decibel_production_live_orchestrator_v1 {
   private async readSnapshot(afterMutation = false): Promise<decibel_production_live_snapshot_v1> {
     assertDecibelHTTPReadAllowedV1();
     try {
-      const snapshot = this.withTPProgress(await this.readSnapshotAttempt(afterMutation));
+      const snapshot = this.withPriceRange(
+        this.withTPProgress(await this.readSnapshotAttempt(afterMutation)),
+      );
       assertDecibelVenueReconciliationFreshV1(snapshot, this.getDecisionNow());
       this.LatestSnapshot = snapshot;
       return snapshot;

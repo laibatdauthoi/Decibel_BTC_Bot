@@ -1,0 +1,85 @@
+/**
+ * Volatility-scaled distances for take-profit and re-entry.
+ *
+ * Measure: midpoint range (max - min) over the last 5 minutes, in bps. On 2026-11-05..12
+ * BTC/USD data the 5-minute range had p25 4.1, p50 10.0, p75 18.6 and p90 28.8 bps,
+ * which matches the typical few-minute holding time of a position.
+ *
+ * - TP: extra net profit target above fees and reserves. Fast markets get a wider TP,
+ *   quiet markets a tighter one, never below the floor.
+ * - Re-entry: after a TP fills at price A, the next entry rests at A - x (BUY) or
+ *   A + x (SELL). Journal data: re-entries within 5 bps of the TP exit averaged
+ *   -1.2 to -4.8 bps net, re-entries 5+ bps away averaged +2.7 to +8 bps.
+ * Without enough history the floors apply. Pure; no timers.
+ */
+export const DECIBEL_PRICE_RANGE_WINDOW_MS_V1 = 300_000;
+export const DECIBEL_PRICE_RANGE_MIN_COVERAGE_V1 = 0.8;
+export const DECIBEL_TP_TARGET_NET_FACTOR_V1 = 0.25;
+export const DECIBEL_TP_TARGET_NET_MIN_BPS_V1 = 1.5;
+export const DECIBEL_TP_TARGET_NET_MAX_BPS_V1 = 10;
+export const DECIBEL_REENTRY_DISTANCE_FACTOR_V1 = 0.5;
+export const DECIBEL_REENTRY_DISTANCE_MIN_BPS_V1 = 5;
+export const DECIBEL_REENTRY_DISTANCE_MAX_BPS_V1 = 25;
+
+const clamp = (value: number, minimum: number, maximum: number) =>
+  Math.min(maximum, Math.max(minimum, value));
+
+/** Midpoint range over the window, or null when history does not cover enough of it. */
+export function calculateDecibelMidpointRangeBpsV1(
+  history: readonly Readonly<{ at: number; midpoint: number }>[],
+  now: number,
+  windowMs = DECIBEL_PRICE_RANGE_WINDOW_MS_V1,
+): number | null {
+  const window = history.filter(
+    (point) =>
+      Number.isFinite(point.at) &&
+      point.at <= now &&
+      point.at >= now - windowMs &&
+      Number.isFinite(point.midpoint) &&
+      point.midpoint > 0,
+  );
+  if (window.length < 2) return null;
+  const first = Math.min(...window.map((point) => point.at));
+  if (now - first < windowMs * DECIBEL_PRICE_RANGE_MIN_COVERAGE_V1) return null;
+  const high = Math.max(...window.map((point) => point.midpoint));
+  const low = Math.min(...window.map((point) => point.midpoint));
+  const last = window.reduce((latest, point) => (point.at >= latest.at ? point : latest));
+  return ((high - low) / last.midpoint) * 10_000;
+}
+
+export function getDecibelTPTargetNetBpsV1(rangeBps: number | null | undefined): number {
+  if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
+    return DECIBEL_TP_TARGET_NET_MIN_BPS_V1;
+  return clamp(
+    DECIBEL_TP_TARGET_NET_FACTOR_V1 * rangeBps,
+    DECIBEL_TP_TARGET_NET_MIN_BPS_V1,
+    DECIBEL_TP_TARGET_NET_MAX_BPS_V1,
+  );
+}
+
+export function getDecibelReentryDistanceBpsV1(rangeBps: number | null | undefined): number {
+  if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
+    return DECIBEL_REENTRY_DISTANCE_MIN_BPS_V1;
+  return clamp(
+    DECIBEL_REENTRY_DISTANCE_FACTOR_V1 * rangeBps,
+    DECIBEL_REENTRY_DISTANCE_MIN_BPS_V1,
+    DECIBEL_REENTRY_DISTANCE_MAX_BPS_V1,
+  );
+}
+
+/**
+ * Re-entry price limit after a TP fill at `exitPrice`: a BUY may rest at most at
+ * exitPrice * (1 - x), a SELL at least at exitPrice * (1 + x), on the tick grid away
+ * from the exit.
+ */
+export function getDecibelReentryPriceLimitV1(
+  side: 'BUY' | 'SELL',
+  exitPrice: number,
+  distanceBps: number,
+  tickSize: number,
+): number {
+  const raw = exitPrice * (1 + ((side === 'BUY' ? -1 : 1) * distanceBps) / 10_000);
+  const ticks =
+    side === 'BUY' ? Math.floor(raw / tickSize + 1e-9) : Math.ceil(raw / tickSize - 1e-9);
+  return Number((ticks * tickSize).toPrecision(15));
+}

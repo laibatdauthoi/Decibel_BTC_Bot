@@ -60,6 +60,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getDecibelTPTargetNetBpsV1 } from '../src/decibel_volatility_targets_v1.js';
 
 import {
   applyDecibelActualFillTruthV1,
@@ -150,6 +151,17 @@ import {
 
 // Hypothetical venue contract for strategy-only tests. Production has no such
 // evidence producer; these fixtures must never imply verified Decibel support.
+/** Volatility TP target net (USD) used when constructing a new TP. */
+function tpTargetNetUsd(snapshot: decibel_production_live_snapshot_v1, quantity: number): number {
+  const book = snapshot.input.book;
+  return (
+    (quantity *
+      ((book.bestBid + book.bestAsk) / 2) *
+      getDecibelTPTargetNetBpsV1(snapshot.priceRangeBps)) /
+    10000
+  );
+}
+
 function buildFakeReductionRules(input: decibel_production_live_snapshot_v1['input']) {
   return {
     market: input.market,
@@ -7171,9 +7183,14 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     expect(
       assessDecibelExitEconomicsV1(placement, 'SELL', quantity, 75666.3).netPnlUsd,
     ).toBeLessThan(0);
-    expect(constructDecibelProfitableTPPriceV1(placement, 'SELL', quantity, 75700).price).toBe(
-      75666.4,
-    );
+    // Nearest tick meeting the volatility TP target (floor without range history).
+    const longTP = constructDecibelProfitableTPPriceV1(placement, 'SELL', quantity, 75700).price!;
+    expect(
+      assessDecibelExitEconomicsV1(placement, 'SELL', quantity, longTP).netPnlUsd!,
+    ).toBeGreaterThanOrEqual(tpTargetNetUsd(placement, quantity) - 1e-12);
+    expect(
+      assessDecibelExitEconomicsV1(placement, 'SELL', quantity, longTP - 0.1).netPnlUsd!,
+    ).toBeLessThan(tpTargetNetUsd(placement, quantity));
     expect(
       constructDecibelProfitableTPPriceV1(makeTP(record.tpReview), 'SELL', quantity, 75717.9).price,
     ).toBe(75681.1);
@@ -7265,7 +7282,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     }
   });
 
-  it('admits exact zero net TP, ignores adverse evidence and constructs the nearest profitable tick', () => {
+  it('admits exact zero net TP, ignores adverse evidence and constructs the nearest target tick', () => {
     const base = tpPriceFixture(1).snapshot;
     const snapshot = {
       ...base,
@@ -7294,7 +7311,18 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     };
     expect(assessDecibelExitEconomicsV1(snapshot, 'SELL', 1, 100).netPnlUsd).toBe(0);
     expect(assessDecibelTPActionV1(snapshot, 'SELL', 1, 100)).toBeNull();
-    expect(constructDecibelProfitableTPPriceV1(snapshot, 'SELL', 1, 999).price).toBe(100);
+    const zeroCostTP = constructDecibelProfitableTPPriceV1(snapshot, 'SELL', 1, 999).price!;
+    expect(
+      assessDecibelExitEconomicsV1(snapshot, 'SELL', 1, zeroCostTP).netPnlUsd!,
+    ).toBeGreaterThanOrEqual(tpTargetNetUsd(snapshot, 1) - 1e-12);
+    expect(
+      assessDecibelExitEconomicsV1(
+        snapshot,
+        'SELL',
+        1,
+        zeroCostTP - snapshot.input.metadata.tickSize,
+      ).netPnlUsd!,
+    ).toBeLessThan(tpTargetNetUsd(snapshot, 1));
     const hugeAdverse = {
       ...snapshot,
       economicInputs: { ...snapshot.economicInputs, adverseSelectionBufferBps: 10000 },
@@ -9483,7 +9511,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           quantity,
           constructed.price! + (sign > 0 ? -0.1 : 0.1),
         ).netPnlUsd,
-      ).toBeLessThanOrEqual(0);
+      ).toBeLessThan(tpTargetNetUsd(snapshot, quantity));
       expect(
         constructDecibelProfitableTPPriceV1(
           {

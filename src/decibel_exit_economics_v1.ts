@@ -1,6 +1,7 @@
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
+import { getDecibelTPTargetNetBpsV1 } from './decibel_volatility_targets_v1.js';
 import { createHash } from 'node:crypto';
 import {
   floorDecibelQuantityToLotV1,
@@ -413,8 +414,18 @@ export function constructDecibelProfitableTPPriceV1(
   const slope = quantity * ((side === 'SELL' ? 1 : -1) - exitRate);
   if (!Number.isFinite(slope) || (side === 'SELL' && slope <= 0))
     return { price: null, blocker: 'TP_PROFITABLE_PRICE_IMPOSSIBLE:COST_RATE_NOT_BELOW_ONE' };
-  const boundary = proposedPrice + (initial.requiredNetProfitUsd - initial.netPnlUsd) / slope;
   const book = snapshot.input.book;
+  // A new TP aims for a volatility-scaled net profit (wider in fast markets). Keeping or
+  // accepting a resting TP still only requires net >= 0, so a change in volatility alone
+  // never reprices an existing TP.
+  const targetNetUsd = Math.max(
+    initial.requiredNetProfitUsd,
+    (quantity *
+      ((book.bestBid + book.bestAsk) / 2) *
+      getDecibelTPTargetNetBpsV1(snapshot.priceRangeBps)) /
+      10000,
+  );
+  const boundary = proposedPrice + (targetNetUsd - initial.netPnlUsd) / slope;
   let ticks =
     side === 'SELL'
       ? Math.max(Math.ceil(boundary / tick), Math.floor(book.bestBid / tick) + 1)
@@ -426,7 +437,7 @@ export function constructDecibelProfitableTPPriceV1(
     if (
       !checked.blockers.length &&
       checked.netPnlUsd !== null &&
-      checked.netPnlUsd >= checked.requiredNetProfitUsd &&
+      checked.netPnlUsd >= Math.max(checked.requiredNetProfitUsd, targetNetUsd - 1e-12) &&
       (side === 'SELL' ? price > book.bestBid : price < book.bestAsk)
     ) {
       const venueLimit = snapshot.reductionCapacity?.venueMaximumOrderNotionalUsd;
