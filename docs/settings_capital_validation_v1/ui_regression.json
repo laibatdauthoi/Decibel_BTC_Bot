@@ -1,0 +1,30 @@
+[
+  {
+    "name": "valid_save_enabled",
+    "pass": true
+  },
+  {
+    "name": "margin_drop_blocks_and_warns",
+    "pass": true
+  },
+  {
+    "name": "invalid_click_and_enter_no_request",
+    "pass": true
+  },
+  {
+    "name": "stale_blocks",
+    "pass": true
+  },
+  {
+    "name": "unknown_blocks",
+    "pass": true
+  },
+  {
+    "name": "fresh_restores",
+    "pass": true
+  },
+  {
+    "name": "discard_restores_value_and_disables_save",
+    "pass": true
+  }
+]
