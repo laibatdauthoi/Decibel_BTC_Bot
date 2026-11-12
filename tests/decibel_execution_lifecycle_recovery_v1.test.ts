@@ -1326,3 +1326,84 @@ describe('Auditable false flat-checkpoint CANCELLED recovery', () => {
     journal.close();
   });
 });
+
+describe('terminal history re-observation that adds fills', () => {
+  const setup = () => {
+    const Journal = new decibel_execution_lifecycle_journal_v1(
+      join(mkdtempSync(join(tmpdir(), 'terminal-fills-')), 'j.sqlite'),
+    );
+    const order = intent();
+    Journal.prepare(order);
+    Journal.transition(order.intentId, 'ACKNOWLEDGED', 2, 'venue');
+    const filledWithoutFills = {
+      intentId: order.intentId,
+      reconciliationState: 'FULL_FILL',
+      terminalStatus: 'APPLIED' as const,
+      source: 'AUTHENTICATED_TERMINAL_ORDER_HISTORY',
+      matchedIdentifier: 'venueOrderId:venue',
+      venueStatus: 'FILLED',
+      remainingQuantity: 0,
+      transactionHash: '0xsubmission',
+      venueOrderId: 'venue',
+      clientOrderId: order.clientOrderId,
+      observedAt: 3,
+      fills: [] as {
+        fillId: string;
+        quantity: number;
+        price: number;
+        transactionVersion: string;
+      }[],
+    };
+    Journal.applyAuthoritativeReconciliation(filledWithoutFills);
+    const fill = {
+      fillId: 'fill-1',
+      quantity: order.quantity,
+      price: order.price,
+      transactionVersion: '8016498514',
+    };
+    return { Journal, order, filledWithoutFills, fill };
+  };
+
+  it('accepts the same FILLED outcome when the fill evidence arrives later', () => {
+    const { Journal, order, filledWithoutFills, fill } = setup();
+    expect(Journal.get(order.intentId)?.status).toBe('APPLIED');
+    expect(() =>
+      Journal.applyAuthoritativeReconciliation({
+        ...filledWithoutFills,
+        observedAt: 4,
+        fills: [fill],
+      }),
+    ).not.toThrow();
+    expect(Journal.get(order.intentId)?.status).toBe('APPLIED');
+    expect(Journal.getExecutionReconciliationBlocker()).toBeNull();
+    // Idempotent once the fill is recorded.
+    expect(() =>
+      Journal.applyAuthoritativeReconciliation({
+        ...filledWithoutFills,
+        observedAt: 5,
+        fills: [fill],
+      }),
+    ).not.toThrow();
+    Journal.close();
+  });
+
+  it('still rejects a different transaction or an oversized fill', () => {
+    const { Journal, filledWithoutFills, fill, order } = setup();
+    expect(() =>
+      Journal.applyAuthoritativeReconciliation({
+        ...filledWithoutFills,
+        observedAt: 4,
+        transactionHash: '0xother',
+        fills: [fill],
+      }),
+    ).toThrow(/EXECUTION_AUTHORITATIVE/);
+    expect(() =>
+      Journal.applyAuthoritativeReconciliation({
+        ...filledWithoutFills,
+        observedAt: 4,
+        fills: [{ ...fill, quantity: order.quantity * 2 }],
+      }),
+    ).toThrow(/EXECUTION_AUTHORITATIVE/);
+    Journal.close();
+  });
+});

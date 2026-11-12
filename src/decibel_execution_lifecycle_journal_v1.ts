@@ -744,6 +744,62 @@ export class decibel_execution_lifecycle_journal_v1 {
           );
           return;
         }
+        // Terminal order history can report FILLED/CANCELLED before the fill evidence
+        // arrives. A later observation of the same terminal outcome that only adds fills
+        // is not a contradiction (2026-11-12 live: FILLED with no fills, then FILLED with
+        // the exact fill 0.5 s later stopped the session). Identity, status, zero
+        // remaining and transaction must agree; total fills stay within the order.
+        const sameTerminalAddsFills =
+          prior !== null &&
+          prior.source === 'AUTHENTICATED_TERMINAL_ORDER_HISTORY' &&
+          input.source === 'AUTHENTICATED_TERMINAL_ORDER_HISTORY' &&
+          prior.venueStatus === input.venueStatus &&
+          (input.venueStatus === 'FILLED' || input.venueStatus === 'CANCELLED') &&
+          prior.remainingQuantity === 0 &&
+          input.remainingQuantity === 0 &&
+          prior.venueOrderId === input.venueOrderId &&
+          prior.clientOrderId === input.clientOrderId &&
+          (prior.transactionHash === null ||
+            input.transactionHash === null ||
+            prior.transactionHash === input.transactionHash) &&
+          totalFilledQuantity <= body.quantity + 1e-12 &&
+          [...uniqueFills.values()].every((fill) => {
+            // Only additions: an existing fill must match exactly (repairs of persisted
+            // fills keep going through their dedicated paths below).
+            const persisted = this.Database.prepare(
+              'SELECT intent_id intentId,quantity,price,transaction_version transactionVersion FROM reconciliation_fill_provenance WHERE fill_id=?',
+            ).get(fill.fillId) as
+              | { intentId: string; quantity: number; price: number; transactionVersion: string }
+              | undefined;
+            return (
+              persisted === undefined ||
+              (persisted.intentId === input.intentId &&
+                persisted.quantity === fill.quantity &&
+                persisted.price === fill.price &&
+                persisted.transactionVersion === fill.transactionVersion)
+            );
+          });
+        if (sameTerminalAddsFills) {
+          for (const fill of uniqueFills.values())
+            this.Database.prepare(
+              'INSERT OR IGNORE INTO reconciliation_fill_provenance(fill_id,intent_id,venue_order_id,client_order_id,quantity,price,transaction_version,observed_at) VALUES(?,?,?,?,?,?,?,?)',
+            ).run(
+              fill.fillId,
+              input.intentId,
+              input.venueOrderId,
+              input.clientOrderId,
+              fill.quantity,
+              fill.price,
+              fill.transactionVersion,
+              input.observedAt,
+            );
+          this.resolveIdentityConflict(
+            input.intentId,
+            input.observedAt,
+            `AUTHORITATIVE_TERMINAL_FILLS_ADDED:${input.venueStatus}`,
+          );
+          return;
+        }
         // Older direct order/fill reconciliation stored the lifecycle label as
         // venueStatus. Exact terminal history can strengthen that cancellation
         // to CANCELLED/zero; it cannot change identity, transaction or fills.
