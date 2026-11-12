@@ -60,7 +60,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getDecibelTPTargetNetBpsV1 } from '../src/decibel_volatility_targets_v1.js';
+import {
+  getDecibelReentryPriceLimitV1,
+  getDecibelTPTargetNetBpsV1,
+} from '../src/decibel_volatility_targets_v1.js';
 
 import {
   applyDecibelActualFillTruthV1,
@@ -17923,5 +17926,125 @@ describe('PID 24216 bounded read-only production evidence replay', () => {
     }
     // Aggregate crossed-depth counts do not reconstruct the missing full frame;
     // this fixture makes no counterfactual before/after mutation claim for it.
+  });
+});
+
+describe('re-entry after a TP fill', () => {
+  const sizing = {
+    minimumNotionalUsd: 0.01,
+    maximumNotionalUsd: 200,
+    availableMarginUsd: 100,
+    maximumEffectiveLeverage: 1,
+    maximumAbsPositionBase: 2,
+    maximumLadderLevelsPerSide: 1,
+    maximumAggregateCollateralFraction: 0.5,
+    ladderLevelAllocations: [1],
+    halfSpreadBps: 5,
+    makerFeeBps: 0,
+    estimatedGasCostUsd: 0,
+    adverseSelectionBufferBps: 0,
+    safetyMarginBps: 0,
+  };
+
+  it('rests flat entries at or beyond the limits and ignores them with inventory', () => {
+    const input = makeSnapshot().input;
+    const free = evaluateDecibelAuthenticatedPassiveRecyclingV1(input, sizing);
+    expect(free.desiredBid).not.toBeNull();
+    expect(free.desiredAsk).not.toBeNull();
+    const bidLimit = free.desiredBid!.price - 1;
+    const askLimit = free.desiredAsk!.price + 1;
+    const limited = evaluateDecibelAuthenticatedPassiveRecyclingV1(input, {
+      ...sizing,
+      entryPriceLimits: { BUY: bidLimit, SELL: askLimit },
+    });
+    expect(limited.desiredBid!.price).toBeLessThanOrEqual(bidLimit);
+    expect(limited.desiredAsk!.price).toBeGreaterThanOrEqual(askLimit);
+    // A looser limit never moves the entry toward the market.
+    const loose = evaluateDecibelAuthenticatedPassiveRecyclingV1(input, {
+      ...sizing,
+      entryPriceLimits: { BUY: free.desiredBid!.price + 5, SELL: free.desiredAsk!.price - 5 },
+    });
+    expect(loose.desiredBid!.price).toBe(free.desiredBid!.price);
+    expect(loose.desiredAsk!.price).toBe(free.desiredAsk!.price);
+    // With inventory the limits do not apply.
+    const positioned = { ...input, actualInventoryBase: 0.5, inventoryDirectionProven: true };
+    expect(
+      evaluateDecibelAuthenticatedPassiveRecyclingV1(positioned, {
+        ...sizing,
+        entryPriceLimits: { BUY: bidLimit, SELL: askLimit },
+      }).desiredAsk?.price,
+    ).toBe(evaluateDecibelAuthenticatedPassiveRecyclingV1(positioned, sizing).desiredAsk?.price);
+  });
+
+  it('anchors the limits on the last exit fill of the current session only', async () => {
+    const base = makeSnapshot();
+    const exitFill = (venueOrderId: string, clientOrderId: string, price: number) => ({
+      venueFillId: `fill-${venueOrderId}`,
+      venueOrderId,
+      localExecutionRequestId: clientOrderId,
+      marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      side: 'SELL' as const,
+      executedPrice: price,
+      executedBaseQuantity: 1,
+      executedUsdNotional: price,
+      makerOrTaker: 'MAKER' as const,
+      receivedAt: new Date(1_000),
+      venueTimestamp: new Date(1_000),
+      fee: { availability: 'AVAILABLE' as const, amount: 0, currency: 'USD' },
+      rebate: { availability: 'UNAVAILABLE' as const, amount: null, currency: null },
+      executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM' as const,
+    });
+    const test = make({ snapshots: [base] });
+    const place = (
+      sessionId: string,
+      clientOrderId: string,
+      venueOrderId: string,
+      cycleSequence: number,
+    ) => {
+      const intent = buildDecibelExecutionIntentV1({
+        sessionId,
+        cycleSequence,
+        action: 'PLACE',
+        market: 'BTC/USD',
+        side: 'SELL',
+        price: 100,
+        quantity: 1,
+        tickSize: base.input.metadata.tickSize,
+        lotSize: base.input.metadata.lotSize,
+        clientOrderId,
+        knownVenueOrderId: null,
+        sourceStateHash: `state-${venueOrderId}`,
+        strategyDecisionHash: `decision-${venueOrderId}`,
+        createdAt: 1,
+        reduceOnly: true,
+        executionRole: 'INVENTORY_REDUCING_MAKER',
+      });
+      test.journal.prepare(intent);
+      test.journal.transition(intent.intentId, 'ACKNOWLEDGED', 2, venueOrderId);
+    };
+    place(base.input.sessionId, `d1s${'b'.repeat(29)}`, 'own-exit', 7001);
+    place('another-session', `d1s${'c'.repeat(29)}`, 'foreign-exit', 7002);
+    const limitsFor = (fills: ReturnType<typeof exitFill>[], inventory = 0) =>
+      (
+        test.orchestrator as unknown as {
+          getReentryPriceLimits(s: typeof base): { BUY: number; SELL: number } | null;
+        }
+      ).getReentryPriceLimits({
+        ...base,
+        input: {
+          ...base.input,
+          actualInventoryBase: inventory,
+          actualFillLedger: { ...base.input.actualFillLedger, fills },
+        },
+      });
+    const tick = base.input.metadata.tickSize;
+    expect(limitsFor([exitFill('own-exit', `d1s${'b'.repeat(29)}`, 100)])).toEqual({
+      BUY: getDecibelReentryPriceLimitV1('BUY', 100, 5, tick),
+      SELL: getDecibelReentryPriceLimitV1('SELL', 100, 5, tick),
+    });
+    expect(limitsFor([exitFill('foreign-exit', `d1s${'c'.repeat(29)}`, 100)])).toBeNull();
+    expect(limitsFor([])).toBeNull();
+    expect(limitsFor([exitFill('own-exit', `d1s${'b'.repeat(29)}`, 100)], 0.5)).toBeNull();
+    await test.orchestrator.close();
   });
 });

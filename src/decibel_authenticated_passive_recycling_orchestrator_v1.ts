@@ -492,6 +492,8 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     minimumNotionalUsd: number;
     maximumNotionalUsd: number;
     entryHeadroomUsd?: number;
+    /** While flat after a TP fill: BUY entries rest at or below BUY, SELL at or above SELL. */
+    entryPriceLimits?: Readonly<{ BUY?: number; SELL?: number }>;
     availableMarginUsd: number;
     maximumEffectiveLeverage: number;
     halfSpreadBps?: number;
@@ -1158,6 +1160,18 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
   };
   desiredBidLadder = desiredBidLadder.map(priceEntry);
   desiredAskLadder = desiredAskLadder.map(priceEntry);
+  // After a TP fill the next entry rests at least the re-entry distance away from that
+  // exit price (A - x for BUY, A + x for SELL) instead of at the closest admissible price.
+  const entryLimits = input.actualInventoryBase === 0 ? sizing?.entryPriceLimits : undefined;
+  const limitEntry = (order: decibel_desired_recycling_order_v1) => {
+    const limit = order.side === 'BUY' ? entryLimits?.BUY : entryLimits?.SELL;
+    if (limit === undefined || !(limit > 0)) return order;
+    const price =
+      order.side === 'BUY' ? Math.min(order.price, limit) : Math.max(order.price, limit);
+    return price === order.price ? order : { ...order, price };
+  };
+  desiredBidLadder = desiredBidLadder.map(limitEntry);
+  desiredAskLadder = desiredAskLadder.map(limitEntry);
   const getCandidateAdverse = (
     order: decibel_desired_recycling_order_v1,
     fallback: number | null,

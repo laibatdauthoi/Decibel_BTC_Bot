@@ -1,6 +1,10 @@
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_workflow_v1.js';
-import { calculateDecibelMidpointRangeBpsV1 } from './decibel_volatility_targets_v1.js';
+import {
+  calculateDecibelMidpointRangeBpsV1,
+  getDecibelReentryDistanceBpsV1,
+  getDecibelReentryPriceLimitV1,
+} from './decibel_volatility_targets_v1.js';
 import {
   assessDecibelProtectiveRecoveryV1,
   assertDecibelRecoveryIntentV1,
@@ -1906,6 +1910,9 @@ export class decibel_production_live_orchestrator_v1 {
         this.riskReductionRequested || hasVerifiedAccountMarginBreach(snapshot),
       sessionUnwindRequested: this.sessionUnwindRequested,
       sessionDrainOnTarget: true,
+      ...((limits) => (limits === null ? {} : { entryPriceLimits: limits }))(
+        this.getReentryPriceLimits(snapshot),
+      ),
       sessionDrainRequested: this.sessionDrainRequested,
     });
   }
@@ -4470,6 +4477,34 @@ export class decibel_production_live_orchestrator_v1 {
         observedAt: (fill.venueTimestamp ?? fill.receivedAt).getTime(),
       });
     }
+  }
+
+  /**
+   * While flat after an exit fill in this session, the next entry rests at least the
+   * volatility-scaled re-entry distance away from that exit price.
+   */
+  private getReentryPriceLimits(
+    snapshot: decibel_production_live_snapshot_v1,
+  ): Readonly<{ BUY: number; SELL: number }> | null {
+    if (snapshot.input.actualInventoryBase !== 0) return null;
+    const at = (fill: (typeof snapshot.input.actualFillLedger.fills)[number]) =>
+      new Date(fill.venueTimestamp ?? fill.receivedAt).getTime();
+    let last: (typeof snapshot.input.actualFillLedger.fills)[number] | null = null;
+    for (const fill of snapshot.input.actualFillLedger.fills)
+      if (last === null || at(fill) > at(last)) last = fill;
+    if (last === null || !(last.executedPrice > 0)) return null;
+    const owner = this.Journal.findPlaceByExactIdentity(
+      last.venueOrderId,
+      last.localExecutionRequestId,
+    );
+    if (!owner || this.Journal.getIntent(owner.intentId)?.sessionId !== snapshot.input.sessionId)
+      return null;
+    const distanceBps = getDecibelReentryDistanceBpsV1(snapshot.priceRangeBps);
+    const tick = snapshot.input.metadata.tickSize;
+    return {
+      BUY: getDecibelReentryPriceLimitV1('BUY', last.executedPrice, distanceBps, tick),
+      SELL: getDecibelReentryPriceLimitV1('SELL', last.executedPrice, distanceBps, tick),
+    };
   }
 
   private withPriceRange(
