@@ -11,6 +11,7 @@
     "src/run_decibel_authenticated_btc_activity_resync_v1.ts",
     "src/run_decibel_execution_journal_resolve_pre_submission_failure_v1.ts",
     "src/decibel_external_production_executor_v1.ts",
-    "src/decibel_authenticated_http_worker_v1.mjs"
+    "src/decibel_authenticated_http_worker_v1.mjs",
+    "src/run_decibel_venue_capability_probe_v1.ts"
   ]
 }
