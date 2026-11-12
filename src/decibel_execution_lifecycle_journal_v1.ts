@@ -122,6 +122,15 @@ export class decibel_execution_lifecycle_journal_v1 {
       CREATE INDEX IF NOT EXISTS reconciliation_observations_intent_id_id ON reconciliation_observations(intent_id,id DESC);
       CREATE INDEX IF NOT EXISTS reconciliation_provenance_intent_id_observed_at ON reconciliation_provenance(intent_id,observed_at DESC);
       CREATE INDEX IF NOT EXISTS lifecycle_blockers_intent_id_id ON lifecycle_blockers(intent_id,id DESC);
+      -- execution_intents grows without bound; without these indexes the per-cycle lookups
+      -- below were full scans (35-67 ms each, ~0.8 s of synchronous work per cycle at 37k
+      -- intents). Each index matches the exact expression used by the queries. The
+      -- terminal-status list must stay identical to the NOT IN lists in the queries.
+      CREATE INDEX IF NOT EXISTS execution_intents_nonterminal_created ON execution_intents(created_at,intent_id) WHERE status NOT IN ('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY','FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED');
+      CREATE INDEX IF NOT EXISTS execution_intents_venue_order ON execution_intents(venue_order_id);
+      CREATE INDEX IF NOT EXISTS execution_intents_status ON execution_intents(status);
+      CREATE INDEX IF NOT EXISTS execution_intents_session ON execution_intents(json_extract(body_json,'$.sessionId'));
+      CREATE INDEX IF NOT EXISTS execution_intents_cancel_reason ON execution_intents(json_extract(body_json,'$.cancelReason'));
       INSERT OR IGNORE INTO reconciliation_identity_conflicts(intent_id,blocker,first_observed_at,last_observed_at,status,resolved_at,resolution)
       SELECT b.intent_id,b.blocker,MIN(b.observed_at),MAX(b.observed_at),'ACTIVE',NULL,NULL
       FROM lifecycle_blockers b
