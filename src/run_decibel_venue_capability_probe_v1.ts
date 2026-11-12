@@ -17,10 +17,15 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { inspect } from 'node:util';
 import { z } from 'zod';
 
 import { getDecibelQuantityUnitsV1, scaleDecimalToChainUnitsV1 } from './decibel_chain_units_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
+import {
+  DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1,
+  capDecibelProductionMaxGasAmountV1,
+} from './decibel_external_production_executor_v1.js';
 import {
   DECIBEL_VENUE_PROBE_CROSS_DISTANCE_FRACTION_V1,
   DECIBEL_VENUE_PROBE_FAR_DISTANCE_FRACTION_V1,
@@ -33,6 +38,7 @@ import {
   getDecibelVenueProbeSizeV1,
   isDecibelVenueProbeClientOrderIdV1,
   parseDecibelVenueProbeArgsV1,
+  redactDecibelVenueProbeTextV1,
   type decibel_venue_probe_market_v1,
   type decibel_venue_probe_order_row_v1,
   type decibel_venue_probe_order_v1,
@@ -158,8 +164,26 @@ type report_step_v1 = {
   observation?: unknown;
 };
 
+// Secrets loaded from .env. The Decibel/Aptos SDK logs failed requests itself, including
+// the node API key in the request overrides, so every console method is redacted.
+const SecretValues: string[] = [];
+const redact = (text: string) => redactDecibelVenueProbeTextV1(text, SecretValues);
+function installRedactingConsoleV1(): void {
+  for (const method of ['log', 'info', 'warn', 'error'] as const) {
+    const original = console[method].bind(console);
+    console[method] = (...values: unknown[]) =>
+      original(
+        ...values.map((value) =>
+          redact(
+            typeof value === 'string' ? value : inspect(value, { depth: 6, breakLength: 160 }),
+          ),
+        ),
+      );
+  }
+}
+
 const safeError = (error: unknown): string =>
-  (error instanceof Error ? error.message : String(error)).slice(0, 400);
+  redact(error instanceof Error ? error.message : String(error)).slice(0, 400);
 
 function isProductionProcessRunning(): boolean | null {
   const result = spawnSync(
@@ -178,6 +202,7 @@ function isProductionProcessRunning(): boolean | null {
 }
 
 async function main(): Promise<void> {
+  installRedactingConsoleV1();
   const parsed = parseDecibelVenueProbeArgsV1(process.argv.slice(2));
   if (parsed.args === null) throw new Error(parsed.error ?? 'PROBE_ARGS_INVALID');
   const { stage, partialFillWaitMs } = parsed.args;
@@ -192,12 +217,27 @@ async function main(): Promise<void> {
   const subaccountInput = environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
   if (!privateKey || !subaccountInput) throw new Error('PROBE_CREDENTIALS_REQUIRED');
   const subaccount: string = subaccountInput;
+  SecretValues.push(
+    privateKey,
+    ...(environment.DECIBEL_NODE_API_KEY ? [environment.DECIBEL_NODE_API_KEY] : []),
+  );
 
   const [{ Account, Ed25519PrivateKey }, { DecibelWriteDex, DecibelReadDex, MAINNET_CONFIG }] =
     await Promise.all([import('@aptos-labs/ts-sdk'), loadDecibelSdkRuntimeV1()]);
   const nodeApiKey = environment.DECIBEL_NODE_API_KEY?.trim() || undefined;
   const Signer = Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(privateKey) });
   class probe_write_dex_v1 extends DecibelWriteDex {
+    // Same cap as the production executor: Aptos requires balance >= max_gas * gas_price,
+    // and the SDK default rejects small gas wallets (INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE).
+    public override buildTx(
+      payload: Parameters<InstanceType<typeof DecibelWriteDex>['buildTx']>[0],
+      sender: Parameters<InstanceType<typeof DecibelWriteDex>['buildTx']>[1],
+    ) {
+      return super.buildTx(
+        { ...payload, maxGasAmount: capDecibelProductionMaxGasAmountV1(payload.maxGasAmount) },
+        sender,
+      );
+    }
     public sendEntry(functionName: string, functionArguments: unknown[]) {
       return this.sendTx({
         function:
@@ -276,7 +316,23 @@ async function main(): Promise<void> {
   // ---------- preconditions ----------
   const { row: marketRow, market } = await readMarket();
   const initial = await readAccount();
+  const [aptBalanceOctas, gasPrice] = await Promise.all([
+    Writer.aptos.getAccountAPTAmount({ accountAddress: Signer.accountAddress }),
+    Writer.aptos.getGasPriceEstimation(),
+  ]);
+  const requiredGasOctas = DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1 * gasPrice.gas_estimate;
+  console.log(
+    JSON.stringify({
+      event: 'PROBE_GAS_ACCOUNT',
+      aptBalance: aptBalanceOctas / 1e8,
+      maxGasAmount: DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1,
+      gasUnitPriceOctas: gasPrice.gas_estimate,
+      requiredPerTransactionApt: requiredGasOctas / 1e8,
+    }),
+  );
   const blocker = assessDecibelVenueProbePreconditionsV1({
+    aptBalanceOctas,
+    requiredGasOctas,
     tradingMode: environment.TRADING_MODE,
     liveTradingEnabled: environment.LIVE_TRADING_ENABLED,
     network: environment.DECIBEL_NETWORK,
@@ -508,7 +564,9 @@ async function main(): Promise<void> {
     const reportPath = join(reportDirectory, `stage-${stage}-${startedAt}.json`);
     writeFileSync(
       reportPath,
-      `${JSON.stringify({ stage, startedAt, finishedAt: Date.now(), market, failure, endedClean, final: final && { positionBase: final.positionBase, openOrders: final.orderRows, bulkOrders: final.bulkOrders }, steps }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v), 2)}\n`,
+      redact(
+        `${JSON.stringify({ stage, startedAt, finishedAt: Date.now(), market, failure, endedClean, final: final && { positionBase: final.positionBase, openOrders: final.orderRows, bulkOrders: final.bulkOrders }, steps }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v), 2)}\n`,
+      ),
       'utf8',
     );
     console.log(JSON.stringify({ event: 'PROBE_DONE', stage, failure, endedClean, reportPath }));

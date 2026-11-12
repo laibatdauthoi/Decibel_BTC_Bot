@@ -8,6 +8,7 @@ import {
   getDecibelVenueProbeSizeV1,
   isDecibelVenueProbeClientOrderIdV1,
   parseDecibelVenueProbeArgsV1,
+  redactDecibelVenueProbeTextV1,
   type decibel_venue_probe_order_v1,
 } from '../src/decibel_venue_probe_policy_v1.js';
 
@@ -21,6 +22,8 @@ const ready = {
   openOrderCount: 0,
   bulkOrderCount: 0,
   marketMode: 'Open',
+  aptBalanceOctas: 5_000_000,
+  requiredGasOctas: 20_000_000 / 100,
 };
 
 describe('venue probe policy', () => {
@@ -174,5 +177,30 @@ describe('venue probe policy', () => {
       orderPresent: false,
       orderIdPreserved: null,
     });
+  });
+
+  it('blocks when the gas wallet cannot cover one capped transaction', () => {
+    expect(
+      assessDecibelVenueProbePreconditionsV1({
+        ...ready,
+        aptBalanceOctas: 100,
+        requiredGasOctas: 200,
+      }),
+    ).toBe('PROBE_INSUFFICIENT_APT_FOR_GAS');
+    expect(assessDecibelVenueProbePreconditionsV1({ ...ready, aptBalanceOctas: null })).toBe(
+      'PROBE_INSUFFICIENT_APT_FOR_GAS',
+    );
+    expect(assessDecibelVenueProbePreconditionsV1({ ...ready, requiredGasOctas: 0 })).toBe(
+      'PROBE_INSUFFICIENT_APT_FOR_GAS',
+    );
+  });
+
+  it('redacts configured secrets and Aptos Labs API keys', () => {
+    const text = "overrides: { API_KEY: 'aptoslabs_FakeKeyForTests_123' } key=0xabcdef0123456789";
+    const redacted = redactDecibelVenueProbeTextV1(text, ['0xabcdef0123456789', 'short']);
+    expect(redacted).not.toContain('aptoslabs_');
+    expect(redacted).not.toContain('0xabcdef0123456789');
+    expect(redacted).toContain('[REDACTED]');
+    expect(redactDecibelVenueProbeTextV1('short value', ['short'])).toBe('short value');
   });
 });

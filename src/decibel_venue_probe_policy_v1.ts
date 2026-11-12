@@ -62,6 +62,8 @@ export type decibel_venue_probe_preconditions_v1 = Readonly<{
   openOrderCount: number | null;
   bulkOrderCount: number | null;
   marketMode: string | null;
+  aptBalanceOctas: number | null;
+  requiredGasOctas: number | null;
 }>;
 
 /** Every unknown input blocks; nothing here grants permission by default. */
@@ -79,6 +81,14 @@ export function assessDecibelVenueProbePreconditionsV1(
   if (input.positionBase !== 0) return 'PROBE_FLAT_POSITION_REQUIRED';
   if (input.openOrderCount !== 0) return 'PROBE_ZERO_OPEN_ORDERS_REQUIRED';
   if (input.bulkOrderCount !== 0) return 'PROBE_ZERO_BULK_ORDERS_REQUIRED';
+  if (
+    input.aptBalanceOctas === null ||
+    input.requiredGasOctas === null ||
+    !Number.isFinite(input.aptBalanceOctas) ||
+    !(input.requiredGasOctas > 0) ||
+    input.aptBalanceOctas < input.requiredGasOctas
+  )
+    return 'PROBE_INSUFFICIENT_APT_FOR_GAS';
   return null;
 }
 
@@ -212,4 +222,12 @@ export function compareDecibelVenueProbeOrdersV1(
     matchingOrders: matching.length,
     after: current,
   });
+}
+
+/** Removes known secret values and any Aptos Labs API key pattern from log or report text. */
+export function redactDecibelVenueProbeTextV1(text: string, secrets: readonly string[]): string {
+  let result = text;
+  for (const secret of secrets)
+    if (secret.length >= 8) result = result.split(secret).join('[REDACTED]');
+  return result.replace(/aptoslabs_[A-Za-z0-9_-]+/g, '[REDACTED]');
 }
