@@ -7,6 +7,9 @@ import {
   getDecibelVenueProbePriceV1,
   getDecibelVenueProbeSizeV1,
   isDecibelVenueProbeClientOrderIdV1,
+  extractDecibelVenueProbeOrderEventsV1,
+  findDecibelVenueProbeReplacementOrderIdV1,
+  parseDecibelMoveAbortV1,
   parseDecibelVenueProbeArgsV1,
   redactDecibelVenueProbeTextV1,
   type decibel_venue_probe_order_v1,
@@ -202,5 +205,54 @@ describe('venue probe policy', () => {
     expect(redacted).not.toContain('0xabcdef0123456789');
     expect(redacted).toContain('[REDACTED]');
     expect(redactDecibelVenueProbeTextV1('short value', ['short'])).toBe('short value');
+  });
+
+  it('reads order events and finds the replacement order after update_order', () => {
+    // Shape recorded on mainnet 2026-11-12 (ids and addresses replaced with fakes).
+    const event = (
+      orderId: string,
+      status: string,
+      clientOrderId: string | null,
+      reason?: string,
+    ) => ({
+      type: '0xfake::market_types::OrderEvent',
+      data: {
+        __variant__: 'V1',
+        order_id: orderId,
+        client_order_id: { vec: clientOrderId === null ? [] : [clientOrderId] },
+        status: { __variant__: status },
+        cancellation_reason: { vec: reason ? [{ __variant__: reason }] : [] },
+        is_taker: status === 'ACKNOWLEDGED',
+        price: '70855600000',
+        orig_size: '4000',
+        remaining_size: status === 'CANCELLED' ? '0' : '4000',
+      },
+    });
+    const events = extractDecibelVenueProbeOrderEventsV1([
+      { type: '0xfake::other::Event', data: {} },
+      event('111', 'CANCELLED', 'vprobe-A1-x', 'OrderCancelledByUser'),
+      event('222', 'ACKNOWLEDGED', null),
+      event('222', 'OPEN', null),
+    ]);
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({
+      orderId: '111',
+      clientOrderId: 'vprobe-A1-x',
+      status: 'CANCELLED',
+      cancellationReason: 'OrderCancelledByUser',
+    });
+    expect(events[2]).toMatchObject({ orderId: '222', clientOrderId: null, status: 'OPEN' });
+    expect(findDecibelVenueProbeReplacementOrderIdV1(events, '111')).toBe('222');
+    expect(findDecibelVenueProbeReplacementOrderIdV1([events[0]!], '111')).toBeNull();
+  });
+
+  it('classifies a committed Move abort with its code', () => {
+    const hash = '0x' + '1'.repeat(64);
+    expect(
+      parseDecibelMoveAbortV1(
+        `Transaction ${hash} failed with an error: Move abort in 0xfake::single_order_book: EORDER_NOT_FOUND(0x2): `,
+      ),
+    ).toEqual({ transactionHash: hash, abort: 'single_order_book::EORDER_NOT_FOUND(0x2)' });
+    expect(parseDecibelMoveAbortV1('socket hang up')).toBeNull();
   });
 });

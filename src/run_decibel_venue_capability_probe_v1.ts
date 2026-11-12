@@ -37,6 +37,9 @@ import {
   getDecibelVenueProbePriceV1,
   getDecibelVenueProbeSizeV1,
   isDecibelVenueProbeClientOrderIdV1,
+  extractDecibelVenueProbeOrderEventsV1,
+  findDecibelVenueProbeReplacementOrderIdV1,
+  parseDecibelMoveAbortV1,
   parseDecibelVenueProbeArgsV1,
   redactDecibelVenueProbeTextV1,
   type decibel_venue_probe_market_v1,
@@ -379,7 +382,7 @@ async function main(): Promise<void> {
     vmStatus: tx.vm_status ?? null,
     events: (tx.events ?? []).map((event) => ({ type: event.type, data: event.data })),
   });
-  /** Exactly one submission; any exception is recorded as UNKNOWN and never retried. */
+  /** Exactly one submission, never retried. A committed Move abort is ABORTED; other errors UNKNOWN. */
   const submit = async (step: string, request: unknown, send: () => Promise<committed_tx_v1>) => {
     stepNumber += 1;
     try {
@@ -387,7 +390,16 @@ async function main(): Promise<void> {
       record({ step, at: Date.now(), request, ...txOutcome(tx) });
       return tx;
     } catch (error) {
-      record({ step, at: Date.now(), request, outcome: 'UNKNOWN', error: safeError(error) });
+      const message = safeError(error);
+      const abort = parseDecibelMoveAbortV1(message);
+      record({
+        step,
+        at: Date.now(),
+        request,
+        outcome: abort ? 'ABORTED' : 'UNKNOWN',
+        ...(abort ? { transactionHash: abort.transactionHash, vmStatus: abort.abort } : {}),
+        error: message,
+      });
       return null;
     }
   };
@@ -438,7 +450,7 @@ async function main(): Promise<void> {
   ) => {
     gate(order, positionBase);
     const before = (await readAccount()).orderRows.find((row) => row.orderId === orderId) ?? null;
-    await submit(step, { orderId, ...order }, () =>
+    const tx = await submit(step, { orderId, ...order }, () =>
       Client.updateOrder({
         orderId,
         marketAddr: BTC_USD_MARKET_ADDRESS,
@@ -450,15 +462,27 @@ async function main(): Promise<void> {
         subaccountAddr: subaccount,
       }),
     );
+    // REST reads lag behind the chain; the transaction's own order events are authoritative.
+    const orderEvents = extractDecibelVenueProbeOrderEventsV1(tx?.events ?? []);
+    const replacementOrderId = findDecibelVenueProbeReplacementOrderIdV1(orderEvents, orderId);
+    await new Promise((done) => setTimeout(done, 2_000));
     const after = await readAccount();
     const comparison = compareDecibelVenueProbeOrdersV1(before, after.orderRows, clientOrderId);
     record({
       step: `${step}:compare`,
       at: Date.now(),
       outcome: 'OBSERVED',
-      observation: { before, ...comparison, history: await readHistory() },
+      observation: {
+        previousOrderId: orderId,
+        replacementOrderId,
+        orderIdChanged: replacementOrderId === null ? null : replacementOrderId !== orderId,
+        orderEvents,
+        before,
+        restAfter: comparison.after,
+        history: await readHistory(),
+      },
     });
-    return comparison.after?.orderId ?? orderId;
+    return replacementOrderId ?? orderId;
   };
   const closePosition = async (step: string) => {
     const account = await readAccount();
@@ -510,10 +534,17 @@ async function main(): Promise<void> {
       reduceOnly: false,
       purpose: 'REST',
     }) satisfies decibel_venue_probe_order_v1;
-  const findOrderId = async (clientOrderId: string, known: string | null) =>
-    known ??
-    (await readAccount()).orderRows.find((row) => row.clientOrderId === clientOrderId)?.orderId ??
-    null;
+  const findOrderId = async (clientOrderId: string, known: string | null) => {
+    if (known) return known;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const found = (await readAccount()).orderRows.find(
+        (row) => row.clientOrderId === clientOrderId,
+      );
+      if (found) return found.orderId;
+      await new Promise((done) => setTimeout(done, 1_000));
+    }
+    return null;
+  };
 
   let failure: string | null = null;
   try {
@@ -523,8 +554,10 @@ async function main(): Promise<void> {
     failure = safeError(error);
     record({ step: 'stage-error', at: Date.now(), outcome: 'FAILED', error: failure });
   } finally {
-    // Cleanup reads actual venue state; cancels are bounded to probe orders and the
-    // close is a reduce-only IOC bounded by the authenticated position.
+    // Cleanup reads actual venue state. Preconditions proved zero BTC orders before the
+    // stage, so every BTC order now present was created by this probe (update_order
+    // replaces orders with a new id and no client order id). The close is a reduce-only
+    // IOC bounded by the authenticated position.
     try {
       const account = await readAccount();
       for (const row of account.openOrders) {
@@ -536,7 +569,7 @@ async function main(): Promise<void> {
               subaccountAddr: subaccount,
             }),
           );
-        } else if (isDecibelVenueProbeClientOrderIdV1(row.client_order_id)) {
+        } else {
           await submit('cleanup-cancel', { orderId: row.order_id }, () =>
             Client.cancelOrder({
               orderId: row.order_id,

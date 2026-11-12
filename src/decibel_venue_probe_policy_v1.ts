@@ -229,3 +229,75 @@ export function compareDecibelVenueProbeOrdersV1(
 export function redactDecibelVenueProbeTextV1(text: string, secrets: readonly string[]): string {
   return redactDecibelSecretsV1(text, secrets);
 }
+
+export type decibel_venue_probe_order_event_v1 = Readonly<{
+  orderId: string;
+  clientOrderId: string | null;
+  status: string;
+  cancellationReason: string | null;
+  isTaker: boolean | null;
+  price: string | null;
+  origSize: string | null;
+  remainingSize: string | null;
+}>;
+
+const variantOf = (value: unknown): string | null =>
+  value &&
+  typeof value === 'object' &&
+  typeof (value as { __variant__?: unknown }).__variant__ === 'string'
+    ? (value as { __variant__: string }).__variant__
+    : null;
+const optionOf = (value: unknown): unknown =>
+  value && typeof value === 'object' && Array.isArray((value as { vec?: unknown }).vec)
+    ? ((value as { vec: unknown[] }).vec[0] ?? null)
+    : null;
+
+/** Order events emitted by `market_types::OrderEvent` in a committed transaction. */
+export function extractDecibelVenueProbeOrderEventsV1(
+  events: readonly Readonly<{ type: string; data: unknown }>[],
+): readonly decibel_venue_probe_order_event_v1[] {
+  return events
+    .filter((event) => event.type.endsWith('::market_types::OrderEvent'))
+    .map((event) => {
+      const data = (event.data ?? {}) as Record<string, unknown>;
+      const clientOrderId = optionOf(data.client_order_id);
+      const toText = (value: unknown): string | null =>
+        typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint'
+          ? String(value)
+          : null;
+      return Object.freeze({
+        orderId: toText(data.order_id) ?? '',
+        clientOrderId: typeof clientOrderId === 'string' ? clientOrderId : null,
+        status: variantOf(data.status) ?? 'UNKNOWN',
+        cancellationReason: variantOf(optionOf(data.cancellation_reason)),
+        isTaker: typeof data.is_taker === 'boolean' ? data.is_taker : null,
+        price: toText(data.price),
+        origSize: toText(data.orig_size),
+        remainingSize: toText(data.remaining_size),
+      });
+    })
+    .filter((event) => event.orderId !== '');
+}
+
+/** The order left resting after an update: a different id with status OPEN, if any. */
+export function findDecibelVenueProbeReplacementOrderIdV1(
+  events: readonly decibel_venue_probe_order_event_v1[],
+  previousOrderId: string,
+): string | null {
+  const open = events.filter((event) => event.status === 'OPEN');
+  return (open.find((event) => event.orderId !== previousOrderId) ?? open[0])?.orderId ?? null;
+}
+
+/** A committed Move abort is a definitive failure, not an unknown outcome. */
+export function parseDecibelMoveAbortV1(
+  message: string,
+): Readonly<{ transactionHash: string | null; abort: string }> | null {
+  const index = message.indexOf('Move abort');
+  if (index < 0) return null;
+  const hash = /Transaction (0x[0-9a-fA-F]{64})/.exec(message)?.[1] ?? null;
+  const abort = /::([a-z_]+):\s*([A-Z0-9_]+\(0x[0-9a-f]+\))/.exec(message.slice(index));
+  return Object.freeze({
+    transactionHash: hash,
+    abort: abort ? `${abort[1]}::${abort[2]}` : message.slice(index, index + 200),
+  });
+}

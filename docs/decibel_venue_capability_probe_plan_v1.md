@@ -107,3 +107,32 @@ Estimated total cost for all stages: under $0.20, dominated by price movement du
 3. If Q1/Q5 show an atomic in-place update: design TP repricing (and later ENTRY repricing) on
    `update_order`, behind the decision layer and preflight. If Q7 is positive: design the venue-side
    catastrophe stop.
+
+## 6. Results
+
+### Stage A, run 2026-11-12 10:22 UTC (report `stage-A-1794478930896.json`)
+
+Evidence: on-chain `market_types::OrderEvent`s of transaction
+`0x64224bdc8c68b6f667450fd247cc1d86b66c4b0524c6c5fc7aa6b765aada7f75` (A2 price update).
+
+- **Q1 — answered: `update_order` does not modify in place.** In one transaction the venue emits
+  `CANCELLED` (`OrderCancelledByUser`) for the old order id, then `ACKNOWLEDGED` (`is_taker: true`) and
+  `OPEN` for a **new order id**. The update is atomic (no window without the order), but the order is
+  replaced.
+- **The `client_order_id` is dropped** on the replacement (empty). The entry function has no
+  client-order-id argument. Any bot use must take the new id from the transaction events and cannot
+  rely on client order id identity after an update.
+- **Q2 — answered: queue priority is lost.** The replacement is a new order with a new `unix_ms`,
+  matched as a new taker-checked order.
+- Later steps (A3–A5) used the old id and aborted with `single_order_book::EORDER_NOT_FOUND(0x2)`, so
+  size-down/size-up and the reduce-only-while-flat question (Q3) are still open.
+- Probe defect found and fixed: cleanup cancelled only orders with the `vprobe-` prefix, so the
+  replacement order (empty client id) was left resting (BUY 0.00004 BTC far below the market). The
+  probe now takes the replacement id from events, records Move aborts as `ABORTED`, waits for REST
+  reads, and cancels every BTC order at cleanup (preconditions prove none existed before the stage).
+
+### Earlier run 10:13 UTC
+
+No order placed: `INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE` because the probe lacked the production
+`maxGasAmount` cap. Fixed; the probe now checks the APT balance first. The SDK printed the node API key
+in that error; output redaction was added to the probe and to production.
