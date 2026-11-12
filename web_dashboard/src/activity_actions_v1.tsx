@@ -7,7 +7,12 @@ import {
   type activity_history_v1,
 } from '../../src/decibel_activity_history_schema_v1';
 import type { ProductionSession } from './main';
-import { formatSessionDurationV1, formatOperatorPnlV1 } from './presentation';
+import {
+  calculateActivityFillNetPnlV1,
+  calculateGrossPnlUsdV1,
+  formatSessionDurationV1,
+  formatOperatorPnlV1,
+} from './presentation';
 import {
   calculateOverviewCostPerMillionV1,
   formatShareCostPerMillionV1,
@@ -74,7 +79,11 @@ export function buildSessionShareV1(
       ['Final Status', data.status],
       ['Duration', data.elapsed],
       ['Capital', data.capital],
-      ['Session PnL', data.pnl],
+      [
+        'PnL (before fees)',
+        formatOperatorPnlV1(calculateGrossPnlUsdV1(session.sessionPnlUsd, session.feesUsd)),
+      ],
+      ['Net PnL (after fees)', data.pnl],
       ['Executed Volume', data.volume],
       ['Fills', formatValue(session.fillCount, 0)],
       ['COST / 1M VOL', formatShareCostPerMillionV1(data.costPerMillion ?? null)],
@@ -215,6 +224,10 @@ export const SessionHistoryContent = (
   }>,
 ) => {
   const history = props.history?.sessionId === props.session.sessionId ? props.history : null;
+  const netByFill =
+    history === null
+      ? new Map<string, number | null>()
+      : calculateActivityFillNetPnlV1(history.fills);
   const failed = props.failed || (props.history !== null && history === null);
   const complete = history !== null && hasCompleteSessionTradesV1(props.session, history);
   const state = failed
@@ -301,11 +314,18 @@ export const SessionHistoryContent = (
                 <table className="activity-trade-table">
                   <thead>
                     <tr>
-                      {['TIME', 'DIRECTION', 'PRICE', 'SIZE', 'VALUE', 'FEE', 'PNL AT CLOSE'].map(
-                        (label) => (
-                          <th key={label}>{label}</th>
-                        ),
-                      )}
+                      {[
+                        'TIME',
+                        'DIRECTION',
+                        'PRICE',
+                        'SIZE',
+                        'VALUE',
+                        'FEE',
+                        'PNL (GROSS)',
+                        'NET PNL',
+                      ].map((label) => (
+                        <th key={label}>{label}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
@@ -344,6 +364,22 @@ export const SessionHistoryContent = (
                             ? '?'
                             : fill.closePnlAvailability === 'VERIFIED'
                               ? formatValue(fill.pnlAtCloseUsd ?? null, 6, '$')
+                              : 'UNKNOWN'}
+                        </td>
+                        <td
+                          className={
+                            netByFill.get(fill.fillId) == null
+                              ? ''
+                              : netByFill.get(fill.fillId)! >= 0
+                                ? 'activity-positive'
+                                : 'activity-negative'
+                          }
+                          title="Gross close PnL minus this fill's fee and the matched opening fees"
+                        >
+                          {netByFill.has(fill.fillId)
+                            ? formatValue(netByFill.get(fill.fillId) ?? null, 6, '$')
+                            : fill.closePnlAvailability === 'N/A'
+                              ? '?'
                               : 'UNKNOWN'}
                         </td>
                       </tr>

@@ -918,3 +918,76 @@ export function formatSessionStartResponseV1(ok: boolean, body: unknown): string
     return `SESSION ENDED: ${typeof result.stopReason === 'string' ? sanitizeOperatorAlertTextV1(result.stopReason) : 'COMPLETED'}`;
   return 'SESSION STARTED';
 }
+
+/** Gross PnL before trading fees: net + fees. Null when either side is unknown. */
+export function calculateGrossPnlUsdV1(
+  netUsd: number | null | undefined,
+  feesUsd: number | null | undefined,
+): number | null {
+  if (netUsd === null || netUsd === undefined || feesUsd === null || feesUsd === undefined)
+    return null;
+  return Number.isFinite(netUsd) && Number.isFinite(feesUsd) ? netUsd + feesUsd : null;
+}
+
+/** "PnL +$x · Net -$y": gross PnL next to net PnL after trading fees. */
+export function formatOperatorPnlPairV1(
+  grossUsd: number | null | undefined,
+  netUsd: number | null | undefined,
+): string {
+  return `PnL ${formatOperatorPnlV1(grossUsd ?? null)} · Net ${formatOperatorPnlV1(netUsd ?? null)}`;
+}
+
+export type activity_fill_for_net_v1 = Readonly<{
+  fillId: string;
+  timestamp: number;
+  quantity: number;
+  feeUsd?: number | null;
+  pnlAtCloseUsd?: number | null;
+  closePnlAvailability?: 'VERIFIED' | 'N/A' | 'UNKNOWN';
+  direction?: 'Open Long' | 'Open Short' | 'Close Long' | 'Close Short' | null;
+}>;
+
+/**
+ * Net PnL per closing fill: venue close PnL (gross) minus the closing fee and the fees of
+ * the opening fills it closes (FIFO by quantity). Null when any needed fee is unknown or
+ * the closing fill cannot be matched to opening fills in the listed history.
+ */
+export function calculateActivityFillNetPnlV1(
+  fills: readonly activity_fill_for_net_v1[],
+): ReadonlyMap<string, number | null> {
+  const result = new Map<string, number | null>();
+  const lots: { long: boolean; quantity: number; feePerUnit: number | null }[] = [];
+  for (const fill of [...fills].sort((a, b) => a.timestamp - b.timestamp)) {
+    const direction = fill.direction ?? null;
+    const fee = fill.feeUsd ?? null;
+    if (direction === 'Open Long' || direction === 'Open Short') {
+      lots.push({
+        long: direction === 'Open Long',
+        quantity: fill.quantity,
+        feePerUnit: fee === null || !(fill.quantity > 0) ? null : fee / fill.quantity,
+      });
+      continue;
+    }
+    if (direction !== 'Close Long' && direction !== 'Close Short') continue;
+    const long = direction === 'Close Long';
+    let remaining = fill.quantity;
+    let entryFee: number | null = 0;
+    for (const lot of lots) {
+      if (remaining <= 1e-12) break;
+      if (lot.long !== long || lot.quantity <= 1e-12) continue;
+      const matched = Math.min(lot.quantity, remaining);
+      entryFee =
+        entryFee === null || lot.feePerUnit === null ? null : entryFee + lot.feePerUnit * matched;
+      lot.quantity -= matched;
+      remaining -= matched;
+    }
+    const gross = fill.closePnlAvailability === 'VERIFIED' ? (fill.pnlAtCloseUsd ?? null) : null;
+    result.set(
+      fill.fillId,
+      gross === null || fee === null || entryFee === null || remaining > 1e-12
+        ? null
+        : gross - fee - entryFee,
+    );
+  }
+  return result;
+}

@@ -38,7 +38,8 @@ import {
   canStartOperatorSessionV1,
   deriveDashboardPresentationV1,
   deriveSessionStartGateV1,
-  formatOperatorPnlV1,
+  calculateGrossPnlUsdV1,
+  formatOperatorPnlPairV1,
   formatOperatorValueV1,
   getOperatorStopReasonV1,
   getReadinessFooterLabelV1,
@@ -350,6 +351,15 @@ export const OverviewView = (
     e?.sessionId === active.sessionId &&
     t.runtime.executionSessionId === active.sessionId;
   const pnl = matched && accountingFresh ? (e?.sessionPnlUsd ?? null) : null;
+  // Gross PnL (before trading fees) shown next to the net session PnL.
+  const sessionBotPnl = t.pnl.sessionPnl;
+  const sessionGross =
+    matched &&
+    accountingFresh &&
+    sessionBotPnl?.realizedUsd != null &&
+    sessionBotPnl.unrealizedUsd != null
+      ? sessionBotPnl.realizedUsd + sessionBotPnl.unrealizedUsd
+      : null;
   const limit = activeSession ? active.configSnapshot.maxLossUsd : null;
   const volume = matched && accountingFresh ? (e?.totalExecutedVolumeUsd ?? null) : null;
   const maker = matched && accountingFresh ? (e?.makerVolumeUsd ?? null) : null;
@@ -580,9 +590,9 @@ export const OverviewView = (
                 <span>SESSION PNL</span>
                 <b
                   className={getPnlSemanticClassV1(pnl)}
-                  title="Realized + unrealized - trading fees; gas excluded"
+                  title="PnL = realized + unrealized (before fees). Net = PnL - trading fees; gas excluded"
                 >
-                  {sessionMetric(pnl)}
+                  {pnl === null ? sessionMetric(pnl) : formatOperatorPnlPairV1(sessionGross, pnl)}
                 </b>
                 <span>MAX LOSS</span>
                 <b
@@ -690,12 +700,17 @@ export const OverviewView = (
             className={getPnlSemanticClassV1(
               t.pnl.allTimePnl?.complete ? t.pnl.allTimePnl.valueUsd : null,
             )}
-            title="Verified bot-scoped all-time accounting; incomplete history or cost evidence is not a verified total"
+            title="Verified bot-scoped all-time accounting. PnL = realized + unrealized; Net = PnL - trading fees - gas. Incomplete history or cost evidence is not a verified total"
           >
             {t.pnl.allTimePnl?.complete &&
             t.pnl.allTimePnl.valueUsd !== null &&
             Number.isFinite(t.pnl.allTimePnl.valueUsd)
-              ? formatOperatorPnlV1(t.pnl.allTimePnl.valueUsd)
+              ? formatOperatorPnlPairV1(
+                  t.pnl.allTimePnl.realizedUsd != null && t.pnl.allTimePnl.unrealizedUsd != null
+                    ? t.pnl.allTimePnl.realizedUsd + t.pnl.allTimePnl.unrealizedUsd
+                    : null,
+                  t.pnl.allTimePnl.valueUsd,
+                )
               : 'NOT VERIFIED'}
           </strong>
         </div>
@@ -818,7 +833,10 @@ export const SessionInlineDetail = (
         <span>
           SESSION PNL{' '}
           <b className={getPnlSemanticClassV1(props.session.sessionPnlUsd)}>
-            {formatOperatorPnlV1(props.session.sessionPnlUsd)}
+            {formatOperatorPnlPairV1(
+              calculateGrossPnlUsdV1(props.session.sessionPnlUsd, props.session.feesUsd),
+              props.session.sessionPnlUsd,
+            )}
             {!props.session.pnlComplete && ' PARTIAL'}
           </b>
         </span>
@@ -945,7 +963,10 @@ export const ActivityView = (
                   </span>
                   <b className={session.status.toLowerCase()}>{session.status}</b>
                   <strong className={getPnlSemanticClassV1(session.sessionPnlUsd)}>
-                    {formatOperatorPnlV1(session.sessionPnlUsd)}
+                    {formatOperatorPnlPairV1(
+                      calculateGrossPnlUsdV1(session.sessionPnlUsd, session.feesUsd),
+                      session.sessionPnlUsd,
+                    )}
                     {!session.pnlComplete && <small>PARTIAL</small>}
                   </strong>
                   <span>

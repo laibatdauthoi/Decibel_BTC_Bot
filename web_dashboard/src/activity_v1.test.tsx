@@ -374,5 +374,6 @@ it('renders authenticated fee, mixed-case direction, and N/A separately from una
   expect(html).toContain('$0.003000');
   expect(html).toContain('>?</td>');
   expect(html).toContain('>UNKNOWN</td>');
-  expect(html).toContain('PNL AT CLOSE');
+  expect(html).toContain('PNL (GROSS)');
+  expect(html).toContain('NET PNL');
 });
