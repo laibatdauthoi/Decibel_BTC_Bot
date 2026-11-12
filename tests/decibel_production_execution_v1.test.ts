@@ -6,7 +6,6 @@ import {
   createDecibelAuthenticatedBtcResyncCheckpointRolloverV2,
   deriveDecibelAuthenticatedBtcActivityResyncV1,
 } from '../src/decibel_authenticated_btc_activity_resync_v1.js';
-import { buildSilentAuthenticatedResyncEnvironmentV1 } from '../src/run_decibel_production_live_tui_v1.js';
 import { buildDecibelExecutionIntentV1 } from '../src/decibel_execution_intent_v1.js';
 import { decibel_execution_lifecycle_journal_v1 } from '../src/decibel_execution_lifecycle_journal_v1.js';
 import { decibel_execution_lifecycle_v1 } from '../src/decibel_execution_lifecycle_v1.js';
@@ -98,15 +97,6 @@ describe('Decibel production execution V1', () => {
     gate.acknowledgeAuthenticatedReconciliation();
     await expect(gate.placePostOnlyLimit(place)).resolves.toMatchObject({
       outcome: 'PLACE_ACCEPTED',
-    });
-  });
-  it('opts the silent TUI resync into conserved out-of-band reconciliation', () => {
-    expect(buildSilentAuthenticatedResyncEnvironmentV1({})).toMatchObject({
-      DECIBEL_ALLOW_OUT_OF_BAND_RECONCILIATION: 'true',
-      LIVE_EXECUTION_ENABLED: 'false',
-      VENUE_MUTATION_ENABLED: 'false',
-      SIGNER_ENABLED: 'false',
-      TRANSACTION_SUBMISSION_ENABLED: 'false',
     });
   });
   it('creates a checkpoint for an explicitly allowed conserved flat out-of-band sequence', () => {

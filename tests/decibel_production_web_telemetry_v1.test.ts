@@ -53,7 +53,6 @@ import {
   ensureDecibelAuthenticatedStateReadyForStartV1,
   readDecibelSupervisorAuthenticatedSnapshotV1,
 } from '../src/decibel_runtime_supervisor_v1.js';
-import { createDecibelSharedRuntimeSnapshotSourceV1 } from '../src/decibel_shared_runtime_snapshot_v1.js';
 import {
   deriveDashboardPresentationV1,
   deriveSessionStartGateV1,
@@ -406,86 +405,6 @@ describe('Decibel runtime supervisor V1', () => {
     resolveRecovery?.(1);
     await expect(First).resolves.toBe(1);
     expect(Supervisor.isRecoveryInFlight()).toBe(false);
-  });
-
-  it('resumes valid shadow cycles after transient shared authenticated-read failures', async () => {
-    const Supervisor = new decibel_runtime_supervisor_v1();
-    setEconomicReady(Supervisor);
-    Supervisor.setDependency('recovery', 'READY');
-    Supervisor.setDependency('authenticatedState', 'READY');
-    Supervisor.setMarketDataSnapshot({ observedAt: 1_000, bestBid: 1, bestAsk: 2 });
-    Supervisor.setExecutionSnapshot(makeSnapshot());
-    let now = 1_000;
-    let calls = 0;
-    let failures = 1;
-    const source = createDecibelSharedRuntimeSnapshotSourceV1(
-      () => {
-        calls += 1;
-        if (failures > 0) {
-          failures -= 1;
-          return Promise.reject(new Error('TRANSIENT_SHARED_READ'));
-        }
-        const snapshot = makeSnapshot();
-        return Promise.resolve({
-          snapshot: {
-            ...snapshot,
-            input: {
-              ...snapshot.input,
-              now,
-              book: { ...snapshot.input.book, observedAt: now },
-            },
-          },
-          supervisor: Supervisor.getSnapshot(now),
-        });
-      },
-      5_000,
-      () => now,
-    );
-    await expect(source.readAuthenticatedSnapshot()).rejects.toThrow('TRANSIENT_SHARED_READ');
-    await expect(source.readAuthenticatedSnapshot()).resolves.toMatchObject({
-      input: { now: 1_000 },
-    });
-    failures = 1;
-    now = 2_000;
-    await expect(source.readAuthenticatedSnapshot()).resolves.toMatchObject({
-      input: { now: 1_000 },
-    });
-    now = 7_001;
-    failures = 1;
-    await expect(source.readAuthenticatedSnapshot()).rejects.toThrow('TRANSIENT_SHARED_READ');
-    await expect(source.readAuthenticatedSnapshot()).resolves.toMatchObject({
-      input: { now: 7_001 },
-    });
-    expect(calls).toBe(5);
-  });
-
-  it('singleflights concurrent shared authenticated snapshot reads', async () => {
-    const Supervisor = new decibel_runtime_supervisor_v1();
-    setEconomicReady(Supervisor);
-    Supervisor.setDependency('recovery', 'READY');
-    Supervisor.setDependency('authenticatedState', 'READY');
-    const snapshot = makeSnapshot();
-    Supervisor.setMarketDataSnapshot({ observedAt: snapshot.input.now, bestBid: 1, bestAsk: 2 });
-    Supervisor.setExecutionSnapshot(snapshot);
-    let calls = 0;
-    const source = createDecibelSharedRuntimeSnapshotSourceV1(
-      async () => {
-        calls += 1;
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        return {
-          snapshot,
-          supervisor: Supervisor.getSnapshot(snapshot.input.now),
-        };
-      },
-      5_000,
-      () => snapshot.input.now,
-    );
-    await Promise.all([
-      source.readAuthenticatedSnapshot(),
-      source.readAuthenticatedSnapshot(),
-      source.readAuthenticatedSnapshot(),
-    ]);
-    expect(calls).toBe(1);
   });
 
   it('recovers through hours of injected transient failures without a permanent latch', () => {

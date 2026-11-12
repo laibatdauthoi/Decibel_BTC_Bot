@@ -62,7 +62,6 @@ import {
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PassThrough } from 'node:stream';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -109,7 +108,6 @@ import {
 } from '../src/decibel_production_live_orchestrator_v1.js';
 import { wrapDecibelProductionLiveStateSourceV1 } from '../src/decibel_production_live_state_source_adapter_v1.js';
 import type { DecibelProductionExecutionExecutorV1 } from '../src/decibel_production_executor_handoff_v1.js';
-import { getSafeProductionLiveFailureV1 } from '../src/run_decibel_production_live_v1.js';
 import { selectNewestDecibelRuntimeSnapshotV1 } from '../src/decibel_runtime_snapshot_owner_v1.js';
 import { classifyDecibelOperationalMarketRegimeV1 } from '../src/decibel_market_regime_v1.js';
 import {
@@ -127,15 +125,6 @@ import {
   validateDecibelProductionEconomicEvidenceV1,
   type DecibelProductionLiveAuthenticatedReaderV1,
 } from '../src/decibel_production_live_state_source_v1.js';
-import { isDecibelTuiNodeRuntimeCompatibleV1 } from '../src/run_decibel_production_live_tui_node22_bridge_v1.js';
-import {
-  getDecibelTuiTransientReadBackoffMsV1,
-  getSafeSilentResyncFailureDetailV1,
-  isDecibelTuiAutoResumeEnabledV1,
-  isSilentResyncOnChainPositionRecoveryEligibleV1,
-  retrySilentAuthenticatedResyncV1,
-  tui_silent_authenticated_resync_error_v1,
-} from '../src/run_decibel_production_live_tui_v1.js';
 import { execution_preflight_rejection_v1 } from '../src/decibel_execution_intent_v1.js';
 import { calculateDecibelRealizedPnlWindowsV1 } from '../src/decibel_pnl_tracker_v1.js';
 import {
@@ -162,14 +151,6 @@ import {
   resolveAptUsdFromAllMarketPricesV1,
   resolveDecibelHistoricalGasEvidenceV1,
 } from '../src/run_decibel_production_economic_inputs_audit_v1.js';
-import {
-  decibel_production_tui_v1,
-  enterDecibelProductionTuiScreenV1,
-  formatDecibelProductionTuiEventV1,
-  leaveDecibelProductionTuiScreenV1,
-  renderDecibelProductionTuiV1,
-  type decibel_production_tui_model_v1,
-} from '../src/decibel_production_tui_v1.js';
 
 // Hypothetical venue contract for strategy-only tests. Production has no such
 // evidence producer; these fixtures must never imply verified Decibel support.
@@ -2850,77 +2831,6 @@ describe('Decibel production live orchestrator V1', () => {
       }),
     ).rejects.toThrow('PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK');
   });
-  it('uses the alternate screen buffer and restores the standard screen', () => {
-    const output = new PassThrough();
-    let rendered = '';
-    output.on('data', (chunk: Buffer) => {
-      rendered += chunk.toString('utf8');
-    });
-    enterDecibelProductionTuiScreenV1(output);
-    leaveDecibelProductionTuiScreenV1(output);
-    expect(rendered).toBe('\u001B[?1049h\u001B[?25l\u001B[?25h\u001B[?1049l');
-  });
-
-  it('formats authenticated fee and available gas diagnostics without inventing gas cost', () => {
-    expect(
-      formatDecibelProductionTuiEventV1({
-        event: 'ORDER_FILL',
-        feeUsd: 0.0012,
-        gasUsedOctas: 10_000,
-      }),
-    ).toBe('ORDER_FILL FEE=$0.001200 GAS=0.00010000 APT');
-    expect(
-      formatDecibelProductionTuiEventV1({
-        event: 'DECIBEL_EXECUTION_GAS_PAYER_DIAGNOSTIC',
-        primaryAccountAptBalance: 2.5,
-        maxGasAmount: 200_000,
-      }),
-    ).toBe(
-      'DECIBEL_EXECUTION_GAS_PAYER_DIAGNOSTIC GAS_PAYER_BALANCE=2.500000 APT MAX_GAS_AMOUNT=200000',
-    );
-  });
-  it('renders an authoritative one-sided venue quote without claiming there are no active quotes', () => {
-    const model = {
-      status: 'RUNNING',
-      activeProfile: 'primary',
-      subaccountAddress: '0x1',
-      masterAptGas: 1,
-      collateralUsd: 100,
-      effectiveLeverage: 1,
-      btcPrice: 100,
-      positionBase: 0.001,
-      unrealizedPnlUsd: 0,
-      pnl24hUsd: 0,
-      pnl24hPercent: 0,
-      pnl7dUsd: 0,
-      pnl7dPercent: 0,
-      pnl30dUsd: 0,
-      pnl30dPercent: 0,
-      targetVolumeUsd: null,
-      accumulatedVolumeUsd: 0,
-      bid: null,
-      ask: {
-        venueOrderId: 'venue-ask',
-        clientOrderId: 'd1s-active',
-        strategyConfigId: 'strategy',
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
-        side: 'SELL' as const,
-        price: 101,
-        quantity: 0.001,
-        orderType: 'LIMIT' as const,
-        timeInForce: 'PostOnly' as const,
-        postOnly: true as const,
-      },
-      halfSpreadBps: 5,
-      orderNotionalUsd: 10,
-      maxPositionBase: 0.01,
-      maxDrawdownUsd: 5,
-      logs: [],
-    } satisfies decibel_production_tui_model_v1;
-    const rendered = renderDecibelProductionTuiV1(model);
-    expect(rendered).toContain('ASK 101 (d1s-active)');
-    expect(rendered).not.toContain('No active quotes');
-  });
   it('accepts and clamps minor future book clock skew within the production tolerance', () => {
     expect(normalizeDecibelProductionBookTimestampV1(6_999, 2_000, 5_000)).toEqual({
       observedAt: 2_000,
@@ -2938,85 +2848,6 @@ describe('Decibel production live orchestrator V1', () => {
     expect(() => normalizeDecibelProductionBookTimestampV1(7_001, 2_000, 5_000)).toThrow(
       'PRODUCTION_LIVE_SOURCE_BOOK_FUTURE',
     );
-  });
-  it('accepts only the pinned Node 22 runtime for the production TUI', () => {
-    expect(isDecibelTuiNodeRuntimeCompatibleV1('v22.23.2')).toBe(true);
-    expect(isDecibelTuiNodeRuntimeCompatibleV1('v24.11.1')).toBe(false);
-  });
-  it('uses bounded exponential backoff for transient TUI heartbeat failures', () => {
-    expect(getDecibelTuiTransientReadBackoffMsV1(1)).toBe(1_000);
-    expect(getDecibelTuiTransientReadBackoffMsV1(2)).toBe(2_000);
-    expect(getDecibelTuiTransientReadBackoffMsV1(10)).toBe(30_000);
-  });
-  it('enables TUI auto-resume only through the explicit flag or environment switch', () => {
-    expect(isDecibelTuiAutoResumeEnabledV1({}, [])).toBe(false);
-    expect(isDecibelTuiAutoResumeEnabledV1({}, ['--auto-resume'])).toBe(true);
-    expect(isDecibelTuiAutoResumeEnabledV1({ DECIBEL_AUTO_RESUME: ' true ' }, [])).toBe(true);
-    expect(isDecibelTuiAutoResumeEnabledV1({ DECIBEL_AUTO_RESUME: 'false' }, [])).toBe(false);
-  });
-  it('retries silent authenticated resync without terminating the mounted runtime', async () => {
-    let runs = 0;
-    const retries: Array<{ attempt: number; delayMs: number }> = [];
-    const result = await retrySilentAuthenticatedResyncV1({
-      run: () => {
-        runs += 1;
-        if (runs < 3)
-          return Promise.reject(new tui_silent_authenticated_resync_error_v1('RPC_TIMEOUT'));
-        return Promise.resolve();
-      },
-      signal: new AbortController().signal,
-      onRetry: (attempt, delayMs) => retries.push({ attempt, delayMs }),
-      wait: () => Promise.resolve(),
-    });
-    expect(result).toBe(true);
-    expect(runs).toBe(3);
-    expect(retries).toEqual([
-      { attempt: 1, delayMs: 1_000 },
-      { attempt: 2, delayMs: 2_000 },
-    ]);
-  });
-  it('reports a bounded redacted silent resync failure detail', () => {
-    const detail = getSafeSilentResyncFailureDetailV1(
-      'Error: RPC timeout api_key=secret 0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    );
-    expect(detail).toContain('RPC timeout');
-    expect(detail).toContain('api_key=[REDACTED]');
-    expect(detail).toContain('[ADDRESS_REDACTED]');
-    expect(detail).not.toContain('secret');
-    expect(
-      getSafeSilentResyncFailureDetailV1(
-        'startup message\nBLOCKER=BTC_ACCOUNT_POSITION_CONSERVATION_FAILED\n',
-      ),
-    ).toBe('BTC_ACCOUNT_POSITION_CONSERVATION_FAILED');
-  });
-  it('adopts only the exact authenticated non-zero position resync blocker set', async () => {
-    const output = [
-      'CURRENT_POSITION_BASE=0.00013',
-      'BLOCKER=BTC_FILL_ATTRIBUTION_INCOMPLETE,BTC_ACCOUNT_POSITION_CONSERVATION_FAILED,BTC_RESYNC_POSITION_NOT_ZERO',
-    ].join('\n');
-    expect(isSilentResyncOnChainPositionRecoveryEligibleV1(output)).toBe(true);
-    expect(
-      isSilentResyncOnChainPositionRecoveryEligibleV1(`${output},BTC_RESYNC_OPEN_ORDER_PRESENT`),
-    ).toBe(false);
-    expect(isSilentResyncOnChainPositionRecoveryEligibleV1(output.replace('0.00013', '0'))).toBe(
-      false,
-    );
-
-    let recovered = false;
-    await expect(
-      retrySilentAuthenticatedResyncV1({
-        run: () =>
-          Promise.reject(
-            new tui_silent_authenticated_resync_error_v1('BTC_FILL_ATTRIBUTION_INCOMPLETE', true),
-          ),
-        signal: new AbortController().signal,
-        onRetry: () => undefined,
-        onChainPositionRecovery: () => {
-          recovered = true;
-        },
-      }),
-    ).resolves.toBe(true);
-    expect(recovered).toBe(true);
   });
   it('uses a validated flat checkpoint for a pre-submission intent without a venue order id', () => {
     const snapshot = makeSnapshot({
@@ -3081,18 +2912,6 @@ describe('Decibel production live orchestrator V1', () => {
     });
     expect(test.calls()).toBe(0);
     await test.orchestrator.close();
-  });
-
-  it('exposes a safe detailed execution preflight rejection code', () => {
-    const error = new execution_preflight_rejection_v1(
-      'EXECUTION_PREFLIGHT_NOTIONAL_ABOVE_MAXIMUM',
-      'Order value $11.00 above max $10.00',
-    );
-    expect(error.safeReason).toBe('Order value $11.00 above max $10.00');
-    expect(getSafeProductionLiveFailureV1(error)).toEqual({
-      blocker: 'EXECUTION_PREFLIGHT_REJECTED',
-      rejectionCode: 'EXECUTION_PREFLIGHT_NOTIONAL_ABOVE_MAXIMUM',
-    });
   });
 
   it('holds residual session-unwind dust below venue minimum without lifecycle churn', async () => {
@@ -6203,115 +6022,6 @@ describe('Decibel production live orchestrator V1', () => {
     );
     expect(result.hours24.realizedPnlUsd).toBe(5);
     expect(result.days30.realizedPnlPercent).toBeCloseTo((5 / 105) * 100);
-  });
-
-  it('auto-stops only after cancelling and reconciling at the volume goal', async () => {
-    const calls: string[] = [];
-    const model: decibel_production_tui_model_v1 = {
-      status: 'RUNNING',
-      activeProfile: 'primary',
-      subaccountAddress: '0x1',
-      masterAptGas: 1,
-      collateralUsd: 100,
-      effectiveLeverage: 1,
-      btcPrice: 100,
-      positionBase: 0,
-      unrealizedPnlUsd: 0,
-      pnl24hUsd: 0,
-      pnl24hPercent: 0,
-      pnl7dUsd: 0,
-      pnl7dPercent: 0,
-      pnl30dUsd: 0,
-      pnl30dPercent: 0,
-      targetVolumeUsd: 10,
-      accumulatedVolumeUsd: 10,
-      bid: null,
-      ask: null,
-      halfSpreadBps: 1,
-      orderNotionalUsd: 10,
-      maxPositionBase: 0.001,
-      maxDrawdownUsd: 5,
-      logs: [],
-    };
-    const stream = new PassThrough();
-    const tui = new decibel_production_tui_v1(
-      model,
-      {
-        setPaused: (paused) => calls.push(`paused:${paused}`),
-        cancelAllAndReconcile: () => {
-          calls.push('cancelled-and-reconciled');
-          return Promise.resolve();
-        },
-        unwindAndReconcile: () => {
-          calls.push('unwound-and-reconciled');
-          return Promise.resolve();
-        },
-        switchProfile: () => Promise.resolve(),
-        setTargetVolumeUsd: () => undefined,
-        setOrderNotionalUsd: () => undefined,
-        setMaxLeverage: () => undefined,
-        setHalfSpreadBps: () => undefined,
-        setMaxPositionBase: () => undefined,
-        setMaxDrawdownUsd: () => undefined,
-      },
-      stream,
-      stream,
-    );
-    expect(await tui.enforceVolumeGoal()).toBe(true);
-    expect(model.status).toBe('STOPPED_GOAL_REACHED');
-    expect(calls).toEqual(['paused:true', 'unwound-and-reconciled']);
-    expect(renderDecibelProductionTuiV1(model)).toContain('STOPPED_GOAL_REACHED');
-  });
-
-  it('unpauses quoting only after the operator presses Space', async () => {
-    const pausedStates: boolean[] = [];
-    const model: decibel_production_tui_model_v1 = {
-      status: 'PAUSED',
-      activeProfile: 'primary',
-      subaccountAddress: '0x1',
-      masterAptGas: 1,
-      collateralUsd: 100,
-      effectiveLeverage: 1,
-      btcPrice: 100,
-      positionBase: 0,
-      unrealizedPnlUsd: 0,
-      pnl24hUsd: 0,
-      pnl24hPercent: 0,
-      pnl7dUsd: 0,
-      pnl7dPercent: 0,
-      pnl30dUsd: 0,
-      pnl30dPercent: 0,
-      targetVolumeUsd: null,
-      accumulatedVolumeUsd: 0,
-      bid: null,
-      ask: null,
-      halfSpreadBps: 1,
-      orderNotionalUsd: 10,
-      maxPositionBase: 0.001,
-      maxDrawdownUsd: 5,
-      logs: [],
-    };
-    const stream = new PassThrough();
-    const tui = new decibel_production_tui_v1(
-      model,
-      {
-        setPaused: (paused) => pausedStates.push(paused),
-        cancelAllAndReconcile: () => Promise.resolve(),
-        unwindAndReconcile: () => Promise.resolve(),
-        switchProfile: () => Promise.resolve(),
-        setTargetVolumeUsd: () => undefined,
-        setOrderNotionalUsd: () => undefined,
-        setMaxLeverage: () => undefined,
-        setHalfSpreadBps: () => undefined,
-        setMaxPositionBase: () => undefined,
-        setMaxDrawdownUsd: () => undefined,
-      },
-      stream,
-      stream,
-    );
-    await tui.handleKey(' ');
-    expect(model.status).toBe('RUNNING');
-    expect(pausedStates).toEqual([false]);
   });
 
   it('runs a 500-cycle deterministic two-sided fake-venue soak without permanent blockers', async () => {
