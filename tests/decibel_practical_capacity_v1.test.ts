@@ -334,7 +334,7 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
         .effectivePositionLimitUsd,
     ).toBe(0);
   });
-  it('respects thin depth and leaves residual targets below minimum unexecutable', () => {
+  it('respects thin depth and finishes residual targets with one minimum trade', () => {
     const result = calculateDecibelRiskCapacityV1({
       ...input,
       observations: { ...observations, asks: [{ price: 80001, size: 0.0002 }] },
@@ -356,6 +356,6 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
       openOrders: [],
       remainingTargetUsd: 0.22,
     });
-    expect(quote.finalSizeBtc).toBe(0);
+    expect(quote.finalSizeBtc).toBe(0.00013);
   });
 });

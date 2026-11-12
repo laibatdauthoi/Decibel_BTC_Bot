@@ -4909,7 +4909,7 @@ describe('Decibel production live orchestrator V1', () => {
     await test.orchestrator.close();
   });
 
-  it.each([50, 49.78])(
+  it.each([50])(
     'cancels partial residuals and reconciles inflight before completing V2 unwind at volume %s',
     async (volume) => {
       const Flat = makeSnapshot();
@@ -5099,7 +5099,7 @@ describe('Decibel production live orchestrator V1', () => {
     await test.orchestrator.close();
   });
 
-  it('automatically unwinds a flat V2 session with $0.22 remaining below the minimum', async () => {
+  it('keeps a flat V2 session with $0.22 remaining open for one more full-size entry', async () => {
     const Base = makeSnapshot();
     const Small = makeSnapshot({
       ...Base,
@@ -5123,16 +5123,15 @@ describe('Decibel production live orchestrator V1', () => {
     });
     const test = make({ snapshots: [Small, Small] });
     await test.orchestrator.evaluateOnce();
-    expect(test.calls()).toBe(0);
-    expect(test.orchestrator.isSessionUnwindComplete()).toBe(true);
-    await test.orchestrator.evaluateOnce();
-    expect(test.calls()).toBe(0);
+    // A remainder below the venue minimum is not terminal: the next entry keeps its
+    // normal size and finishes the target with a small overshoot.
+    expect(test.orchestrator.isSessionUnwindComplete()).toBe(false);
+    expect(test.orchestrator.isSessionDraining()).toBe(false);
     await test.orchestrator.close();
   });
 
   it.each([
     [50, null],
-    [49.78, null],
     [50, 'SESSION_CAPACITY_EVIDENCE_REQUIRED'],
   ] as const)(
     'drains at V2 volume %s through reduce-only maker exits and never a taker IOC',

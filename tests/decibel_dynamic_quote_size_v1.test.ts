@@ -52,6 +52,34 @@ describe('Deterministic dynamic quote size budgets', () => {
     });
     expect(result.finalNotionalUsd).toBeLessThanOrEqual(12.5);
   });
+  it('keeps the normal entry size for the last trade when only a small remainder is missing', () => {
+    // $3 missing with a $10 preferred entry: overshoot the target instead of shrinking.
+    const last = calculateDecibelDynamicQuoteSizeV1({
+      ...input,
+      proposedSizeBtc: 0.00013,
+      preferredEntrySizeUsd: 10,
+      remainingTargetUsd: 3,
+    });
+    expect(last.finalSizeBtc).toBe(0.00013);
+    expect(last.finalNotionalUsd).toBeCloseTo(10.4, 6);
+    expect(last.bindingConstraint).not.toBe('REMAINING_TRADING_VOLUME');
+    // Nothing opens once the target is covered.
+    expect(
+      calculateDecibelDynamicQuoteSizeV1({
+        ...input,
+        preferredEntrySizeUsd: 10,
+        remainingTargetUsd: 0,
+      }).finalSizeBtc,
+    ).toBe(0);
+    // A large remainder still caps the size exactly as before.
+    expect(
+      calculateDecibelDynamicQuoteSizeV1({
+        ...input,
+        preferredEntrySizeUsd: 10,
+        remainingTargetUsd: 20,
+      }).finalNotionalUsd,
+    ).toBeLessThanOrEqual(20 + 1e-9);
+  });
   it('uses V2 maker + taker executions and reserves pending volume on both sides', () => {
     const totalExecutedVolumeUsd = 20 + 10;
     const result = calculateDecibelDynamicQuoteSizeV1({
@@ -81,18 +109,18 @@ describe('Deterministic dynamic quote size budgets', () => {
     });
     expect(result.pendingVolumeUsd).toBe(20);
     expect(result.finalSizeBtc).toBe(0.00031);
+    // Pending orders leave $5.20 of the target missing: one more minimum trade finishes it.
     const boundary = calculateDecibelDynamicQuoteSizeV1({ ...input, openOrders });
-    expect(boundary.finalSizeBtc).toBe(0);
-    expect(boundary.roundingReason).toContain('BELOW_MINIMUM_EXECUTABLE');
+    expect(boundary.finalSizeBtc).toBe(0.00013);
+    expect(boundary.bindingConstraint).toBe('REMAINING_TRADING_VOLUME');
   });
-  it('never rounds above a budget and does not force below-minimum target trades', () => {
+  it('never rounds above a budget and finishes a tiny remainder with one minimum trade', () => {
     const rounded = calculateDecibelDynamicQuoteSizeV1({ ...input, remainingTargetUsd: 19.99 });
     expect(rounded.finalSizeBtc).toBe(0.00024);
     expect(rounded.finalNotionalUsd).toBeLessThanOrEqual(19.99);
     expect(rounded.roundingReason).toBe('ROUNDED_DOWN_TO_LOT');
     const residual = calculateDecibelDynamicQuoteSizeV1({ ...input, remainingTargetUsd: 0.101749 });
-    expect(residual.finalSizeBtc).toBe(0);
-    expect(residual.roundingReason).toBe('REMAINING_TRADING_VOLUME_BELOW_MINIMUM_EXECUTABLE');
+    expect(residual.finalSizeBtc).toBe(0.00013);
   });
   it('is restart/replay deterministic and has no dependence on a previous cohort', () => {
     const state = { ...input, remainingTargetUsd: 15, inventoryBase: 0.0002 };
@@ -167,13 +195,10 @@ describe('Production-derived dynamic activation exposure budgets', () => {
     expect(result.positionBudgetBtc).toBeCloseTo(0);
     expect(result.bindingConstraint).toBe('POSITION_HEADROOM');
   });
-  it('returns zero for remaining target below minimum and keeps malformed inputs invalid', () => {
+  it('finishes a remainder below minimum with one executable trade and keeps malformed inputs invalid', () => {
     expect(
-      calculateDecibelDynamicQuoteSizeV1({ ...positioned, remainingTargetUsd: 0.22 }),
-    ).toMatchObject({
-      finalSizeBtc: 0,
-      roundingReason: 'REMAINING_TRADING_VOLUME_BELOW_MINIMUM_EXECUTABLE',
-    });
+      calculateDecibelDynamicQuoteSizeV1({ ...positioned, remainingTargetUsd: 0.22 }).finalSizeBtc,
+    ).toBeGreaterThan(0);
     expect(() =>
       calculateDecibelDynamicQuoteSizeV1({ ...positioned, maximumNotionalUsd: Number.NaN }),
     ).toThrow('DYNAMIC_QUOTE_SIZE_INPUT_INVALID');

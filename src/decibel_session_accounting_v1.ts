@@ -130,20 +130,13 @@ export function synchronizeDecibelSessionAccountingV1(
 export function getDecibelSessionTargetTerminalReasonV1(
   targetUsd: number,
   executedUsd: number,
-  minimumNotionalUsd?: number,
-): 'TARGET_VOLUME_REACHED' | 'TARGET_UNREACHABLE_MINIMUM_ORDER' | null {
+): 'TARGET_VOLUME_REACHED' | null {
   if (!Number.isFinite(executedUsd) || executedUsd < 0)
     throw new Error('SESSION_EXECUTED_VOLUME_INVALID');
   if (!Number.isFinite(targetUsd) || targetUsd <= 0) return null;
-  if (executedUsd >= targetUsd) return 'TARGET_VOLUME_REACHED';
-  if (
-    minimumNotionalUsd !== undefined &&
-    Number.isFinite(minimumNotionalUsd) &&
-    minimumNotionalUsd > 0 &&
-    targetUsd - executedUsd < minimumNotionalUsd
-  )
-    return 'TARGET_UNREACHABLE_MINIMUM_ORDER';
-  return null;
+  // A small remainder is finished by one more full-size entry (see dynamic quote size),
+  // so a remainder below the venue minimum is no longer a terminal reason.
+  return executedUsd >= targetUsd ? 'TARGET_VOLUME_REACHED' : null;
 }
 
 /** Target reasons end the session by draining through resting TP, never by taker IOC. */
@@ -155,7 +148,6 @@ export function requestDecibelSessionTargetUnwindV1(
   Controller: decibel_production_session_controller_v1,
   sessionId: string,
   volume: Readonly<{ makerVolumeUsd: number; totalExecutedVolumeUsd: number }>,
-  minimumNotionalUsd?: number,
 ): boolean {
   const active = Controller.getState().activeSession;
   const targetVolumeUsd =
@@ -163,7 +155,6 @@ export function requestDecibelSessionTargetUnwindV1(
   const reason = getDecibelSessionTargetTerminalReasonV1(
     active?.configSnapshot.targetMakerVolumeUsd ?? 0,
     targetVolumeUsd,
-    active?.targetSemanticsVersion === 2 ? minimumNotionalUsd : undefined,
   );
   if (active?.sessionId !== sessionId || !Controller.ownsActiveRuntime() || reason === null)
     return false;

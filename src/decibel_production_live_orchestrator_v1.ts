@@ -4423,13 +4423,7 @@ export class decibel_production_live_orchestrator_v1 {
       !Number.isFinite(authenticatedSessionMakerVolume)
     )
       throw new Error('SESSION_EXECUTED_VOLUME_EVIDENCE_REQUIRED');
-    if (
-      getDecibelSessionTargetTerminalReasonV1(
-        target,
-        authenticatedSessionMakerVolume,
-        configuration?.targetSemanticsVersion === 2 ? snapshot.minimumNotionalUsd : undefined,
-      ) !== null
-    ) {
+    if (getDecibelSessionTargetTerminalReasonV1(target, authenticatedSessionMakerVolume) !== null) {
       this.requestSessionDrain();
     }
   }

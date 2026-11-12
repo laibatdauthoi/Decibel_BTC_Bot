@@ -1741,15 +1741,10 @@ export async function runDecibelProductionWebV1(
         }
         const active = SessionStore.getActive();
         const target = session.configSnapshot.targetMakerVolumeUsd;
-        const reached = requestDecibelSessionTargetUnwindV1(
-          SessionController,
-          session.sessionId,
-          {
-            makerVolumeUsd: fresh.sessionConfiguration?.makerVolumeUsd ?? 0,
-            totalExecutedVolumeUsd: fresh.sessionConfiguration?.totalExecutedVolumeUsd ?? 0,
-          },
-          fresh.minimumNotionalUsd,
-        );
+        const reached = requestDecibelSessionTargetUnwindV1(SessionController, session.sessionId, {
+          makerVolumeUsd: fresh.sessionConfiguration?.makerVolumeUsd ?? 0,
+          totalExecutedVolumeUsd: fresh.sessionConfiguration?.totalExecutedVolumeUsd ?? 0,
+        });
         // Reduce-only orders cannot add exposure: TP keeps working while a target drains.
         if (
           ((reached || active?.unwindRequested) && !intent.reduceOnly) ||
@@ -1816,15 +1811,10 @@ export async function runDecibelProductionWebV1(
     const RuntimeSource = wrapDecibelProductionLiveStateSourceV1(
       RuntimeSourceBase,
       (authenticated) => {
-        requestDecibelSessionTargetUnwindV1(
-          SessionController,
-          session.sessionId,
-          {
-            makerVolumeUsd: authenticated.sessionConfiguration?.makerVolumeUsd ?? 0,
-            totalExecutedVolumeUsd: authenticated.sessionConfiguration?.totalExecutedVolumeUsd ?? 0,
-          },
-          authenticated.minimumNotionalUsd,
-        );
+        requestDecibelSessionTargetUnwindV1(SessionController, session.sessionId, {
+          makerVolumeUsd: authenticated.sessionConfiguration?.makerVolumeUsd ?? 0,
+          totalExecutedVolumeUsd: authenticated.sessionConfiguration?.totalExecutedVolumeUsd ?? 0,
+        });
         if (
           SessionController.ownsActiveRuntime() &&
           authenticated.sessionConfiguration?.riskBlocker === 'SESSION_MAX_LOSS_REACHED'

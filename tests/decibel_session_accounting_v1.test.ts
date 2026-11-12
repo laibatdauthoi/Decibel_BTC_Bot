@@ -642,15 +642,22 @@ describe('Fixed session maker target', () => {
     f.Journal.close();
     f.Sessions.close();
   });
-  it('persists minimum-order unwind across delayed fills, restart and idempotent completion', async () => {
+  it('keeps a small remainder open, then persists the target unwind across restart and completion', async () => {
     const f = await createFixture();
-    const volume = { makerVolumeUsd: 49.78, totalExecutedVolumeUsd: 49.78 };
-    expect(requestDecibelSessionTargetUnwindV1(f.Controller, f.session.sessionId, volume, 10)).toBe(
+    // A remainder below the venue minimum is finished by one more full-size entry.
+    expect(
+      requestDecibelSessionTargetUnwindV1(f.Controller, f.session.sessionId, {
+        makerVolumeUsd: 49.78,
+        totalExecutedVolumeUsd: 49.78,
+      }),
+    ).toBe(false);
+    const volume = { makerVolumeUsd: 50, totalExecutedVolumeUsd: 50 };
+    expect(requestDecibelSessionTargetUnwindV1(f.Controller, f.session.sessionId, volume)).toBe(
       true,
     );
     expect(f.Sessions.getActive()).toMatchObject({
       status: 'STOPPING',
-      unwindReason: 'TARGET_UNREACHABLE_MINIMUM_ORDER',
+      unwindReason: 'TARGET_VOLUME_REACHED',
     });
     expect(f.stop).not.toHaveBeenCalled();
     const Controller = new decibel_production_session_controller_v1(
@@ -664,17 +671,12 @@ describe('Fixed session maker target', () => {
     );
     await Controller.recoverStartup();
     expect(
-      requestDecibelSessionTargetUnwindV1(
-        Controller,
-        f.session.sessionId,
-        {
-          makerVolumeUsd: 50.1,
-          totalExecutedVolumeUsd: 50.1,
-        },
-        10,
-      ),
+      requestDecibelSessionTargetUnwindV1(Controller, f.session.sessionId, {
+        makerVolumeUsd: 50.1,
+        totalExecutedVolumeUsd: 50.1,
+      }),
     ).toBe(true);
-    expect(f.Sessions.getActive()?.unwindReason).toBe('TARGET_UNREACHABLE_MINIMUM_ORDER');
+    expect(f.Sessions.getActive()?.unwindReason).toBe('TARGET_VOLUME_REACHED');
     const accounting = {
       makerVolumeUsd: 50.1,
       takerVolumeUsd: 0,
@@ -685,26 +687,19 @@ describe('Fixed session maker target', () => {
     };
     for (let replay = 0; replay < 2; replay++) {
       expect(
-        Controller.completeUnwind(
-          f.session.sessionId,
-          accounting,
-          'TARGET_UNREACHABLE_MINIMUM_ORDER',
-        ),
-      ).toMatchObject({ status: 'ENDED', stopReason: 'TARGET_UNREACHABLE_MINIMUM_ORDER' });
+        Controller.completeUnwind(f.session.sessionId, accounting, 'TARGET_VOLUME_REACHED'),
+      ).toMatchObject({ status: 'ENDED', stopReason: 'TARGET_VOLUME_REACHED' });
     }
     f.Journal.close();
     f.Sessions.close();
   });
 
-  it('does not confuse pending reservations or missing minimum evidence with an unreachable target', () => {
-    expect(getDecibelSessionTargetTerminalReasonV1(50, 30, 10)).toBe(null);
-    expect(getDecibelSessionTargetTerminalReasonV1(50, 40, 10)).toBe(null);
+  it('reaches the target only when executed volume covers it, never on a small remainder', () => {
+    expect(getDecibelSessionTargetTerminalReasonV1(50, 30)).toBe(null);
     expect(getDecibelSessionTargetTerminalReasonV1(50, 49.78)).toBe(null);
-    expect(getDecibelSessionTargetTerminalReasonV1(50, 49.78, 10)).toBe(
-      'TARGET_UNREACHABLE_MINIMUM_ORDER',
-    );
-    expect(getDecibelSessionTargetTerminalReasonV1(50, 50, 10)).toBe('TARGET_VOLUME_REACHED');
-    expect(getDecibelSessionTargetTerminalReasonV1(0, 0, 10)).toBe(null);
+    expect(getDecibelSessionTargetTerminalReasonV1(50, 50)).toBe('TARGET_VOLUME_REACHED');
+    expect(getDecibelSessionTargetTerminalReasonV1(50, 50.4)).toBe('TARGET_VOLUME_REACHED');
+    expect(getDecibelSessionTargetTerminalReasonV1(0, 0)).toBe(null);
   });
 });
 

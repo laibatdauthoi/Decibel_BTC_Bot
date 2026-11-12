@@ -126,6 +126,14 @@ export function calculateDecibelDynamicQuoteSizeV1(input: decibel_quote_size_inp
     input.remainingTargetUsd === null
       ? null
       : Math.max(0, input.remainingTargetUsd - pendingVolumeUsd);
+  const minimumExecutableSizeBtc = Number(
+    (
+      Math.ceil(
+        (Math.max(input.minimumSize, input.minimumNotionalUsd / input.price) - 1e-14) /
+          input.lotSize,
+      ) * input.lotSize
+    ).toFixed(12),
+  );
   const caps = [
     { reason: 'STRATEGY_ALLOCATION', quantity: input.proposedSizeBtc },
     { reason: 'POSITION_HEADROOM', quantity: positionBudgetBtc },
@@ -140,23 +148,31 @@ export function calculateDecibelDynamicQuoteSizeV1(input: decibel_quote_size_inp
               (input.venueMaximumOrderNotionalUsd ?? input.maximumNotionalUsd) / input.price,
           },
         ]),
+    // While any target volume is still missing, the last entry keeps its normal size
+    // (the preferred entry size, or the venue minimum without one) instead of shrinking
+    // to the remainder: a small overshoot beats an unfinished session of tiny orders.
+    // Nothing opens once pending orders already cover the remainder.
     ...(reducing || volumeBudgetUsd === null
       ? []
-      : [{ reason: 'REMAINING_TRADING_VOLUME', quantity: volumeBudgetUsd / input.price }]),
+      : [
+          {
+            reason: 'REMAINING_TRADING_VOLUME',
+            quantity:
+              volumeBudgetUsd > 1e-9
+                ? Math.max(
+                    volumeBudgetUsd / input.price,
+                    (input.preferredEntrySizeUsd ?? 0) / input.price,
+                    minimumExecutableSizeBtc,
+                  )
+                : 0,
+          },
+        ]),
   ];
   const binding = caps.reduce((best, cap) => (cap.quantity < best.quantity ? cap : best));
   const cappedSizeBtc = Math.max(0, binding.quantity);
   let roundedSizeBtc = floorDecibelQuantityToLotV1(cappedSizeBtc, input.lotSize);
   if (roundedSizeBtc > cappedSizeBtc + 1e-12)
     roundedSizeBtc = Math.max(0, Number((roundedSizeBtc - input.lotSize).toFixed(12)));
-  const minimumExecutableSizeBtc = Number(
-    (
-      Math.ceil(
-        (Math.max(input.minimumSize, input.minimumNotionalUsd / input.price) - 1e-14) /
-          input.lotSize,
-      ) * input.lotSize
-    ).toFixed(12),
-  );
   const residual = subtractDecibelQuantitiesV1(reductionBudgetBtc, [roundedSizeBtc]);
   const dustResidual = reducing && residual > 0 && residual < input.minimumSize;
   const belowMinimum = roundedSizeBtc + 1e-12 < minimumExecutableSizeBtc;
