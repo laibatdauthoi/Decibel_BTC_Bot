@@ -82,6 +82,7 @@ import {
 import {
   synchronizeDecibelSessionAccountingV1,
   requestDecibelSessionTargetUnwindV1,
+  isDecibelTargetUnwindReasonV1,
 } from './decibel_session_accounting_v1.js';
 import { loadDecibelProductionExecutorV1 } from './decibel_production_execution_v1.js';
 import { decibel_production_session_controller_v1 } from './decibel_production_session_controller_v1.js';
@@ -1749,7 +1750,11 @@ export async function runDecibelProductionWebV1(
           },
           fresh.minimumNotionalUsd,
         );
-        if (reached || active?.unwindRequested || active?.sessionId !== session.sessionId)
+        // Reduce-only orders cannot add exposure: TP keeps working while a target drains.
+        if (
+          ((reached || active?.unwindRequested) && !intent.reduceOnly) ||
+          active?.sessionId !== session.sessionId
+        )
           throw new execution_preflight_rejection_v1('SESSION_TARGET_OR_UNWIND_PLACE_BLOCKED');
         const preflight = validateDecibelFinalMakerAdmissionV1(
           fresh,
@@ -1885,7 +1890,11 @@ export async function runDecibelProductionWebV1(
       RuntimeSupervisor.getSnapshot().runtimeState.domainBlockers.EconomicEvidenceState ??
         undefined,
     );
-    if (session.unwindRequested) RuntimeOrchestrator.requestSessionUnwind();
+    if (session.unwindRequested) {
+      if (isDecibelTargetUnwindReasonV1(session.unwindReason))
+        RuntimeOrchestrator.requestSessionDrain();
+      else RuntimeOrchestrator.requestSessionUnwind();
+    }
     const persistUnwindState = (
       result: Awaited<ReturnType<typeof RuntimeOrchestrator.evaluateOnce>>,
     ): void => {

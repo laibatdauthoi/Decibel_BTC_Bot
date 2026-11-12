@@ -21,6 +21,7 @@ import {
   synchronizeDecibelSessionAccountingV1,
   requestDecibelSessionTargetUnwindV1,
   getDecibelSessionTargetTerminalReasonV1,
+  isDecibelTargetUnwindReasonV1,
 } from '../src/decibel_session_accounting_v1.js';
 import {
   aggregateDecibelTradeHistoryFragmentsV1,
@@ -704,5 +705,14 @@ describe('Fixed session maker target', () => {
     );
     expect(getDecibelSessionTargetTerminalReasonV1(50, 50, 10)).toBe('TARGET_VOLUME_REACHED');
     expect(getDecibelSessionTargetTerminalReasonV1(0, 0, 10)).toBe(null);
+  });
+});
+
+describe('target unwind reasons', () => {
+  it('treats only target reasons as drain-through-TP endings', () => {
+    expect(isDecibelTargetUnwindReasonV1('TARGET_VOLUME_REACHED')).toBe(true);
+    expect(isDecibelTargetUnwindReasonV1('TARGET_UNREACHABLE_MINIMUM_ORDER')).toBe(true);
+    for (const reason of ['SESSION_END', 'MAX_LOSS_REACHED', 'OPERATOR_END', null, undefined])
+      expect(isDecibelTargetUnwindReasonV1(reason)).toBe(false);
   });
 });

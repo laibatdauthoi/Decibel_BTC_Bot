@@ -146,6 +146,11 @@ export function getDecibelSessionTargetTerminalReasonV1(
   return null;
 }
 
+/** Target reasons end the session by draining through resting TP, never by taker IOC. */
+export function isDecibelTargetUnwindReasonV1(reason: string | null | undefined): boolean {
+  return reason === 'TARGET_VOLUME_REACHED' || reason === 'TARGET_UNREACHABLE_MINIMUM_ORDER';
+}
+
 export function requestDecibelSessionTargetUnwindV1(
   Controller: decibel_production_session_controller_v1,
   sessionId: string,

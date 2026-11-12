@@ -519,6 +519,10 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     /** Unavailable entry evidence freezes admission; it is not a proven risk breach. */
     entryEvidenceBlocker?: string | null;
     sessionUnwindRequested?: boolean;
+    /** Target reached: stop new exposure and let resting TP close; no taker unwind. */
+    sessionDrainOnTarget?: boolean;
+    /** The runtime is draining after a target: entry capacity is irrelevant. */
+    sessionDrainRequested?: boolean;
     makerFeeBps?: number | null;
     estimatedGasCostUsd?: number | null;
     adverseSelectionBufferBps?: number | null;
@@ -616,7 +620,14 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
       input.actualFillLedger.actualExternalMakerVolumeUsd -
         (input.targetExternalMakerVolumeBaselineUsd ?? 0),
     ) >= input.targetExternalMakerVolumeUsd;
-  const sessionUnwindRequested = targetReached || sizing?.sessionUnwindRequested === true;
+  const sessionUnwindRequested =
+    (targetReached && sizing?.sessionDrainOnTarget !== true) ||
+    sizing?.sessionUnwindRequested === true;
+  // Draining opens nothing, so entry-capacity limits must not fail the cycle closed.
+  const sessionDrain =
+    !sessionUnwindRequested &&
+    ((targetReached && sizing?.sessionDrainOnTarget === true) ||
+      sizing?.sessionDrainRequested === true);
   const reusableOpenOrderMarginUsd =
     sizing === undefined ||
     !Number.isFinite(sizing.maximumEffectiveLeverage) ||
@@ -630,6 +641,7 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
   if (
     sizing !== undefined &&
     !sessionUnwindRequested &&
+    !sessionDrain &&
     !(
       (sizing.riskReductionRequired === true || sizing.assessReducingCandidate !== undefined) &&
       input.actualInventoryBase !== 0
@@ -674,9 +686,16 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     (sizing === undefined ? quantity * 2 : sizing.maximumNotionalUsd / midpoint);
   // This bound describes only the existing position during unwind. It is not
   // permission to increase exposure; unwind orders below are reduce-only IOC.
+  // Draining keeps the existing position above the cap so TP logic, not risk reduction,
+  // manages the exit; opening orders are refused separately by the growth and drain gates.
   const maximumAbsPositionBase = sessionUnwindRequested
     ? Math.max(Math.abs(input.actualInventoryBase), input.metadata.minimumSize)
-    : ladderMaximumAbsPositionBase;
+    : sessionDrain
+      ? Math.max(
+          ladderMaximumAbsPositionBase,
+          Math.abs(input.actualInventoryBase) + input.metadata.minimumSize,
+        )
+      : ladderMaximumAbsPositionBase;
   if (!Number.isFinite(maximumAbsPositionBase) || maximumAbsPositionBase < 0)
     blockers.push('INVENTORY_CAP_EXCEEDED');
   else if (maximumAbsPositionBase === 0 && !blockers.includes('NO_NEW_QUOTE_HEADROOM'))

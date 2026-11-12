@@ -1825,6 +1825,8 @@ export class decibel_production_live_orchestrator_v1 {
   private economicWarming: string | null = null;
   private cancelAllRequested = false;
   private sessionUnwindRequested = false;
+  /** Target reached: cancel resting entries, keep TP, finish when flat. No taker unwind. */
+  private sessionDrainRequested = false;
   private sessionUnwindCompleted = false;
   private riskReductionRequested = false;
   private IntendedAction: decibel_recycling_action_v1 | null = null;
@@ -1900,6 +1902,8 @@ export class decibel_production_live_orchestrator_v1 {
       riskReductionRequired:
         this.riskReductionRequested || hasVerifiedAccountMarginBreach(snapshot),
       sessionUnwindRequested: this.sessionUnwindRequested,
+      sessionDrainOnTarget: true,
+      sessionDrainRequested: this.sessionDrainRequested,
     });
   }
 
@@ -2597,6 +2601,8 @@ export class decibel_production_live_orchestrator_v1 {
             !(intent.reduceOnly && intent.executionRole === 'SESSION_UNWIND_IOC')
           )
             throw new execution_preflight_rejection_v1('SESSION_TARGET_OR_UNWIND_PLACE_BLOCKED');
+          if (this.sessionDrainRequested && intent.action === 'PLACE' && !intent.reduceOnly)
+            throw new execution_preflight_rejection_v1('SESSION_TARGET_DRAINING');
         };
         this.DecisionGate = 'Source.validateSubmission';
         const validation = this.Source.validateSubmission?.(intent);
@@ -3251,6 +3257,18 @@ export class decibel_production_live_orchestrator_v1 {
       this.paused = true;
       return this.result('HOLD', null, null, evaluation, 0);
     }
+    if (
+      this.sessionDrainRequested &&
+      !this.sessionUnwindRequested &&
+      snapshot.input.actualInventoryBase === 0 &&
+      snapshot.input.openOrders.length === 0 &&
+      this.Journal.nonTerminal().length === 0
+    ) {
+      this.sessionDrainRequested = false;
+      this.sessionUnwindCompleted = true;
+      this.paused = true;
+      return this.result('HOLD', null, 'SESSION_TARGET_DRAIN_COMPLETE', evaluation, 0);
+    }
     if (this.paused && !this.cancelAllRequested)
       return this.result('HOLD', null, 'OPERATOR_PAUSED', evaluation, 0);
     if (
@@ -3274,7 +3292,7 @@ export class decibel_production_live_orchestrator_v1 {
                 : 'OPERATOR_CANCEL_ALL',
             }
           : null
-        : null;
+        : this.selectDrainCancellation(snapshot);
     let selection: decibel_mutation_selection_v1 =
       selectDecibelInventoryCrossingSafetyCancelV1(snapshot) ??
       (cancellation === null
@@ -3363,7 +3381,7 @@ export class decibel_production_live_orchestrator_v1 {
                   : 'OPERATOR_CANCEL_ALL',
               }
             : null
-          : null;
+          : this.selectDrainCancellation(current);
       snapshot = current;
       this.syncOpenOrderObservations(current);
       evaluation = refreshedEvaluation;
@@ -3533,6 +3551,8 @@ export class decibel_production_live_orchestrator_v1 {
         evaluation,
         0,
       );
+    if (this.isDrainBlockedOpening(action, snapshot))
+      return this.result('BLOCKED', null, 'SESSION_TARGET_DRAINING', evaluation, 0);
     const intent = buildIntent(action, evaluation, snapshot, this.cycleSequence);
     if (this.HistoricalRecoveryBlocker !== null) {
       if (action.current?.reduceOnly === true)
@@ -3952,9 +3972,10 @@ export class decibel_production_live_orchestrator_v1 {
       }
       if (
         error instanceof execution_preflight_rejection_v1 &&
-        error.rejectionCode === 'SESSION_TARGET_OR_UNWIND_PLACE_BLOCKED'
+        error.rejectionCode === 'SESSION_TARGET_OR_UNWIND_PLACE_BLOCKED' &&
+        !this.sessionUnwindRequested
       )
-        this.requestSessionUnwind();
+        this.requestSessionDrain();
       if (error instanceof execution_preflight_rejection_v1)
         return this.result('BLOCKED', null, error.rejectionCode, evaluation, 0);
       const persisted = this.Journal.get(intent.intentId);
@@ -4311,6 +4332,47 @@ export class decibel_production_live_orchestrator_v1 {
     this.paused = false;
     this.sessionUnwindCompleted = false;
     this.sessionUnwindRequested = true;
+    // An explicit unwind (operator END, Max Loss) overrides a target drain.
+    this.sessionDrainRequested = false;
+  }
+
+  /** Target reached: stop new exposure, keep reduce-only TP, complete when flat. */
+  public requestSessionDrain(): void {
+    if (this.sessionUnwindRequested) return;
+    this.paused = false;
+    this.sessionUnwindCompleted = false;
+    this.sessionDrainRequested = true;
+  }
+
+  public isSessionDraining(): boolean {
+    return this.sessionDrainRequested && !this.sessionUnwindRequested;
+  }
+
+  private selectDrainCancellation(snapshot: decibel_production_live_snapshot_v1) {
+    if (!this.isSessionDraining()) return null;
+    const entry = snapshot.input.openOrders.find((order) => order.reduceOnly !== true);
+    return entry
+      ? {
+          action: 'WOULD_CANCEL' as const,
+          side: entry.side,
+          current: entry,
+          desired: null,
+          reason: 'SESSION_TARGET_DRAIN_CANCEL_ENTRY',
+        }
+      : null;
+  }
+
+  /** While draining, any action that would open or grow exposure is refused. */
+  private isDrainBlockedOpening(
+    action: decibel_recycling_action_v1,
+    snapshot: decibel_production_live_snapshot_v1,
+  ): boolean {
+    if (!this.isSessionDraining()) return false;
+    if (action.action !== 'WOULD_PLACE' && action.action !== 'WOULD_REPLACE') return false;
+    const desired = action.desired;
+    if (desired === null) return false;
+    const inventory = snapshot.input.actualInventoryBase;
+    return inventory === 0 || (inventory > 0 ? desired.side === 'BUY' : desired.side === 'SELL');
   }
 
   public abortSessionUnwind(): void {
@@ -4368,8 +4430,7 @@ export class decibel_production_live_orchestrator_v1 {
         configuration?.targetSemanticsVersion === 2 ? snapshot.minimumNotionalUsd : undefined,
       ) !== null
     ) {
-      this.sessionUnwindCompleted = false;
-      this.sessionUnwindRequested = true;
+      this.requestSessionDrain();
     }
   }
 

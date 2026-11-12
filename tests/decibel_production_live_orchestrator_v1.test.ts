@@ -2934,6 +2934,8 @@ describe('Decibel production live orchestrator V1', () => {
       },
       snapshots: [snapshot, snapshot],
     });
+    // A reached target now drains through TP; dust handling belongs to the explicit unwind.
+    test.orchestrator.requestSessionUnwind();
 
     const result = await test.orchestrator.evaluateOnce();
     expect(result).toMatchObject({
@@ -4999,6 +5001,31 @@ describe('Decibel production live orchestrator V1', () => {
     },
   );
 
+  it('switches a target drain to the reduce-only IOC unwind on an explicit unwind', async () => {
+    const Positioned = makeSnapshot({
+      input: { ...makeSnapshot().input, actualInventoryBase: 0.002 },
+      minimumNotionalUsd: 10,
+      maximumNotionalUsd: 50,
+      maximumAbsPositionBase: 0.01,
+    });
+    const test = make({ snapshots: [Positioned, Positioned] });
+    test.orchestrator.requestSessionDrain();
+    expect(test.orchestrator.isSessionDraining()).toBe(true);
+    test.orchestrator.requestSessionUnwind();
+    expect(test.orchestrator.isSessionDraining()).toBe(false);
+    test.orchestrator.requestSessionDrain();
+    expect(test.orchestrator.isSessionDraining()).toBe(false);
+
+    const result = await test.orchestrator.evaluateOnce();
+    expect(result.evaluation?.operatingState).toBe('SESSION_UNWIND');
+    expect(test.journal.getIntent(result.intentId ?? '')).toMatchObject({
+      side: 'SELL',
+      reduceOnly: true,
+      executionRole: 'SESSION_UNWIND_IOC',
+    });
+    await test.orchestrator.close();
+  });
+
   it('does not let missing normal-MM economics override a pending session unwind', async () => {
     const Positioned = makeSnapshot({
       input: { ...makeSnapshot().input, actualInventoryBase: 0.002 },
@@ -5108,7 +5135,7 @@ describe('Decibel production live orchestrator V1', () => {
     [49.78, null],
     [50, 'SESSION_CAPACITY_EVIDENCE_REQUIRED'],
   ] as const)(
-    'uses V2 volume %s to enter canonical unwind while permitting reduce-only IOC',
+    'drains at V2 volume %s through reduce-only maker exits and never a taker IOC',
     async (volume, blocker) => {
       const Base = makeSnapshot();
       const Reached = makeSnapshot({
@@ -5144,14 +5171,13 @@ describe('Decibel production live orchestrator V1', () => {
       });
       const test = make({ snapshots: [Reached, Reached] });
       const result = await test.orchestrator.evaluateOnce();
-      expect(result.evaluation?.operatingState).toBe('SESSION_UNWIND');
-      expect(test.journal.getIntent(result.intentId ?? '')).toMatchObject({
-        action: 'PLACE',
-        side: 'BUY',
-        reduceOnly: true,
-        executionRole: 'SESSION_UNWIND_IOC',
-        timeInForce: 'ImmediateOrCancel',
-      });
+      expect(test.orchestrator.isSessionDraining()).toBe(true);
+      expect(result.evaluation?.operatingState).not.toBe('SESSION_UNWIND');
+      const intent = test.journal.getIntent(result.intentId ?? '');
+      if (intent?.action === 'PLACE')
+        expect(intent).toMatchObject({ side: 'BUY', reduceOnly: true, timeInForce: 'PostOnly' });
+      expect(intent?.executionRole).not.toBe('SESSION_UNWIND_IOC');
+      // Short position: SELL would grow it and must never be placed while draining.
       expect(
         test.submitted().filter((entry) => entry.action === 'PLACE' && entry.side === 'SELL'),
       ).toEqual([]);
@@ -5159,7 +5185,7 @@ describe('Decibel production live orchestrator V1', () => {
     },
   );
 
-  it('latches authenticated target-volume unwind across a subsequently lagging snapshot', async () => {
+  it('latches the target drain across a subsequently lagging snapshot', async () => {
     const Base = makeSnapshot();
     const reached = makeSnapshot({
       input: {
@@ -5190,18 +5216,19 @@ describe('Decibel production live orchestrator V1', () => {
     const first = await test.orchestrator.evaluateOnce();
     const second = await test.orchestrator.evaluateOnce();
 
-    expect(first.evaluation?.operatingState).toBe('SESSION_UNWIND');
-    expect(second.evaluation?.operatingState).toBe('SESSION_UNWIND');
-    const secondIntent = test.journal.getIntent(second.intentId ?? '');
-    expect(secondIntent).toMatchObject({
-      action: 'PLACE',
-      side: 'SELL',
-      reduceOnly: true,
-      executionRole: 'SESSION_UNWIND_IOC',
-      timeInForce: 'ImmediateOrCancel',
-      postOnly: false,
-    });
-    expect(secondIntent?.quantity).toBeLessThanOrEqual(0.002);
+    expect(first.evaluation?.operatingState).not.toBe('SESSION_UNWIND');
+    expect(second.evaluation?.operatingState).not.toBe('SESSION_UNWIND');
+    expect(test.orchestrator.isSessionDraining()).toBe(true);
+    for (const result of [first, second]) {
+      const intent = test.journal.getIntent(result.intentId ?? '');
+      expect(intent?.executionRole).not.toBe('SESSION_UNWIND_IOC');
+      if (intent?.action === 'PLACE')
+        expect(intent).toMatchObject({ side: 'SELL', reduceOnly: true, postOnly: true });
+    }
+    // Long position: BUY would grow it and must never be placed while draining.
+    expect(
+      test.submitted().filter((entry) => entry.action === 'PLACE' && entry.side === 'BUY'),
+    ).toEqual([]);
     await test.orchestrator.close();
   });
 
