@@ -27,7 +27,12 @@ making trading decisions.
 - Never commit, print or log credentials and private keys.
 - Never put a real credential in tests, fixtures or documentation.
 - Every order must pass through the risk engine.
-- Every new position must have a stop-loss.
+- Market-making inventory is protected by the session Max Loss, canonical
+  reduce-only unwind and reduce-only TP coverage. Do not add tight
+  per-position stop-losses: they would realize noise as taker losses.
+- A wide venue-side catastrophe stop, only for protection while the bot is
+  offline, is approved as a planned feature. It must not conflict with TP
+  coverage and needs verified multi reduce-only venue capability.
 - Position-closing orders must use reduce-only where supported.
 - Never retry order submission unless duplicate execution is impossible.
 - Never open a position using stale or incomplete market/account data.
