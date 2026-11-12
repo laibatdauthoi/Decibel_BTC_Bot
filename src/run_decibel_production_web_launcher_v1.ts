@@ -6,6 +6,12 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
 import {
+  collectDecibelSecretValuesV1,
+  decibel_line_redactor_v1,
+  installDecibelConsoleRedactionV1,
+} from './decibel_secret_redaction_v1.js';
+
+import {
   decibel_process_forensics_v1,
   decibel_rotating_log_v1,
   isDecibelProcessPresentV1,
@@ -18,6 +24,10 @@ import {
   loadDecibelPersistedExecutionModeV1,
 } from './decibel_persisted_execution_mode_v1.js';
 
+const Secrets = collectDecibelSecretValuesV1(process.env);
+installDecibelConsoleRedactionV1(Secrets);
+const StdoutRedactor = new decibel_line_redactor_v1(Secrets);
+const StderrRedactor = new decibel_line_redactor_v1(Secrets);
 const launcherStartedAt = Date.now();
 const instanceId = `${process.pid}-${launcherStartedAt}`;
 const logRoot = resolve(process.env.DECIBEL_PRODUCTION_FORENSICS_PATH ?? 'data/production_runtime');
@@ -85,14 +95,21 @@ if (Child.pid !== undefined)
     Forensics.record('WINDOWS_CHILD_IDENTITY', { identity }),
   );
 
-Child.stdout?.on('data', (chunk: Buffer) => {
-  Stdout.append(chunk);
-  process.stdout.write(chunk);
-});
-Child.stderr?.on('data', (chunk: Buffer) => {
-  Stderr.append(chunk);
-  process.stderr.write(chunk);
-});
+// Child output is redacted line by line before it reaches the log files or the terminal.
+const forwardStdout = (text: string) => {
+  if (text === '') return;
+  Stdout.append(text);
+  process.stdout.write(text);
+};
+const forwardStderr = (text: string) => {
+  if (text === '') return;
+  Stderr.append(text);
+  process.stderr.write(text);
+};
+Child.stdout?.on('data', (chunk: Buffer) => forwardStdout(StdoutRedactor.push(chunk)));
+Child.stderr?.on('data', (chunk: Buffer) => forwardStderr(StderrRedactor.push(chunk)));
+Child.stdout?.on('end', () => forwardStdout(StdoutRedactor.flush()));
+Child.stderr?.on('end', () => forwardStderr(StderrRedactor.flush()));
 
 let parentMissingRecorded = false;
 const ParentWatch = setInterval(() => {

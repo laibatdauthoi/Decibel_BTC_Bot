@@ -4,6 +4,7 @@
  * production chain, so it carries its own risk gate: tiny notional, flat start,
  * reduce-only closes and no submission retries.
  */
+import { redactDecibelSecretsV1 } from './decibel_secret_redaction_v1.js';
 export const DECIBEL_VENUE_PROBE_MAX_ORDER_NOTIONAL_USD_V1 = 12;
 export const DECIBEL_VENUE_PROBE_CLIENT_ORDER_ID_PREFIX_V1 = 'vprobe';
 export const DECIBEL_VENUE_PROBE_FAR_DISTANCE_FRACTION_V1 = 0.03;
@@ -226,8 +227,5 @@ export function compareDecibelVenueProbeOrdersV1(
 
 /** Removes known secret values and any Aptos Labs API key pattern from log or report text. */
 export function redactDecibelVenueProbeTextV1(text: string, secrets: readonly string[]): string {
-  let result = text;
-  for (const secret of secrets)
-    if (secret.length >= 8) result = result.split(secret).join('[REDACTED]');
-  return result.replace(/aptoslabs_[A-Za-z0-9_-]+/g, '[REDACTED]');
+  return redactDecibelSecretsV1(text, secrets);
 }

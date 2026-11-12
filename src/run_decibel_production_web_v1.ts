@@ -31,6 +31,10 @@ import {
 } from './decibel_risk_capacity_v1.js';
 import dotenv from 'dotenv';
 import {
+  collectDecibelSecretValuesV1,
+  installDecibelConsoleRedactionV1,
+} from './decibel_secret_redaction_v1.js';
+import {
   assessDecibelProtectiveRecoveryV1,
   assertDecibelProtectiveIntentV1,
   assertDecibelRecoveryIntentV1,
@@ -38,6 +42,8 @@ import {
 } from './decibel_protective_recovery_admission_v1.js';
 
 dotenv.config();
+// SDK request errors include the node API key; redact all console output in this process.
+installDecibelConsoleRedactionV1(collectDecibelSecretValuesV1(process.env));
 
 import { createReadStream, existsSync, statSync, readFileSync } from 'node:fs';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
