@@ -8410,12 +8410,11 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           .filter((action) => action.side === 'BUY')
           .every((action) => action.action !== 'WOULD_PLACE'),
       ).toBe(true);
+      // Any undersized TP is replaced at the same price with fresh evidence (operator
+      // decision 2026-11-14); a quantity-only repair is not a price/profit decision.
       expect(
         evaluateDecibelReplacementDecisionV1(repair!, snapshot, 40000, 30000, 50),
-      ).toMatchObject({
-        cancel: false,
-        reason: 'TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD',
-      });
+      ).toMatchObject({ cancel: true, reason: 'EXIT_COVERAGE_UPSIZE' });
       const noProfit = {
         ...snapshot,
         authenticatedPositions: [
@@ -8424,10 +8423,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       };
       expect(
         evaluateDecibelReplacementDecisionV1(repair!, noProfit, 40000, 30000, 50),
-      ).toMatchObject({
-        cancel: false,
-        reason: 'TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD',
-      });
+      ).toMatchObject({ cancel: true, reason: 'EXIT_COVERAGE_UPSIZE' });
       const stale = {
         ...snapshot,
         practicalCapacityInputs: {
@@ -8761,7 +8757,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   it.each([1, -1])(
     'does not submit a second exit before exact cancellation reconciliation (%s)',
     async (sign) => {
-      // The TP covers 6/7 (above the 75% replacement threshold): kept, not replaced.
       const base = twoSidedSnapshot(sign * 0.0007);
       const side = sign > 0 ? ('SELL' as const) : ('BUY' as const);
       const price = side === 'SELL' ? 80100 : 79900;
@@ -8841,8 +8836,9 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         reason: 'EXIT_COVERAGE_UPSIZE',
         desired: { price },
       });
-      expect(first.blocker).toBe('TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD');
-      expect(test.submitted()).toEqual([]);
+      // The undersized TP is cancelled once for a same-price replacement; no second exit
+      // is placed while the cancel is not proven final.
+      expect(test.submitted()).toEqual([{ action: 'CANCEL', side }]);
       await test.orchestrator.evaluateOnce();
       expect(test.submitted().every((a) => a.action !== 'PLACE')).toBe(true);
       expect(test.journal.findNonTerminalPlaceBySide(side)?.intentId).toBe(intent.intentId);
@@ -10175,7 +10171,11 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const filledSnapshot = snapshot;
       const cancel = vi.fn(
         (request: Parameters<DecibelProductionWriteClientV1['cancelOrder']>[0]) => {
-          expect(request.orderId).toBe(f.buyOrderId);
+          // The entry residual first; afterwards only the TP, for a same-price upsize.
+          if (request.orderId !== f.buyOrderId) {
+            expect(request.orderId).toBe(tp.venueOrderId);
+            return Promise.resolve({ success: true });
+          }
           // The authenticated post-mutation read sees the fill even when the
           // cancel transport returns an unknown outcome.
           if (duringCancel)
@@ -10196,7 +10196,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const journalPath = join(mkdtempSync(join(tmpdir(), 'pid30680-')), 'journal.sqlite');
       const reconcile: NonNullable<Parameters<typeof make>[0]>['reconcileIntent'] = (...args) => {
         const body = test.journal.getIntent(args[0]);
-        if (body?.action === 'CANCEL') {
+        if (body?.action === 'CANCEL' && body.expectedPreviousVenueOrderId === f.buyOrderId) {
           expect(body.quantity).toBe(duringCancel ? f.originalQuantity : f.remainingAtCancel);
           expect(args[3]).toMatchObject({
             requestedQuantity: f.originalQuantity,
@@ -10328,25 +10328,19 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
             },
           ],
         };
+        // The entry cancel is final; the undersized TP is now cancelled once for a same-price
+        // replacement (operator decision 2026-11-14), and nothing is placed before that
+        // cancel is final.
         let repaired = await test.orchestrator.evaluateOnce();
-        for (
-          let cycle = 0;
-          cycle < 4 && repaired.blocker !== 'TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD';
-          cycle++
-        )
+        for (let cycle = 0; cycle < 4 && cancel.mock.calls.length < 2; cycle++)
           repaired = await test.orchestrator.evaluateOnce();
         expect(
-          repaired.blocker,
-          JSON.stringify({ action: repaired.action, evaluation: repaired.evaluation }),
-        ).toBe('TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD');
-        expect(
-          calculateDecibelExitCoverageV1(test.orchestrator.getLatestSnapshot()!.input),
-        ).toMatchObject({
-          CONFIRMED_EXIT_COVERAGE_QTY: f.tpQuantity,
-          UNCOVERED_INVENTORY_QTY: f.fillQuantity,
-        });
+          cancel.mock.calls.map((call) => call[0].orderId),
+          JSON.stringify({ action: repaired.action, blocker: repaired.blocker }),
+        ).toEqual([f.buyOrderId, tp.venueOrderId]);
+        await test.orchestrator.evaluateOnce();
         expect(test.journal.getActiveIdentityConflict()).toBeNull();
-        expect(cancel).toHaveBeenCalledOnce();
+        expect(cancel).toHaveBeenCalledTimes(2);
         expect(place).not.toHaveBeenCalled();
         await test.orchestrator.close();
         closed = true;
@@ -10359,8 +10353,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         });
         try {
           const resumed = await restarted.orchestrator.evaluateOnce();
-          expect(resumed.blocker).toBe('TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD');
-          expect(cancel).toHaveBeenCalledOnce();
+          expect(resumed.blocker).toBe('PRODUCTION_RECONCILIATION_CANCEL_FINALITY_PENDING');
+          expect(cancel).toHaveBeenCalledTimes(2);
           expect(place).not.toHaveBeenCalled();
         } finally {
           await restarted.orchestrator.close();
@@ -10725,7 +10719,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ).reason,
       ).toBe('TP_ADVERSE_INSIDE_SAFE_BAND');
       expect(planDecibelPatientTPV1(inside, side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
-      // Fallback: at break-even for six closes since the step, the rescue step is allowed
+      // Fallback: at break-even for three closes since the step, the rescue step is allowed
       // even though the price came back inside the band two minutes ago.
       const choppy = (snapshot: decibel_production_live_snapshot_v1) => {
         const moved = far(14, snapshot);
@@ -10752,7 +10746,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ...atBreakEven,
         tpAdverseProgress: {
           ...first.authorization!,
-          observedAt: first.authorization!.observedAt - 20 * minute,
+          observedAt: first.authorization!.observedAt - 10 * minute,
         },
       };
       expect(planDecibelPatientTPV1(choppy(notYet), side).reason).toBe(
@@ -13765,7 +13759,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   };
 
   it.each([1, -1])(
-    'preserves exact PID 23792 coverage without proven venue capability (%s)',
+    'repairs exact PID 23792 coverage with one same-price cancel (%s)',
     async (sign) => {
       const basis = (0.00045 * 79430.2 + 0.00013 * 79350.8) / 0.00058;
       const mirror = (price: number) => (sign > 0 ? price : 159000 - price);
@@ -13815,13 +13809,17 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         const results = [];
         for (let cycle = 0; cycle < 5; cycle++)
           results.push(await test.orchestrator.evaluateOnce());
+        // Any undersized TP is replaced at the same price (operator decision 2026-11-14):
+        // exactly one cancel, and no replacement before the cancel is proven final.
         expect(
           results.some(
-            (result) => result.blocker === 'TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD',
+            (result) => result.blocker === 'PRODUCTION_RECONCILIATION_CANCEL_FINALITY_PENDING',
           ),
           JSON.stringify(results.map((r) => ({ action: r.action, blocker: r.blocker }))),
         ).toBe(true);
-        expect(test.submitted()).toEqual([]);
+        expect(test.submitted()).toEqual([
+          { action: 'CANCEL', side: snapshot.input.openOrders[0]!.side },
+        ]);
         expect(
           test.journal.findPlaceByExactIdentity(
             snapshot.input.openOrders[0]!.venueOrderId,
@@ -14197,7 +14195,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       { sign: -1, quantity: 0.00079, remaining: 0.00061 },
     ].flatMap((scenario) => [false, true].map((contract) => ({ ...scenario, contract }))),
   )(
-    'preserves DCA TP coverage through read failures until an atomic or verified additive repair exists ($sign, $quantity, $remaining, contract=$contract)',
+    'repairs DCA TP coverage once through read failures, without a speculative PLACE ($sign, $quantity, $remaining, contract=$contract)',
     async ({ sign, quantity, remaining, contract }) => {
       const before = dcaCoverageSnapshot(sign);
       const order = before.input.openOrders[0]!;
@@ -14259,18 +14257,14 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
               blocker: r.blocker,
             })),
           ),
-        ).toEqual([]);
+        ).toEqual([{ action: 'CANCEL', side: order.side }]);
+        // Any undersized TP is replaced at the same price (operator decision 2026-11-14): one
+        // cancel, then no replacement before the venue proves the cancel final.
         expect(
           results.some(
-            (result) => result.blocker === 'TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD',
+            (result) => result.blocker === 'PRODUCTION_RECONCILIATION_CANCEL_FINALITY_PENDING',
           ),
         ).toBe(true);
-        expect(
-          calculateDecibelExitCoverageV1(test.orchestrator.getLatestSnapshot()!.input),
-        ).toMatchObject({
-          CONFIRMED_EXIT_COVERAGE_QTY: remaining,
-          UNCOVERED_INVENTORY_QTY: Number((quantity - remaining).toFixed(8)),
-        });
         expect(
           test.journal.findPlaceByExactIdentity(order.venueOrderId, order.clientOrderId)?.status,
         ).toBe('ACKNOWLEDGED');
@@ -14388,7 +14382,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     },
   );
 
-  it('preserves unchanged-price coverage when atomic replacement is unverified', () => {
+  it('replaces unchanged-price coverage that is smaller than the position', () => {
     const snapshot = inventoryIncident(1, null);
     const current = snapshot.input.openOrders[0]!;
     const action = {
@@ -14398,10 +14392,10 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       desired: { ...current, quantity: 0.00104, generation: 1 },
       reason: 'EXIT_COVERAGE_UPSIZE',
     };
-    expect(evaluateDecibelReplacementDecisionV1(action, snapshot, 60000, 30000, 50)).toMatchObject({
-      cancel: false,
-      reason: 'TP_COVERAGE_REPAIR_REQUIRES_ATOMIC_OR_VERIFIED_ADD',
-    });
+    // Any undersized TP is replaced at the same price (operator decision 2026-11-14).
+    expect(evaluateDecibelReplacementDecisionV1(action, snapshot, 60000, 30000, 50)?.cancel).toBe(
+      true,
+    );
     const stale = {
       ...inventoryIncident(),
       input: { ...snapshot.input, pendingCancelOrderIds: [current.venueOrderId] },
@@ -14415,7 +14409,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     });
   });
   it.each([1, -1])(
-    'replaces an unchanged-price TP that covers less than 75% of the position (%s)',
+    'replaces an unchanged-price TP that is smaller than the position (%s)',
     (sign) => {
       const incident = inventoryIncident(sign);
       const resting = incident.input.openOrders[0]!;
@@ -14430,7 +14424,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         reason: 'EXIT_COVERAGE_UPSIZE',
       });
       expect(isDecibelTPCoverageSeverelyUndersizedV1(0.00003, position)).toBe(true);
-      expect(isDecibelTPCoverageSeverelyUndersizedV1(position * 0.8, position)).toBe(false);
+      expect(isDecibelTPCoverageSeverelyUndersizedV1(position * 0.95, position)).toBe(true);
+      expect(isDecibelTPCoverageSeverelyUndersizedV1(position, position)).toBe(false);
       const decision = evaluateDecibelReplacementDecisionV1(
         action(small),
         snapshot,

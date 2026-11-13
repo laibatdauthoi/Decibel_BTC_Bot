@@ -1369,9 +1369,9 @@ export function evaluateDecibelReplacementDecisionV1(
           tpSustainedAgeMs,
         )
       : null;
-  // A TP covering less than 75% of the position protects too little to be worth keeping:
-  // a quantity-only cancel/replace at the same price goes through the verified coverage
-  // workflow below instead of leaving most of the inventory without a TP.
+  // Any TP smaller than the position is replaced at the same price through the verified
+  // coverage workflow below (operator decision 2026-11-14): a few seconds without a TP are
+  // accepted instead of leaving part of the inventory uncovered, e.g. after a partial DCA.
   const severelyUndersized =
     action.reason === 'EXIT_COVERAGE_UPSIZE' &&
     desiredTicks === currentTicks &&
@@ -1480,9 +1480,9 @@ export function evaluateDecibelReplacementDecisionV1(
   return null;
 }
 
-/** Below this fraction of the desired quantity, an unchanged-price TP is replaced. */
-// 0.75: after a DCA fill (at least a third of the position) the old TP covers at most 75%.
-export const DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 = 0.75;
+/** Below this fraction of the desired quantity, an unchanged-price TP is replaced.
+ * 1: any undersized TP (2026-11-14; earlier 0.5, then 0.75). */
+export const DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 = 1;
 
 export function isDecibelTPCoverageSeverelyUndersizedV1(
   currentQuantity: number,
@@ -1492,7 +1492,7 @@ export function isDecibelTPCoverageSeverelyUndersizedV1(
     Number.isFinite(currentQuantity) &&
     Number.isFinite(desiredQuantity) &&
     currentQuantity > 0 &&
-    currentQuantity < desiredQuantity * DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1
+    currentQuantity < desiredQuantity * DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 - 1e-12
   );
 }
 

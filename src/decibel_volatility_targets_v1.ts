@@ -176,7 +176,8 @@ export const DECIBEL_TP_ADVERSE_CANDLE_MS_V1 = 300_000;
 export const DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 = 2;
 /** A TP already at (or past) break-even may take the rescue step after this many closes
  * since the previous step, even if the price came back inside the band in between. */
-export const DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1 = 6;
+// 6 -> 3 closes (about 15 minutes), operator decision 2026-11-14.
+export const DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1 = 3;
 /** "Break-even" accepts a net loss up to this many bps of the position notional, so a
  * near-miss recovery still fills (live 2026-11-14 00:20 missed by about 1 bps). */
 export const DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1 = 1;
