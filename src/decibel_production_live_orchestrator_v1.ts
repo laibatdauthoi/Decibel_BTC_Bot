@@ -166,6 +166,8 @@ const ProductionLiveEnvironmentSchema = z.object({
   DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: z.enum(['true', 'false']).default('true'),
   /** Wide venue-side catastrophe stop for offline protection (decibel_catastrophe_stop_v1). */
   DECIBEL_CATASTROPHE_STOP_ENABLED: z.enum(['true', 'false']).default('true'),
+  /** Adverse TP steps follow the two-closed-5-minute-candle rule (decibel_exit_economics_v1). */
+  DECIBEL_TP_CANDLE_RULE_ENABLED: z.enum(['true', 'false']).default('true'),
 });
 
 export type decibel_production_live_configuration_v1 = Readonly<{
@@ -198,12 +200,15 @@ export type decibel_production_live_configuration_v1 = Readonly<{
   regimeEdgeModelPath: string;
   regimeEdgeGateEnabled: boolean;
   catastropheStopEnabled: boolean;
+  tpCandleRuleEnabled: boolean;
 }>;
 
 export type decibel_production_live_snapshot_v1 = Readonly<{
   tpAdverseProgress?: import('./decibel_execution_intent_v1.js').tp_adverse_progress_v1 | null;
   /** Midpoint range over the last 5 minutes (bps); null without enough history. */
   priceRangeBps?: number | null;
+  /** Recent midpoints (volatility lookback) for the adverse-TP candle rule. */
+  recentMidpoints?: readonly Readonly<{ at: number; midpoint: number }>[];
   venueReadWindow?: Readonly<{
     account: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
     history?: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
@@ -593,6 +598,7 @@ export function parseDecibelProductionLiveConfigurationV1(
     regimeEdgeModelPath: parsed.DECIBEL_PRODUCTION_REGIME_EDGE_MODEL_PATH,
     regimeEdgeGateEnabled: parsed.DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED === 'true',
     catastropheStopEnabled: parsed.DECIBEL_CATASTROPHE_STOP_ENABLED === 'true',
+    tpCandleRuleEnabled: parsed.DECIBEL_TP_CANDLE_RULE_ENABLED === 'true',
   });
 }
 
@@ -4720,6 +4726,14 @@ export class decibel_production_live_orchestrator_v1 {
     return {
       ...snapshot,
       priceRangeBps: calculateDecibelMidpointRangeBpsV1(this.MidpointHistory, snapshot.input.now),
+      ...(this.Config.tpCandleRuleEnabled
+        ? {
+            recentMidpoints: this.MidpointHistory.map((sample) => ({
+              at: sample.at,
+              midpoint: sample.midpoint,
+            })),
+          }
+        : {}),
     };
   }
 

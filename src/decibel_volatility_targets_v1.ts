@@ -146,3 +146,51 @@ export function getDecibelTPRescueOffsetBpsV1(rangeBps: number | null | undefine
     DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1,
   );
 }
+
+/**
+ * Candle rule for adverse TP steps (2026-11-13, operator request). The safe band is how far
+ * the price may run against the entry before an adverse TP step is considered:
+ * clamp(1.2 x 5-minute range, 10, 40) bps (narrower than the earlier rescue trigger). Once the
+ * price is outside the band, a step needs two 5-minute candles (clock-aligned) to close with
+ * the price never back inside the band since it left (or since the previous step). Any return
+ * inside the band restarts the count.
+ */
+export const DECIBEL_TP_SAFE_BAND_FACTOR_V1 = 1.2;
+export const DECIBEL_TP_SAFE_BAND_MIN_BPS_V1 = 10;
+export const DECIBEL_TP_SAFE_BAND_MAX_BPS_V1 = 40;
+export const DECIBEL_TP_ADVERSE_CANDLE_MS_V1 = 300_000;
+export const DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 = 2;
+
+export function getDecibelTPSafeBandBpsV1(rangeBps: number | null | undefined): number {
+  if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
+    return DECIBEL_TP_SAFE_BAND_MIN_BPS_V1;
+  return clamp(
+    DECIBEL_TP_SAFE_BAND_FACTOR_V1 * rangeBps,
+    DECIBEL_TP_SAFE_BAND_MIN_BPS_V1,
+    DECIBEL_TP_SAFE_BAND_MAX_BPS_V1,
+  );
+}
+
+/**
+ * Closed 5-minute candles since the price left the safe band without coming back (and since
+ * `since`, the previous step). Samples are midpoints in time order; 0 when the latest sample
+ * is inside the band or there are no samples.
+ */
+export function countDecibelAdverseCandleClosesV1(
+  samples: readonly Readonly<{ at: number; midpoint: number }>[],
+  now: number,
+  isOutside: (midpoint: number) => boolean,
+  since: number | null,
+): number {
+  let outsideSince: number | null = null;
+  for (let index = samples.length - 1; index >= 0; index -= 1) {
+    const sample = samples[index]!;
+    if (sample.at > now) continue;
+    if (!Number.isFinite(sample.midpoint) || !isOutside(sample.midpoint)) break;
+    outsideSince = sample.at;
+  }
+  if (outsideSince === null) return 0;
+  const reference = since === null ? outsideSince : Math.max(outsideSince, since);
+  const candle = DECIBEL_TP_ADVERSE_CANDLE_MS_V1;
+  return Math.max(0, Math.floor(now / candle) - Math.floor(reference / candle));
+}

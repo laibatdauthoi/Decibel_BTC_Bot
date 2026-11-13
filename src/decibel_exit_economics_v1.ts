@@ -2,7 +2,10 @@ import type { decibel_production_live_snapshot_v1 } from './decibel_production_l
 import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
 import {
+  DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1,
   DECIBEL_TP_ADVERSE_DELAY_MS_V1,
+  countDecibelAdverseCandleClosesV1,
+  getDecibelTPSafeBandBpsV1,
   DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
   DECIBEL_TP_RESCUE_COOLDOWN_MS_V1,
   getDecibelTPRescueOffsetBpsV1,
@@ -287,6 +290,42 @@ export function planDecibelPatientTPV1(
       minimumStepTicks,
     );
   };
+  // Candle rule (production snapshots carry the recent midpoints): an adverse step needs the
+  // price outside the safe band and two closed 5-minute candles without a return inside it,
+  // counted from when it left the band, the opening fill or the previous step (whichever is
+  // latest). The first step moves the TP to break-even; later steps rest it the rescue
+  // offset from the maker. Max Loss stays the hard stop.
+  if (snapshot.recentMidpoints !== undefined) {
+    const safeBandBps = getDecibelTPSafeBandBpsV1(snapshot.priceRangeBps);
+    const outside = (price: number) =>
+      direction * (price - entryBasis) * 10_000 >= entryBasis * safeBandBps;
+    if (!outside(maker)) return result(null, 'TP_ADVERSE_INSIDE_SAFE_BAND', band);
+    const since = Math.max(
+      progress?.observedAt ?? Number.NEGATIVE_INFINITY,
+      Number.isFinite(epoch?.openedAt) ? epoch!.openedAt : Number.NEGATIVE_INFINITY,
+    );
+    const closes = countDecibelAdverseCandleClosesV1(
+      snapshot.recentMidpoints,
+      input.now,
+      outside,
+      Number.isFinite(since) ? since : null,
+    );
+    if (closes < DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1)
+      return result(null, 'TP_ADVERSE_AWAITING_CANDLE_CLOSES', band);
+    const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
+    if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);
+    const roomTicks = direction * (Math.round(breakEven / tick) - Math.round(resting.price / tick));
+    if (roomTicks >= 1) return authorize(roomTicks, roomTicks);
+    const offsetTicks = Math.max(
+      1,
+      Math.ceil((maker * getDecibelTPRescueOffsetBpsV1(snapshot.priceRangeBps)) / 10_000 / tick),
+    );
+    const stepTicks = distanceTicks - offsetTicks;
+    if (stepTicks <= Math.max(1, spreadTicks) || stepTicks < offsetTicks)
+      return result(null, 'TP_ADVERSE_NEW_SIGNIFICANT_PROGRESS_REQUIRED', band);
+    return authorize(stepTicks, Math.max(offsetTicks, Math.max(1, spreadTicks) + 1));
+  }
+  // Legacy time rule (snapshots without midpoint history).
   // Break-even hold: many adverse excursions come back to the entry within minutes.
   // Until the position (from its opening fill) is older than the hold, an adverse step
   // moves the TP at most to the net >= 0 price, never past it. Max Loss stays the hard stop.

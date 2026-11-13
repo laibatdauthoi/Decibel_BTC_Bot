@@ -412,6 +412,8 @@ function make(input?: {
     DECIBEL_EXECUTOR_ENABLED: 'true',
     DECIBEL_EXECUTOR_DRY_RUN: 'true',
     DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: 'false',
+    // Lifecycle tests use the legacy time rule; the candle rule has its own tests.
+    DECIBEL_TP_CANDLE_RULE_ENABLED: 'false',
     ...input?.environment,
   });
   const orchestrator = new decibel_production_live_orchestrator_v1(
@@ -6923,6 +6925,55 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     }
   });
 
+  it('checks the remaining target per side so both entries can rest near the end', () => {
+    // Live 2026-11-13 21:40: $21.7 left, a $14.5 BUY resting; the SELL was refused because
+    // the resting BUY was added to it.
+    const base = twoSidedSnapshot(0, 200);
+    const price = base.input.book.bestAsk + 1;
+    const restingBuy = {
+      ...base.input.openOrders[0],
+      venueOrderId: 'resting-buy',
+      clientOrderId: 'd1b' + 'r'.repeat(29),
+      market: base.input.market,
+      strategyConfigId: base.input.strategyConfigId,
+      side: 'BUY' as const,
+      price: base.input.book.bestBid - 1,
+      quantity: 0.00018,
+      reduceOnly: false,
+      postOnly: true as const,
+      timeInForce: 'PostOnly' as const,
+      orderType: 'LIMIT' as const,
+    };
+    const snapshot: decibel_production_live_snapshot_v1 = {
+      ...base,
+      minimumNotionalUsd: 10,
+      input: { ...base.input, openOrders: [restingBuy] },
+      sessionConfiguration: {
+        ...base.sessionConfiguration!,
+        targetSemanticsVersion: 2,
+        totalExecutedVolumeUsd: 200 - 21.7,
+      },
+    };
+    const decide = (quantity: number) =>
+      evaluateTradingDecision(snapshot, {
+        now: snapshot.input.now,
+        sessionId: snapshot.input.sessionId,
+        state: 'RUNNING',
+        candidate: {
+          side: 'SELL',
+          price,
+          quantity,
+          reduceOnly: false,
+          postOnly: true,
+          timeInForce: 'PostOnly',
+        },
+      });
+    expect(0.00018 * price).toBeLessThan(21.7);
+    expect(decide(0.00018)).toMatchObject({ askEligible: true });
+    expect(0.0003 * price).toBeGreaterThan(21.7);
+    expect(decide(0.0003).actionPlan.SELL.reason).toBe('ENTRY_EXCEEDS_REMAINING_TARGET');
+  });
+
   it('shrinks new ENTRY quantities to the Max Loss risk capacity in live quote construction', () => {
     const base = twoSidedSnapshot();
     const snapshot: decibel_production_live_snapshot_v1 = {
@@ -10533,6 +10584,81 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         mirror(75940) - direction * offset(75940),
         8,
       );
+    },
+  );
+
+  it.each([1, -1])(
+    'Candle rule moves the TP only after two closed 5-minute candles outside the band (%s)',
+    (sign) => {
+      const side = sign < 0 ? 'BUY' : 'SELL';
+      const direction = sign < 0 ? 1 : -1;
+      const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
+      const minute = 60_000;
+      const now = 1_800_000_000_000 + 2 * minute;
+      const fixture = adaptiveTPFixture(sign, now);
+      const base = {
+        ...fixture,
+        input: {
+          ...fixture.input,
+          // A TP well inside profit, so break-even leaves room for the first step.
+          openOrders: [{ ...fixture.input.openOrders[0]!, price: mirror(75650) }],
+        },
+      };
+      // 18 bps adverse (maker 75850 vs basis 75713.4); 6 bps range -> 10 bps safe band.
+      const far = (outsideMinutes: number, snapshot = base) => {
+        const moved = movePatientMarket(snapshot, mirror(75850));
+        return {
+          ...moved,
+          priceRangeBps: 6,
+          recentMidpoints: Array.from({ length: 15 }, (_, i) => {
+            const minutesAgo = 14 - i;
+            return {
+              at: moved.input.now - minutesAgo * minute,
+              midpoint: minutesAgo <= outsideMinutes ? mirror(75850) : mirror(75720),
+            };
+          }),
+        };
+      };
+      // Outside for 4 minutes: only one candle has closed.
+      expect(planDecibelPatientTPV1(far(4), side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
+      // Outside for 9 minutes: two closes, the first step goes to break-even.
+      const ready = far(9);
+      const breakEven = getDecibelBreakEvenTPPriceV1(ready, side)!;
+      const first = planDecibelPatientTPV1(ready, side);
+      expect(first).toMatchObject({
+        reason: 'REPRICE:TP_ADVERSE_EXIT_REPRICE',
+        targetPrice: breakEven,
+      });
+      expect(assessDecibelAdaptiveTPV1(ready, side, breakEven).allowed).toBe(true);
+      // Right after the step: two new closes are needed again.
+      const atBreakEven = {
+        ...base,
+        tpAdverseProgress: first.authorization,
+        input: { ...base.input, openOrders: [{ ...base.input.openOrders[0]!, price: breakEven }] },
+      };
+      expect(planDecibelPatientTPV1(far(14, atBreakEven), side).reason).toBe(
+        'TP_ADVERSE_AWAITING_CANDLE_CLOSES',
+      );
+      // Two closes after the step: the TP rests the rescue offset from the maker.
+      const later = {
+        ...atBreakEven,
+        tpAdverseProgress: {
+          ...first.authorization!,
+          observedAt: first.authorization!.observedAt - 9 * minute,
+        },
+      };
+      const rescue = planDecibelPatientTPV1(far(14, later), side);
+      expect(rescue.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
+      expect(direction * (rescue.targetPrice! - breakEven)).toBeGreaterThan(0);
+      // Back inside the band: no step.
+      const inside = { ...far(9), recentMidpoints: [] };
+      expect(
+        planDecibelPatientTPV1(
+          { ...movePatientMarket(base, mirror(75760)), priceRangeBps: 6, recentMidpoints: [] },
+          side,
+        ).reason,
+      ).toBe('TP_ADVERSE_INSIDE_SAFE_BAND');
+      expect(planDecibelPatientTPV1(inside, side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
     },
   );
 
