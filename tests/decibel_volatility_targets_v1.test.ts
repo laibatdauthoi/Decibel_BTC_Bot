@@ -85,11 +85,12 @@ describe('volatility targets', () => {
     expect(getDecibelTPRescueOffsetBpsV1(100)).toBe(20);
   });
 
-  it('narrows the safe band to clamp(1.2 x range, 10, 40) bps', () => {
+  it('narrows the safe band to clamp(1.2 x range, 10, 25) bps', () => {
     expect(getDecibelTPSafeBandBpsV1(undefined)).toBe(10);
     expect(getDecibelTPSafeBandBpsV1(5)).toBe(10);
     expect(getDecibelTPSafeBandBpsV1(20)).toBeCloseTo(24, 12);
-    expect(getDecibelTPSafeBandBpsV1(100)).toBe(40);
+    expect(getDecibelTPSafeBandBpsV1(35)).toBe(25);
+    expect(getDecibelTPSafeBandBpsV1(100)).toBe(25);
   });
 
   it('counts closed 5-minute candles since the price left the band without returning', () => {

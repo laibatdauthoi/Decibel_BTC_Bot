@@ -65,6 +65,7 @@ import { calculateDecibelEntrySizeV1 } from '../src/decibel_entry_size_v1.js';
 import {
   DECIBEL_TP_ADVERSE_DELAY_MS_V1,
   DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
+  DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1,
   getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryPriceLimitV1,
   getDecibelTPTargetNetBpsV1,
@@ -6925,6 +6926,35 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     }
   });
 
+  it('refuses opening orders while the 5-minute range is above 40 bps', () => {
+    const base = twoSidedSnapshot(0, 200);
+    const candidate = {
+      side: 'SELL' as const,
+      price: base.input.book.bestAsk + 1,
+      quantity: 0.00018,
+      reduceOnly: false,
+      postOnly: true,
+      timeInForce: 'PostOnly' as const,
+    };
+    const decide = (priceRangeBps: number) =>
+      evaluateTradingDecision(
+        {
+          ...base,
+          minimumNotionalUsd: 10,
+          priceRangeBps,
+          sessionConfiguration: {
+            ...base.sessionConfiguration!,
+            targetSemanticsVersion: 2,
+            totalExecutedVolumeUsd: 0,
+          },
+        },
+        { now: base.input.now, sessionId: base.input.sessionId, state: 'RUNNING', candidate },
+      );
+    expect(decide(30)).toMatchObject({ askEligible: true });
+    expect(decide(45)).toMatchObject({ askEligible: false });
+    expect(decide(45).actionPlan.SELL.reason).toBe('ENTRY_VOLATILITY_PAUSE');
+  });
+
   it('checks the remaining target per side so both entries can rest near the end', () => {
     // Live 2026-11-13 21:40: $21.7 left, a $14.5 BUY resting; the SELL was refused because
     // the resting BUY was added to it.
@@ -10659,6 +10689,39 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ).reason,
       ).toBe('TP_ADVERSE_INSIDE_SAFE_BAND');
       expect(planDecibelPatientTPV1(inside, side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
+      // Fallback: at break-even for six closes since the step, the rescue step is allowed
+      // even though the price came back inside the band two minutes ago.
+      const choppy = (snapshot: decibel_production_live_snapshot_v1) => {
+        const moved = far(14, snapshot);
+        return {
+          ...moved,
+          recentMidpoints: moved.recentMidpoints.map((sample) =>
+            sample.at === moved.input.now - 2 * minute
+              ? { ...sample, midpoint: mirror(75720) }
+              : sample,
+          ),
+        };
+      };
+      const stale = {
+        ...atBreakEven,
+        tpAdverseProgress: {
+          ...first.authorization!,
+          observedAt: first.authorization!.observedAt - 31 * minute,
+        },
+      };
+      const fallback = planDecibelPatientTPV1(choppy(stale), side);
+      expect(fallback.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
+      expect(direction * (fallback.targetPrice! - breakEven)).toBeGreaterThan(0);
+      const notYet = {
+        ...atBreakEven,
+        tpAdverseProgress: {
+          ...first.authorization!,
+          observedAt: first.authorization!.observedAt - 20 * minute,
+        },
+      };
+      expect(planDecibelPatientTPV1(choppy(notYet), side).reason).toBe(
+        'TP_ADVERSE_AWAITING_CANDLE_CLOSES',
+      );
     },
   );
 
@@ -10797,8 +10860,10 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const breakEven = getDecibelBreakEvenTPPriceV1(far, side)!;
       const net = (snapshot: decibel_production_live_snapshot_v1, price: number) =>
         assessDecibelExitEconomicsV1(snapshot, side, 0.00047, price).netPnlUsd!;
-      expect(net(far, breakEven)).toBeGreaterThanOrEqual(0);
-      expect(net(far, breakEven + direction * tick)).toBeLessThan(0);
+      // "Break-even" accepts up to 1 bps of the notional as a net loss.
+      const tolerance = (0.00047 * 75780 * DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1) / 10_000;
+      expect(net(far, breakEven)).toBeGreaterThanOrEqual(-tolerance * 1.01);
+      expect(net(far, breakEven + direction * tick)).toBeLessThan(-tolerance * 0.99);
       // 18 bps adverse would trigger the rescue offset; the hold stops it at break-even.
       const held = planDecibelPatientTPV1(far, side);
       expect(held).toMatchObject({
@@ -15658,6 +15723,32 @@ describe('Authenticated inventory coverage and TP preservation', () => {
     expect(desiredEntry(near)).toBeNull();
     expect(reason(near)).toBe('DCA_ADVERSE_DISTANCE_REQUIRED');
   });
+  it.each([1, -1])(
+    'pauses opening orders in extreme volatility and shows the DCA blocker (%s)',
+    (sign) => {
+      const entrySide = sign > 0 ? 'BUY' : 'SELL';
+      const exitSide = sign > 0 ? 'SELL' : 'BUY';
+      const reasonOf = (
+        evaluation: ReturnType<typeof evaluateDecibelAuthenticatedPassiveRecyclingV1>,
+        side: 'BUY' | 'SELL',
+      ) => (side === 'BUY' ? evaluation.bidEligibilityReason : evaluation.askEligibilityReason);
+      const covered = fixture(sign * 0.005, 0.005);
+      const labelled = evaluateDecibelAuthenticatedPassiveRecyclingV1(covered, {
+        ...sizing,
+        positionGrowthBlocker: 'DCA_RISK_CAPACITY_EXHAUSTED',
+      });
+      expect(reasonOf(labelled, entrySide)).toBe('DCA_RISK_CAPACITY_EXHAUSTED');
+      // With a position, the pause blocks growth but keeps the exit.
+      const paused = evaluateDecibelAuthenticatedPassiveRecyclingV1(covered, {
+        ...sizing,
+        positionGrowth: { side: entrySide, priceLimit: sign > 0 ? 1e9 : 1e-9 },
+        entryPauseReason: 'ENTRY_VOLATILITY_PAUSE',
+      });
+      expect(entrySide === 'BUY' ? paused.desiredBid : paused.desiredAsk).toBeNull();
+      expect(reasonOf(paused, entrySide)).toBe('ENTRY_VOLATILITY_PAUSE');
+      expect(paused.actions.find((a) => a.side === exitSide)?.action).not.toBe('WOULD_CANCEL');
+    },
+  );
   it('does not count duplicate order projections or inflight exits as confirmed coverage', () => {
     const source = fixture(0.007, 0.005);
     const duplicated = {

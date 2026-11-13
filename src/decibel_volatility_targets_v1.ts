@@ -150,16 +150,36 @@ export function getDecibelTPRescueOffsetBpsV1(rangeBps: number | null | undefine
 /**
  * Candle rule for adverse TP steps (2026-11-13, operator request). The safe band is how far
  * the price may run against the entry before an adverse TP step is considered:
- * clamp(1.2 x 5-minute range, 10, 40) bps (narrower than the earlier rescue trigger). Once the
+ * clamp(1.2 x 5-minute range, 10, 25) bps (narrower than the earlier rescue trigger). Once the
  * price is outside the band, a step needs two 5-minute candles (clock-aligned) to close with
  * the price never back inside the band since it left (or since the previous step). Any return
  * inside the band restarts the count.
  */
 export const DECIBEL_TP_SAFE_BAND_FACTOR_V1 = 1.2;
+/** No new entry or DCA while the 5-minute midpoint range is wider than this (bps). */
+export const DECIBEL_ENTRY_VOLATILITY_PAUSE_BPS_V1 = 40;
+
+export function getDecibelEntryVolatilityPauseReasonV1(
+  rangeBps: number | null | undefined,
+): string | null {
+  return typeof rangeBps === 'number' &&
+    Number.isFinite(rangeBps) &&
+    rangeBps > DECIBEL_ENTRY_VOLATILITY_PAUSE_BPS_V1
+    ? 'ENTRY_VOLATILITY_PAUSE'
+    : null;
+}
 export const DECIBEL_TP_SAFE_BAND_MIN_BPS_V1 = 10;
-export const DECIBEL_TP_SAFE_BAND_MAX_BPS_V1 = 40;
+// 40 -> 25 (2026-11-14): with a 35 bps range the band hit 40 bps and a break-even TP sat
+// for over an hour while the price chopped 20-40 bps against the entry.
+export const DECIBEL_TP_SAFE_BAND_MAX_BPS_V1 = 25;
 export const DECIBEL_TP_ADVERSE_CANDLE_MS_V1 = 300_000;
 export const DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 = 2;
+/** A TP already at (or past) break-even may take the rescue step after this many closes
+ * since the previous step, even if the price came back inside the band in between. */
+export const DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1 = 6;
+/** "Break-even" accepts a net loss up to this many bps of the position notional, so a
+ * near-miss recovery still fills (live 2026-11-14 00:20 missed by about 1 bps). */
+export const DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1 = 1;
 
 export function getDecibelTPSafeBandBpsV1(rangeBps: number | null | undefined): number {
   if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)

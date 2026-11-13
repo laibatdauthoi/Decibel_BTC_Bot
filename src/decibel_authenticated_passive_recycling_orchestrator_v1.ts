@@ -498,6 +498,10 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     entryReplacementMinimumBps?: number;
     /** Admitted single DCA addition: the growth side may rest at or beyond `priceLimit`. */
     positionGrowth?: Readonly<{ side: 'BUY' | 'SELL'; priceLimit: number }> | null;
+    /** Why no DCA addition is admitted (shown instead of POSITION_GROWTH_DISABLED). */
+    positionGrowthBlocker?: string | null;
+    /** Set while the 5-minute range is too wide: no new opening order on either side. */
+    entryPauseReason?: string | null;
     availableMarginUsd: number;
     maximumEffectiveLeverage: number;
     halfSpreadBps?: number;
@@ -1671,7 +1675,9 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
         desiredBid = null;
         desiredBidLadder = [];
         bidEligibilityReason =
-          growth === null ? 'POSITION_GROWTH_DISABLED' : 'DCA_ADVERSE_DISTANCE_REQUIRED';
+          growth === null
+            ? (sizing?.positionGrowthBlocker ?? 'POSITION_GROWTH_DISABLED')
+            : 'DCA_ADVERSE_DISTANCE_REQUIRED';
       }
     } else if (input.actualInventoryBase < 0 && desiredAsk !== null) {
       if (admitted('SELL', desiredAsk.price)) desiredAskLadder = [desiredAsk];
@@ -1679,8 +1685,25 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
         desiredAsk = null;
         desiredAskLadder = [];
         askEligibilityReason =
-          growth === null ? 'POSITION_GROWTH_DISABLED' : 'DCA_ADVERSE_DISTANCE_REQUIRED';
+          growth === null
+            ? (sizing?.positionGrowthBlocker ?? 'POSITION_GROWTH_DISABLED')
+            : 'DCA_ADVERSE_DISTANCE_REQUIRED';
       }
+    }
+  }
+  // Extreme volatility: no new opening order (entry or DCA); reductions are unaffected.
+  const entryPause = sizing?.entryPauseReason ?? null;
+  if (entryPause !== null && !sessionUnwind) {
+    // A BUY opens or grows when flat or long; a SELL when flat or short.
+    if (input.actualInventoryBase >= 0 && desiredBid !== null) {
+      desiredBid = null;
+      desiredBidLadder = [];
+      bidEligibilityReason = entryPause;
+    }
+    if (input.actualInventoryBase <= 0 && desiredAsk !== null) {
+      desiredAsk = null;
+      desiredAskLadder = [];
+      askEligibilityReason = entryPause;
     }
   }
   if (sizing?.entryHeadroomUsd !== undefined && coverage.entryPaused && !sessionUnwind) {

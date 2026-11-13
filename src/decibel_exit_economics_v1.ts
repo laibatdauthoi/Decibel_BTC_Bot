@@ -3,6 +3,9 @@ import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
 import {
   DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1,
+  DECIBEL_TP_ADVERSE_CANDLE_MS_V1,
+  DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1,
+  DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1,
   DECIBEL_TP_ADVERSE_DELAY_MS_V1,
   countDecibelAdverseCandleClosesV1,
   getDecibelTPSafeBandBpsV1,
@@ -66,8 +69,9 @@ function getDecibelTPPositionEpochV1(
   return Object.freeze({ key, openedAt });
 }
 
-/** The tick-aligned maker TP price at which closing the whole position nets >= 0 after
- * fees, gas and safety reserves, or null without fresh exit-cost evidence. */
+/** The tick-aligned maker TP price at which closing the whole position nets at least
+ * -DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1 of the notional after fees, gas and safety
+ * reserves, or null without fresh exit-cost evidence. */
 export function getDecibelBreakEvenTPPriceV1(
   snapshot: decibel_production_live_snapshot_v1,
   side: 'BUY' | 'SELL',
@@ -85,14 +89,19 @@ export function getDecibelBreakEvenTPPriceV1(
     (breakdown.exitFeeReserveUsd + breakdown.safetyReserveUsd) / (quantity * reference);
   const slope = quantity * ((side === 'SELL' ? 1 : -1) - exitRate);
   if (!Number.isFinite(slope) || slope === 0) return null;
-  const boundary = reference - initial.netPnlUsd / slope;
+  const toleranceUsd = (quantity * reference * DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1) / 10_000;
+  const boundary = reference - (initial.netPnlUsd + toleranceUsd) / slope;
   let ticks =
     side === 'SELL' ? Math.ceil(boundary / tick - 1e-9) : Math.floor(boundary / tick + 1e-9);
   for (let attempt = 0; attempt < 3; attempt++) {
     const price = Number((ticks * tick).toPrecision(15));
     if (!Number.isFinite(price) || price <= 0) return null;
     const checked = assessDecibelExitEconomicsV1(snapshot, side, quantity, price);
-    if (!checked.blockers.length && checked.netPnlUsd !== null && checked.netPnlUsd >= 0)
+    if (
+      !checked.blockers.length &&
+      checked.netPnlUsd !== null &&
+      checked.netPnlUsd >= -toleranceUsd - 1e-12
+    )
       return price;
     ticks += side === 'SELL' ? 1 : -1;
   }
@@ -299,7 +308,18 @@ export function planDecibelPatientTPV1(
     const safeBandBps = getDecibelTPSafeBandBpsV1(snapshot.priceRangeBps);
     const outside = (price: number) =>
       direction * (price - entryBasis) * 10_000 >= entryBasis * safeBandBps;
-    if (!outside(maker)) return result(null, 'TP_ADVERSE_INSIDE_SAFE_BAND', band);
+    const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
+    if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);
+    const roomTicks = direction * (Math.round(breakEven / tick) - Math.round(resting.price / tick));
+    // Fallback: a TP already at break-even for six closes since the previous step may take
+    // the rescue step even though the price came back inside the band in between.
+    const candle = DECIBEL_TP_ADVERSE_CANDLE_MS_V1;
+    const stale =
+      roomTicks < 1 &&
+      progress !== null &&
+      Math.floor(input.now / candle) - Math.floor(progress.observedAt / candle) >=
+        DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1;
+    if (!outside(maker) && !stale) return result(null, 'TP_ADVERSE_INSIDE_SAFE_BAND', band);
     const since = Math.max(
       progress?.observedAt ?? Number.NEGATIVE_INFINITY,
       Number.isFinite(epoch?.openedAt) ? epoch!.openedAt : Number.NEGATIVE_INFINITY,
@@ -310,11 +330,8 @@ export function planDecibelPatientTPV1(
       outside,
       Number.isFinite(since) ? since : null,
     );
-    if (closes < DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1)
+    if (closes < DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 && !stale)
       return result(null, 'TP_ADVERSE_AWAITING_CANDLE_CLOSES', band);
-    const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
-    if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);
-    const roomTicks = direction * (Math.round(breakEven / tick) - Math.round(resting.price / tick));
     if (roomTicks >= 1) return authorize(roomTicks, roomTicks);
     const offsetTicks = Math.max(
       1,

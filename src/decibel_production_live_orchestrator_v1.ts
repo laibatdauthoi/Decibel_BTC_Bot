@@ -9,6 +9,7 @@ import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_wor
 import {
   calculateDecibelMidpointRangeBpsV1,
   getDecibelEntryReplacementBandBpsV1,
+  getDecibelEntryVolatilityPauseReasonV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
 } from './decibel_volatility_targets_v1.js';
@@ -2317,6 +2318,8 @@ export class decibel_production_live_orchestrator_v1 {
         dca?.allowed && dca.side !== null && dca.priceLimit !== null
           ? { side: dca.side, priceLimit: dca.priceLimit }
           : null,
+      positionGrowthBlocker: dca !== null && !dca.allowed ? dca.reason : null,
+      entryPauseReason: getDecibelEntryVolatilityPauseReasonV1(snapshot.priceRangeBps),
       entryEvidenceBlocker: limits?.capacityBlocker ?? null,
       ...(snapshot.reductionCapacity
         ? {
