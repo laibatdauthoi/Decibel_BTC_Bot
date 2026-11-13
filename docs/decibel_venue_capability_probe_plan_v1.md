@@ -124,6 +124,15 @@ Estimated total cost for all stages: under $0.20, dominated by price movement du
 
 ## 6. Results
 
+### Stage D, run 2026-11-13 13:51 UTC (report `stage-D-1794577881747.json`)
+
+No answer yet. The taker IOC open (`0x217c8e65…fe33`) filled 0.00002 BTC at 69,619.2, but the
+read 0.2 s later still showed position 0, so the stage stopped with `PROBE_POSITION_NOT_OPENED`.
+Cleanup read the same stale state and left a 0.00002 BTC long open (no orders). Fixed: the probe
+now polls the position for up to 10 s after the open and before closing, and waits 3 s before the
+cleanup read. The leftover position must be closed before the next run (the flat precondition
+blocks it).
+
 ### Stage A, run 2026-11-12 10:22 UTC (report `stage-A-1794478930896.json`)
 
 Evidence: on-chain `market_types::OrderEvent`s of transaction

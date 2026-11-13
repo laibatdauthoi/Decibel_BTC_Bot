@@ -10,6 +10,8 @@ export const DECIBEL_VENUE_PROBE_CLIENT_ORDER_ID_PREFIX_V1 = 'vprobe';
 export const DECIBEL_VENUE_PROBE_FAR_DISTANCE_FRACTION_V1 = 0.03;
 export const DECIBEL_VENUE_PROBE_CROSS_DISTANCE_FRACTION_V1 = 0.003;
 export const DECIBEL_VENUE_PROBE_STOP_DISTANCE_FRACTION_V1 = 0.1;
+/** Reads (1 s apart) to wait for a fill to appear in the REST position before acting. */
+export const DECIBEL_VENUE_PROBE_POSITION_READ_ATTEMPTS_V1 = 10;
 
 export type decibel_venue_probe_stage_v1 = 'A' | 'B' | 'C' | 'D' | 'E';
 const STAGES: readonly decibel_venue_probe_stage_v1[] = ['A', 'B', 'C', 'D', 'E'];

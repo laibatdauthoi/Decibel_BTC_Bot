@@ -29,6 +29,7 @@ import {
 import {
   DECIBEL_VENUE_PROBE_CROSS_DISTANCE_FRACTION_V1,
   DECIBEL_VENUE_PROBE_FAR_DISTANCE_FRACTION_V1,
+  DECIBEL_VENUE_PROBE_POSITION_READ_ATTEMPTS_V1,
   DECIBEL_VENUE_PROBE_STOP_DISTANCE_FRACTION_V1,
   assessDecibelVenueProbeOrderV1,
   assessDecibelVenueProbeStopV1,
@@ -498,8 +499,22 @@ async function main(): Promise<void> {
     });
     return replacementOrderId ?? orderId;
   };
+  // REST reads lag the chain by a few seconds (run 2026-11-13 20:51: an IOC fill was not
+  // visible 0.2 s later). Poll until a position appears or the window ends.
+  const readSettledPosition = async () => {
+    let account = await readAccount();
+    for (
+      let attempt = 1;
+      attempt < DECIBEL_VENUE_PROBE_POSITION_READ_ATTEMPTS_V1 && account.positionBase === 0;
+      attempt += 1
+    ) {
+      await new Promise((done) => setTimeout(done, 1_000));
+      account = await readAccount();
+    }
+    return account;
+  };
   const closePosition = async (step: string) => {
-    const account = await readAccount();
+    const account = await readSettledPosition();
     if (account.positionBase === 0) return;
     const side = account.positionBase > 0 ? 'SELL' : 'BUY';
     const fresh = (await readMarket()).market;
@@ -573,6 +588,8 @@ async function main(): Promise<void> {
     // replaces orders with a new id and no client order id). The close is a reduce-only
     // IOC bounded by the authenticated position.
     try {
+      // Let the last submissions become visible before reading what to clean up.
+      await new Promise((done) => setTimeout(done, 3_000));
       const account = await readAccount();
       for (const row of account.openOrders) {
         if (row.is_tpsl === true) {
@@ -695,6 +712,7 @@ async function main(): Promise<void> {
     }
     if (current === 'C' || current === 'D') {
       await openPosition(current === 'C' ? 2 : 1);
+      await readSettledPosition();
       const opened = await observe(`${current}1-after-open`);
       if (opened.positionBase <= 0) throw new Error('PROBE_POSITION_NOT_OPENED');
       const quantity = Math.abs(opened.positionBase);
