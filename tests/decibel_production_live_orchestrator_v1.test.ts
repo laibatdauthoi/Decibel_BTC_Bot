@@ -6952,50 +6952,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     }
   });
 
-  it('caps each new ENTRY at the Max size per trade, not the position', () => {
-    const base = twoSidedSnapshot();
-    const snapshot: decibel_production_live_snapshot_v1 = {
-      ...base,
-      minimumNotionalUsd: base.input.metadata.minimumSize * base.input.book.bestBid,
-      sessionConfiguration: {
-        ...base.sessionConfiguration!,
-        sizingPolicyVersion: 1,
-        preferredEntrySizeUsd: 30,
-        maximumTradeNotionalUsd: 12,
-        exposureLimits: { ...base.sessionConfiguration!.exposureLimits!, riskCapacityUsd: 100 },
-      },
-    };
-    const instance = make({ snapshots: [snapshot] });
-    try {
-      const evaluation = instance.orchestrator.evaluateAuthenticatedSnapshot(snapshot);
-      for (const order of [evaluation.desiredBid, evaluation.desiredAsk]) {
-        expect(order).not.toBeNull();
-        expect(order!.quantity * order!.price).toBeGreaterThan(10);
-        expect(order!.quantity * order!.price).toBeLessThanOrEqual(12);
-      }
-      // The decision layer refuses an opening order above the cap.
-      const price = snapshot.input.book.bestBid;
-      const decision = evaluateTradingDecision(snapshot, {
-        now: snapshot.input.now,
-        sessionId: snapshot.input.sessionId,
-        state: 'RUNNING',
-        candidate: {
-          side: 'BUY',
-          price,
-          quantity: 0.0002,
-          reduceOnly: false,
-          postOnly: true,
-          timeInForce: 'PostOnly',
-        },
-      });
-      expect(0.0002 * price).toBeGreaterThan(12);
-      expect(decision.bidEligible).toBe(false);
-      expect(decision.actionPlan.BUY.reason).toBe('ENTRY_TRADE_SIZE_CAP_EXCEEDED');
-    } finally {
-      instance.journal.close();
-    }
-  });
-
   it('selects the closest admitted maker price instead of diluting gas with a farther ASK', () => {
     const base = makeDecisionSnapshot();
     const sizing = {

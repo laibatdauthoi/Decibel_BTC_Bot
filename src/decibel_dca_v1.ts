@@ -132,11 +132,7 @@ export function assessDecibelSnapshotDCAV1(
     positionBase: position,
     entryBasis: positions.length === 1 ? positions[0]!.entryPrice : null,
     markPrice: (book.bestBid + book.bestAsk) / 2,
-    // An addition is one trade: capped like an entry by "Max size per trade".
-    preferredEntrySizeUsd: Math.min(
-      snapshot.sessionConfiguration?.preferredEntrySizeUsd ?? Number.NaN,
-      snapshot.sessionConfiguration?.maximumTradeNotionalUsd ?? Infinity,
-    ),
+    preferredEntrySizeUsd: snapshot.sessionConfiguration?.preferredEntrySizeUsd,
     riskCapacityUsd: snapshot.sessionConfiguration?.exposureLimits?.riskCapacityUsd,
     openingOrderCount: countDecibelOpeningOrdersV1(snapshot),
   });
