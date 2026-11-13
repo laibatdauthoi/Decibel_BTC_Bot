@@ -60,6 +60,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { calculateDecibelEntrySizeV1 } from '../src/decibel_entry_size_v1.js';
 import {
   getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryPriceLimitV1,
@@ -6839,6 +6840,23 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         { ...context, candidate },
       );
       expect(allowed.detailedReasons).not.toContain('RISK_BLOCKED');
+      // The entry sized against the same capacity fits through the gate.
+      const fitted = calculateDecibelEntrySizeV1({
+        preferredEntrySizeUsd: 15,
+        price: candidate.price,
+        minimumSize: 0.00001,
+        minimumNotionalUsd: 10,
+        lotSize: 0.00001,
+        maximumExecutableNotionalUsd: 100,
+        riskCapacityUsd: 11.91,
+      });
+      expect(fitted.reason).toBe('RISK_CAPACITY_ADAPTED');
+      expect(
+        evaluateTradingDecision(snapshot, {
+          ...context,
+          candidate: { ...candidate, quantity: fitted.quantity },
+        }).detailedReasons,
+      ).not.toContain('RISK_BLOCKED');
       expect(decision.riskDiagnostics?.[0]?.blockerCode).toBe(
         'RISK_BLOCKED:SESSION_PROJECTED_STRESS_LOSS',
       );
@@ -6864,7 +6882,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     },
   );
 
-  it('uses new ENTRY quantities in live quote construction, independent of Max Loss', () => {
+  it('shrinks new ENTRY quantities to the Max Loss risk capacity in live quote construction', () => {
     const base = twoSidedSnapshot();
     const snapshot: decibel_production_live_snapshot_v1 = {
       ...base,
@@ -6882,9 +6900,11 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const evaluation = instance.orchestrator.evaluateAuthenticatedSnapshot(snapshot);
       for (const order of [evaluation.desiredBid, evaluation.desiredAsk]) {
         expect(order).not.toBeNull();
-        expect(order!.quantity).toBe(0.00018);
-        expect(order!.quantity * order!.price).toBeGreaterThan(11.91);
-        expect(order!.quantity * order!.price).toBeLessThanOrEqual(15);
+        // $15 preferred would exceed the $11.91 stress-loss capacity and be blocked:
+        // the entry is shrunk on the lot grid to fit it instead.
+        expect(order!.quantity).toBe(0.00014);
+        expect(order!.quantity * order!.price).toBeGreaterThan(10);
+        expect(order!.quantity * order!.price).toBeLessThanOrEqual(11.91);
       }
     } finally {
       instance.journal.close();

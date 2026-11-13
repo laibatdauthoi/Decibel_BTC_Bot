@@ -34,7 +34,8 @@ export function calculateDecibelPreferredEntrySizeUsdV1(
   );
 }
 
-/** Pure sizing: no loss budget, PnL or projected-risk inputs. */
+/** Pure sizing. `riskCapacityUsd` (the session stress-loss capacity derived from Max Loss)
+ * only shrinks the entry so it fits instead of being blocked outright; it never enlarges it. */
 export function calculateDecibelEntrySizeV1(
   input: Readonly<{
     preferredEntrySizeUsd: number;
@@ -43,6 +44,7 @@ export function calculateDecibelEntrySizeV1(
     minimumNotionalUsd: number;
     lotSize: number;
     maximumExecutableNotionalUsd: number;
+    riskCapacityUsd?: number;
   }>,
 ) {
   if (
@@ -54,6 +56,13 @@ export function calculateDecibelEntrySizeV1(
     )
   )
     throw new Error('ENTRY_SIZE_EVIDENCE_INVALID');
+  const riskCapacityUsd =
+    input.riskCapacityUsd !== undefined &&
+    Number.isFinite(input.riskCapacityUsd) &&
+    input.riskCapacityUsd >= 0
+      ? input.riskCapacityUsd
+      : Infinity;
+  const ceilingUsd = Math.min(input.maximumExecutableNotionalUsd, riskCapacityUsd);
   const minimumQuantity = Number(
     (
       Math.ceil(
@@ -64,7 +73,7 @@ export function calculateDecibelEntrySizeV1(
   );
   const preferredQuantity = Math.max(minimumQuantity, input.preferredEntrySizeUsd / input.price);
   const quantity = floorDecibelQuantityToLotV1(
-    Math.min(preferredQuantity, input.maximumExecutableNotionalUsd / input.price),
+    Math.min(preferredQuantity, ceilingUsd / input.price),
     input.lotSize,
   );
   const available = quantity + 1e-12 >= minimumQuantity && quantity > 0;
@@ -76,12 +85,15 @@ export function calculateDecibelEntrySizeV1(
     minimumExecutableNotionalUsd: minimumQuantity * input.price,
     reason: !available
       ? 'AVAILABLE_MARGIN_BELOW_VENUE_MINIMUM'
-      : input.maximumExecutableNotionalUsd + 1e-9 < input.preferredEntrySizeUsd
-        ? 'MARGIN_ADAPTED'
-        : minimumQuantity * input.price > input.preferredEntrySizeUsd
-          ? 'VENUE_MINIMUM'
-          : quantity * input.price + 1e-9 < input.preferredEntrySizeUsd
-            ? 'LOT_ROUNDED'
-            : 'PREFERRED_ENTRY_SIZE',
+      : riskCapacityUsd < input.maximumExecutableNotionalUsd &&
+          riskCapacityUsd + 1e-9 < input.preferredEntrySizeUsd
+        ? 'RISK_CAPACITY_ADAPTED'
+        : input.maximumExecutableNotionalUsd + 1e-9 < input.preferredEntrySizeUsd
+          ? 'MARGIN_ADAPTED'
+          : minimumQuantity * input.price > input.preferredEntrySizeUsd
+            ? 'VENUE_MINIMUM'
+            : quantity * input.price + 1e-9 < input.preferredEntrySizeUsd
+              ? 'LOT_ROUNDED'
+              : 'PREFERRED_ENTRY_SIZE',
   });
 }

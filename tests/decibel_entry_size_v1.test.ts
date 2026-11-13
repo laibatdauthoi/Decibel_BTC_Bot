@@ -159,6 +159,30 @@ describe('Dynamic entry allocation and independent hard risk', () => {
       { quantity: 0, entrySizeUsd: null, reason: 'AVAILABLE_MARGIN_BELOW_VENUE_MINIMUM' },
     );
   });
+  it('shrinks to the stress-loss risk capacity instead of being blocked', () => {
+    // Live 2026-11-13: a ~$30 entry against $26.8 of capacity (Max Loss $0.5) was blocked.
+    const fitted = calculateDecibelEntrySizeV1({ ...size, riskCapacityUsd: 12.1 });
+    expect(fitted.quantity).toBe(0.00015);
+    expect(fitted.reason).toBe('RISK_CAPACITY_ADAPTED');
+    expect(fitted.entrySizeUsd! * (1 + 1e-12)).toBeLessThanOrEqual(12.1);
+    // Capacity never enlarges the entry, and invalid capacity is ignored.
+    expect(calculateDecibelEntrySizeV1({ ...size, riskCapacityUsd: 1e6 })).toEqual(
+      calculateDecibelEntrySizeV1(size),
+    );
+    expect(calculateDecibelEntrySizeV1({ ...size, riskCapacityUsd: Number.NaN })).toEqual(
+      calculateDecibelEntrySizeV1(size),
+    );
+    // Below the venue minimum it still refuses (the risk gate then blocks the minimum).
+    expect(calculateDecibelEntrySizeV1({ ...size, riskCapacityUsd: 1 }).quantity).toBe(0);
+    // The tighter of margin and risk capacity binds.
+    expect(
+      calculateDecibelEntrySizeV1({
+        ...size,
+        maximumExecutableNotionalUsd: 12.1,
+        riskCapacityUsd: 13,
+      }).reason,
+    ).toBe('MARGIN_ADAPTED');
+  });
   it('keeps executable sizing independent of Max Loss while retaining a stricter risk assessment', () => {
     const a = calculateDecibelRiskCapacityV1({ ...capacity, sizingPolicyVersion: 1 });
     const b = calculateDecibelRiskCapacityV1({

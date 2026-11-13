@@ -2351,6 +2351,13 @@ export class decibel_production_live_orchestrator_v1 {
                   (currentEntry ? currentEntry.price * currentEntry.quantity : 0),
                 sizing.maximumNotionalUsd,
               ),
+              // Shrink to the stress-loss capacity the risk gate enforces instead of
+              // proposing an entry it would block outright.
+              ...(snapshot.sessionConfiguration.exposureLimits?.riskCapacityUsd === undefined
+                ? {}
+                : {
+                    riskCapacityUsd: snapshot.sessionConfiguration.exposureLimits.riskCapacityUsd,
+                  }),
             })
           : null;
         let assessment = calculateDecibelDynamicQuoteSizeV1({
