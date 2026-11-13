@@ -16,6 +16,7 @@ import {
   constructDecibelAdaptiveTPPriceV1,
   assessDecibelAdaptiveTPV1,
   planDecibelPatientTPV1,
+  getDecibelBreakEvenTPPriceV1,
   getDecibelTPPositionKeyV1,
 } from '../src/decibel_exit_economics_v1.js';
 import { deriveDecibelExitCoverageWorkflowV1 } from '../src/decibel_exit_coverage_workflow_v1.js';
@@ -62,6 +63,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { calculateDecibelEntrySizeV1 } from '../src/decibel_entry_size_v1.js';
 import {
+  DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
   getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryPriceLimitV1,
   getDecibelTPTargetNetBpsV1,
@@ -95,6 +97,7 @@ import {
   buildDecibelCanonicalOrderKeyV1,
   classifyDecibelCancelV1,
   evaluateDecibelReplacementDecisionV1,
+  isDecibelTPCoverageSeverelyUndersizedV1,
   isTransientDecibelAuthenticatedReadErrorV1,
   evaluateDecibelTPPriceSuitabilityV1,
   assessDecibelExitEconomicsV1,
@@ -10205,7 +10208,13 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     };
   };
 
-  const adaptiveTPFixture = (sign = -1, now = 60000): decibel_production_live_snapshot_v1 => {
+  // Positions default to past the break-even hold, so these fixtures exercise the
+  // post-hold adverse mechanics; the hold itself has its own tests.
+  const adaptiveTPFixture = (
+    sign = -1,
+    now = 60000,
+    openedAgoMs = DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 + 40000,
+  ): decibel_production_live_snapshot_v1 => {
     const base = pid18876Snapshot(sign, false, 0.00047);
     const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
     const bid = sign < 0 ? 75781 : mirror(75781.1);
@@ -10231,8 +10240,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       executedBaseQuantity: 0.00047,
       executedUsdNotional: 0.00047 * basis,
       makerOrTaker: 'MAKER',
-      receivedAt: new Date(now - 40000),
-      venueTimestamp: new Date(now - 40000),
+      receivedAt: new Date(now - openedAgoMs),
+      venueTimestamp: new Date(now - openedAgoMs),
       fee: { availability: 'AVAILABLE', amount: 0.005337, currency: 'USD' },
       rebate: { availability: 'UNAVAILABLE', amount: null, currency: null },
       executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM',
@@ -10433,6 +10442,72 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         mirror(75940) - direction * offset(75940),
         8,
       );
+    },
+  );
+
+  it.each([1, -1])(
+    'Break-even hold keeps an adverse TP at net >= 0 until the position is old enough (%s)',
+    (sign) => {
+      const side = sign < 0 ? 'BUY' : 'SELL';
+      const direction = sign < 0 ? 1 : -1;
+      const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
+      const tick = 0.1;
+      const withRegime = (fixture: decibel_production_live_snapshot_v1) => ({
+        ...fixture,
+        input: {
+          ...fixture.input,
+          // A TP well inside profit, so break-even leaves room to step toward.
+          openOrders: [{ ...fixture.input.openOrders[0]!, price: mirror(75650) }],
+        },
+        practicalCapacityInputs: {
+          ...fixture.practicalCapacityInputs!,
+          tpRegimePrices: fixture.practicalCapacityInputs!.tpRegimePrices!.map((p, i) => ({
+            ...p,
+            midpoint: mirror(75740 + (i % 2) * 40),
+          })),
+        },
+      });
+      const at = (snapshot: decibel_production_live_snapshot_v1, maker: number) => ({
+        ...movePatientMarket(snapshot, mirror(maker)),
+        priceRangeBps: 6,
+      });
+      // Opened 40 seconds ago: inside the hold.
+      const fresh = withRegime(adaptiveTPFixture(sign, 60000, 40000));
+      const far = at(fresh, 75850);
+      const breakEven = getDecibelBreakEvenTPPriceV1(far, side)!;
+      const net = (snapshot: decibel_production_live_snapshot_v1, price: number) =>
+        assessDecibelExitEconomicsV1(snapshot, side, 0.00047, price).netPnlUsd!;
+      expect(net(far, breakEven)).toBeGreaterThanOrEqual(0);
+      expect(net(far, breakEven + direction * tick)).toBeLessThan(0);
+      // 18 bps adverse would trigger the rescue offset; the hold stops it at break-even.
+      const held = planDecibelPatientTPV1(far, side);
+      expect(held).toMatchObject({
+        targetPrice: breakEven,
+        reason: 'REPRICE:TP_ADVERSE_EXIT_REPRICE',
+      });
+      expect(assessDecibelAdaptiveTPV1(far, side, breakEven)).toMatchObject({ allowed: true });
+      const rested = {
+        ...far,
+        tpAdverseProgress: held.authorization,
+        input: { ...far.input, openOrders: [{ ...far.input.openOrders[0]!, price: breakEven }] },
+      };
+      // Further adverse while the hold lasts: the TP stays at break-even.
+      expect(planDecibelPatientTPV1(at(rested, 76000), side)).toMatchObject({
+        targetPrice: null,
+        reason: 'TP_ADVERSE_BREAK_EVEN_HOLD',
+      });
+      // Past the hold, the rescue offset applies and may go below break-even.
+      const aged = withRegime(adaptiveTPFixture(sign, 60000));
+      const agedRested = {
+        ...at(aged, 75850),
+        input: {
+          ...at(aged, 75850).input,
+          openOrders: [{ ...aged.input.openOrders[0]!, price: breakEven }],
+        },
+      };
+      const rescue = planDecibelPatientTPV1(at(agedRested, 76000), side);
+      expect(rescue.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
+      expect(direction * (rescue.targetPrice! - breakEven)).toBeGreaterThan(0);
     },
   );
 
@@ -11091,8 +11166,9 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       executedBaseQuantity: -f.positionBase,
       executedUsdNotional: -f.positionBase * f.entryBasis,
       makerOrTaker: 'MAKER',
-      receivedAt: new Date(f.timestamp - 1),
-      venueTimestamp: new Date(f.timestamp - 1),
+      // Past the break-even hold: this replays the post-hold adverse step.
+      receivedAt: new Date(f.timestamp - DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 - 1),
+      venueTimestamp: new Date(f.timestamp - DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 - 1),
       transactionVersion: '123',
       fee: {
         availability: 'AVAILABLE',
@@ -13915,6 +13991,34 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       COVERAGE_GAP_MS: 1000,
     });
   });
+  it.each([1, -1])(
+    'replaces an unchanged-price TP that covers less than half of the position (%s)',
+    (sign) => {
+      const incident = inventoryIncident(sign);
+      const resting = incident.input.openOrders[0]!;
+      const position = Math.abs(incident.input.actualInventoryBase);
+      const small = { ...resting, quantity: 0.00003 };
+      const snapshot = { ...incident, input: { ...incident.input, openOrders: [small] } };
+      const action = (current: typeof resting) => ({
+        action: 'WOULD_REPLACE' as const,
+        side: current.side,
+        current,
+        desired: { ...current, quantity: position, generation: 1 },
+        reason: 'EXIT_COVERAGE_UPSIZE',
+      });
+      expect(isDecibelTPCoverageSeverelyUndersizedV1(0.00003, position)).toBe(true);
+      expect(isDecibelTPCoverageSeverelyUndersizedV1(position * 0.6, position)).toBe(false);
+      const decision = evaluateDecibelReplacementDecisionV1(
+        action(small),
+        snapshot,
+        60000,
+        30000,
+        50,
+      );
+      // Cancel/replace at the same price through the verified coverage workflow.
+      expect(decision).toMatchObject({ cancel: true, reason: 'EXIT_COVERAGE_UPSIZE' });
+    },
+  );
   it.each([1, -1])(
     'enforces aggregate integer-lot no-flip preflight before and after a partial fill (%s)',
     (sign) => {

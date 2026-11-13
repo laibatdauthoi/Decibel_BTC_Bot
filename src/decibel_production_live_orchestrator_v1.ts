@@ -1341,7 +1341,20 @@ export function evaluateDecibelReplacementDecisionV1(
           tpSustainedAgeMs,
         )
       : null;
-  if (validExit && !canonicalExit && !unsafe && adaptiveReview?.TP_REPRICE_DECISION !== 'REPRICE')
+  // A TP covering less than half of the position protects too little to be worth keeping:
+  // a quantity-only cancel/replace at the same price goes through the verified coverage
+  // workflow below instead of leaving most of the inventory without a TP.
+  const severelyUndersized =
+    action.reason === 'EXIT_COVERAGE_UPSIZE' &&
+    desiredTicks === currentTicks &&
+    isDecibelTPCoverageSeverelyUndersizedV1(action.current.quantity, action.desired.quantity);
+  if (
+    validExit &&
+    !canonicalExit &&
+    !unsafe &&
+    !severelyUndersized &&
+    adaptiveReview?.TP_REPRICE_DECISION !== 'REPRICE'
+  )
     return Object.freeze({
       cancel: false,
       reason:
@@ -1437,6 +1450,21 @@ export function evaluateDecibelReplacementDecisionV1(
     });
   }
   return null;
+}
+
+/** Below this fraction of the desired quantity, an unchanged-price TP is replaced. */
+export const DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 = 0.5;
+
+export function isDecibelTPCoverageSeverelyUndersizedV1(
+  currentQuantity: number,
+  desiredQuantity: number,
+): boolean {
+  return (
+    Number.isFinite(currentQuantity) &&
+    Number.isFinite(desiredQuantity) &&
+    currentQuantity > 0 &&
+    currentQuantity < desiredQuantity * DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1
+  );
 }
 
 export type decibel_cancel_class_v1 = 'STRATEGIC_REPRICE_CANCEL' | 'SAFETY_CANCEL';
@@ -3606,6 +3634,11 @@ export class decibel_production_live_orchestrator_v1 {
       action.current?.reduceOnly === true &&
       action.desired &&
       action.desired.quantity > action.current.quantity + 1e-12 &&
+      !(
+        action.reason === 'EXIT_COVERAGE_UPSIZE' &&
+        action.desired.price === action.current.price &&
+        isDecibelTPCoverageSeverelyUndersizedV1(action.current.quantity, action.desired.quantity)
+      ) &&
       evaluation.operatingState !== 'RISK_REDUCTION' &&
       evaluation.operatingState !== 'SESSION_UNWIND' &&
       calculateDecibelExitCoverageV1(snapshot.input).UNCOVERED_INVENTORY_QTY > 0 &&

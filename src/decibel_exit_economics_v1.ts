@@ -2,6 +2,7 @@ import type { decibel_production_live_snapshot_v1 } from './decibel_production_l
 import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
 import {
+  DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
   DECIBEL_TP_RESCUE_COOLDOWN_MS_V1,
   getDecibelTPRescueOffsetBpsV1,
   getDecibelTPRescueTriggerBpsV1,
@@ -18,6 +19,13 @@ import {
 export function getDecibelTPPositionKeyV1(
   snapshot: decibel_production_live_snapshot_v1,
 ): string | null {
+  return getDecibelTPPositionEpochV1(snapshot)?.key ?? null;
+}
+
+/** The position key plus the receipt time of its opening fill. */
+function getDecibelTPPositionEpochV1(
+  snapshot: decibel_production_live_snapshot_v1,
+): Readonly<{ key: string; openedAt: number }> | null {
   const input = snapshot.input;
   const ledger = input.actualFillLedger;
   if (!input.actualInventoryBase || ledger.inventoryBase !== input.actualInventoryBase) return null;
@@ -26,6 +34,7 @@ export function getDecibelTPPositionKeyV1(
   );
   if (Fills.size !== ledger.fills.length) return null;
   let opening: string | null = null;
+  let openedAt = Number.NaN;
   let inventory = 0;
   for (const app of ledger.applications) {
     const fill = Fills.get(JSON.stringify([app.venueFillId, app.venueOrderId]));
@@ -36,17 +45,53 @@ export function getDecibelTPPositionKeyV1(
       fill.marketAddress !== input.market
     )
       return null;
-    if (inventory === 0 || Math.sign(inventory) !== Math.sign(app.inventoryAfter))
+    if (inventory === 0 || Math.sign(inventory) !== Math.sign(app.inventoryAfter)) {
       opening = app.applicationId;
+      openedAt = fill.receivedAt.getTime();
+    }
     inventory = app.inventoryAfter;
     if (inventory === 0) opening = null;
   }
   if (!opening || inventory !== input.actualInventoryBase) return null;
-  return createHash('sha256')
+  const key = createHash('sha256')
     .update(
       JSON.stringify([input.configuredNetwork, input.configuredSubaccount, input.market, opening]),
     )
     .digest('hex');
+  return Object.freeze({ key, openedAt });
+}
+
+/** The tick-aligned maker TP price at which closing the whole position nets >= 0 after
+ * fees, gas and safety reserves, or null without fresh exit-cost evidence. */
+export function getDecibelBreakEvenTPPriceV1(
+  snapshot: decibel_production_live_snapshot_v1,
+  side: 'BUY' | 'SELL',
+): number | null {
+  const tick = snapshot.input.metadata.tickSize;
+  const quantity = Math.abs(snapshot.input.actualInventoryBase);
+  const reference = (snapshot.input.book.bestBid + snapshot.input.book.bestAsk) / 2;
+  if (!Number.isFinite(tick) || tick <= 0 || !Number.isFinite(reference) || reference <= 0)
+    return null;
+  const initial = assessDecibelExitEconomicsV1(snapshot, side, quantity, reference);
+  const breakdown = initial.breakdown;
+  if (initial.blockers.length || initial.netPnlUsd === null || !breakdown) return null;
+  // Exit fee and safety reserves scale with price; everything else is fixed.
+  const exitRate =
+    (breakdown.exitFeeReserveUsd + breakdown.safetyReserveUsd) / (quantity * reference);
+  const slope = quantity * ((side === 'SELL' ? 1 : -1) - exitRate);
+  if (!Number.isFinite(slope) || slope === 0) return null;
+  const boundary = reference - initial.netPnlUsd / slope;
+  let ticks =
+    side === 'SELL' ? Math.ceil(boundary / tick - 1e-9) : Math.floor(boundary / tick + 1e-9);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const price = Number((ticks * tick).toPrecision(15));
+    if (!Number.isFinite(price) || price <= 0) return null;
+    const checked = assessDecibelExitEconomicsV1(snapshot, side, quantity, price);
+    if (!checked.blockers.length && checked.netPnlUsd !== null && checked.netPnlUsd >= 0)
+      return price;
+    ticks += side === 'SELL' ? 1 : -1;
+  }
+  return null;
 }
 
 export function planDecibelPatientTPV1(
@@ -57,7 +102,8 @@ export function planDecibelPatientTPV1(
   const tick = input.metadata.tickSize;
   const direction = side === 'BUY' ? 1 : -1;
   const maker = side === 'BUY' ? input.book.bestBid : input.book.bestAsk;
-  const positionKey = getDecibelTPPositionKeyV1(snapshot);
+  const epoch = getDecibelTPPositionEpochV1(snapshot);
+  const positionKey = epoch?.key ?? null;
   const raw = snapshot.tpAdverseProgress;
   const progress =
     raw &&
@@ -204,53 +250,72 @@ export function planDecibelPatientTPV1(
     rescueTicks < bandTicks &&
     adverseTicks * tick * 10_000 >=
       entryBasis * getDecibelTPRescueTriggerBpsV1(snapshot.priceRangeBps);
-  // A rescue step waits out the cooldown after the previous adverse step, so a fast move
-  // is not chased tick by tick into its low.
+  // Move only the NEW adverse excess outside the normal excursion and retain a whole
+  // normal excursion between TP and maker for a recovery fill.
+  const corridorStepTicks = Math.min(newAdverseTicks - bandTicks, distanceTicks - bandTicks);
+  // A change smaller than both the observed normal excursion and the original
+  // recovery corridor cannot justify surrendering the existing queue priority.
+  const corridorMinimumTicks = Math.ceil(
+    (recoveryDistancePrice > 0 ? Math.min(range, recoveryDistancePrice) : range) / tick,
+  );
+  const corridorReady =
+    range > 0 &&
+    adverseTicks > bandTicks &&
+    corridorStepTicks > Math.max(1, spreadTicks) &&
+    corridorStepTicks >= corridorMinimumTicks;
+  const authorize = (stepTicks: number, minimumStepTicks: number) => {
+    const targetPrice = Number(
+      ((Math.round(resting.price / tick) + direction * stepTicks) * tick).toPrecision(15),
+    );
+    return result(
+      targetPrice,
+      'REPRICE:TP_ADVERSE_EXIT_REPRICE',
+      band,
+      {
+        positionKey,
+        anchorPrice: maker,
+        targetPrice,
+        previousPrice: resting.price,
+        quantity: Math.abs(input.actualInventoryBase),
+        observedAt: input.now,
+        triggerBandPrice: band,
+        recoveryDistancePrice,
+      },
+      true,
+      minimumStepTicks,
+    );
+  };
+  // Break-even hold: most adverse excursions come back to the entry within 20-30 minutes.
+  // Until the position (from its opening fill) is older than the hold, an adverse step
+  // moves the TP at most to the net >= 0 price, never past it. Max Loss stays the hard stop.
+  const positionAgeMs = input.now - (epoch?.openedAt ?? Number.NaN);
+  if (!(positionAgeMs >= DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1)) {
+    const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
+    if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);
+    const roomTicks = direction * (Math.round(breakEven / tick) - Math.round(resting.price / tick));
+    const stepTicks = rescue ? roomTicks : Math.min(corridorStepTicks, roomTicks);
+    if (!(rescue || corridorReady) || stepTicks < 1)
+      return result(null, 'TP_ADVERSE_BREAK_EVEN_HOLD', band);
+    return authorize(stepTicks, stepTicks);
+  }
+  // After the hold: a rescue step waits out the cooldown after the previous adverse step,
+  // so a fast move is not chased tick by tick into its low.
   if (
     rescue &&
     progress !== null &&
     input.now - progress.observedAt < DECIBEL_TP_RESCUE_COOLDOWN_MS_V1
   )
     return result(null, 'TP_ADVERSE_RESCUE_COOLDOWN', band);
-  // Otherwise move only the NEW adverse excess outside the normal excursion and retain
-  // a whole normal excursion between TP and maker for a recovery fill.
-  const stepTicks = rescue
-    ? distanceTicks - rescueTicks
-    : Math.min(newAdverseTicks - bandTicks, distanceTicks - bandTicks);
-  // A change smaller than both the observed normal excursion and the original
-  // recovery corridor cannot justify surrendering the existing queue priority.
-  const minimumStepTicks = rescue
-    ? rescueTicks
-    : Math.ceil(
-        (recoveryDistancePrice > 0 ? Math.min(range, recoveryDistancePrice) : range) / tick,
-      );
+  const stepTicks = rescue ? distanceTicks - rescueTicks : corridorStepTicks;
+  const minimumStepTicks = rescue ? rescueTicks : corridorMinimumTicks;
   if (
     range <= 0 ||
-    (adverseTicks <= bandTicks && !rescue) ||
+    (!rescue && !corridorReady) ||
     stepTicks <= Math.max(1, spreadTicks) ||
     stepTicks < minimumStepTicks
   )
     return result(null, 'TP_ADVERSE_NEW_SIGNIFICANT_PROGRESS_REQUIRED', band);
-  const targetPrice = Number(
-    ((Math.round(resting.price / tick) + direction * stepTicks) * tick).toPrecision(15),
-  );
-  return result(
-    targetPrice,
-    'REPRICE:TP_ADVERSE_EXIT_REPRICE',
-    band,
-    {
-      positionKey,
-      anchorPrice: maker,
-      targetPrice,
-      previousPrice: resting.price,
-      quantity: Math.abs(input.actualInventoryBase),
-      observedAt: input.now,
-      triggerBandPrice: band,
-      recoveryDistancePrice,
-    },
-    true,
-    Math.max(minimumStepTicks, Math.max(1, spreadTicks) + 1),
-  );
+  return authorize(stepTicks, Math.max(minimumStepTicks, Math.max(1, spreadTicks) + 1));
 }
 
 /** A market-sized adverse displacement starts maker repricing independently of
