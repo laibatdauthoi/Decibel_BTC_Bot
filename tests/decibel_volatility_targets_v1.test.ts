@@ -75,11 +75,11 @@ describe('volatility targets', () => {
   });
 
   it('scales the rescue TP trigger and offset with the range', () => {
-    expect(getDecibelTPRescueTriggerBpsV1(null)).toBe(10);
-    expect(getDecibelTPRescueTriggerBpsV1(18.6)).toBeCloseTo(18.6, 12);
-    expect(getDecibelTPRescueTriggerBpsV1(100)).toBe(30);
-    expect(getDecibelTPRescueOffsetBpsV1(undefined)).toBe(2);
-    expect(getDecibelTPRescueOffsetBpsV1(10)).toBeCloseTo(2.5, 12);
-    expect(getDecibelTPRescueOffsetBpsV1(100)).toBe(8);
+    expect(getDecibelTPRescueTriggerBpsV1(null)).toBe(15);
+    expect(getDecibelTPRescueTriggerBpsV1(18.6)).toBeCloseTo(27.9, 12);
+    expect(getDecibelTPRescueTriggerBpsV1(100)).toBe(50);
+    expect(getDecibelTPRescueOffsetBpsV1(undefined)).toBe(5);
+    expect(getDecibelTPRescueOffsetBpsV1(18.6)).toBeCloseTo(9.3, 12);
+    expect(getDecibelTPRescueOffsetBpsV1(100)).toBe(20);
   });
 });

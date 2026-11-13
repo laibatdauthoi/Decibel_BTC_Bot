@@ -2,6 +2,7 @@ import type { decibel_production_live_snapshot_v1 } from './decibel_production_l
 import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
 import {
+  DECIBEL_TP_RESCUE_COOLDOWN_MS_V1,
   getDecibelTPRescueOffsetBpsV1,
   getDecibelTPRescueTriggerBpsV1,
   getDecibelTPTargetNetBpsV1,
@@ -203,6 +204,14 @@ export function planDecibelPatientTPV1(
     rescueTicks < bandTicks &&
     adverseTicks * tick * 10_000 >=
       entryBasis * getDecibelTPRescueTriggerBpsV1(snapshot.priceRangeBps);
+  // A rescue step waits out the cooldown after the previous adverse step, so a fast move
+  // is not chased tick by tick into its low.
+  if (
+    rescue &&
+    progress !== null &&
+    input.now - progress.observedAt < DECIBEL_TP_RESCUE_COOLDOWN_MS_V1
+  )
+    return result(null, 'TP_ADVERSE_RESCUE_COOLDOWN', band);
   // Otherwise move only the NEW adverse excess outside the normal excursion and retain
   // a whole normal excursion between TP and maker for a recovery fill.
   const stepTicks = rescue

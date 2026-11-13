@@ -10369,25 +10369,38 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   };
 
   it.each([1, -1])(
-    'Rescue TP rests a small offset from maker once far adverse, with hysteresis (%s)',
+    'Rescue TP rests an offset from maker once far adverse, with hysteresis and cooldown (%s)',
     (sign) => {
       const side = sign < 0 ? 'BUY' : 'SELL';
       const direction = sign < 0 ? 1 : -1;
       const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
-      const base = adaptiveTPFixture(sign);
-      // 8.9 bps adverse: below the 10 bps rescue trigger, the corridor step is unchanged.
-      expect(planDecibelPatientTPV1({ ...base, priceRangeBps: 6 }, side).targetPrice).toBe(
-        planDecibelPatientTPV1(base, side).targetPrice,
+      const fixture = adaptiveTPFixture(sign);
+      // A wider normal excursion (40 USD) so the recovery corridor exceeds the rescue offset.
+      const base = {
+        ...fixture,
+        practicalCapacityInputs: {
+          ...fixture.practicalCapacityInputs!,
+          tpRegimePrices: fixture.practicalCapacityInputs!.tpRegimePrices!.map((p, i) => ({
+            ...p,
+            midpoint: mirror(75740 + (i % 2) * 40),
+          })),
+        },
+      };
+      const at = (snapshot: decibel_production_live_snapshot_v1, maker: number) => ({
+        ...movePatientMarket(snapshot, mirror(maker)),
+        priceRangeBps: 6,
+      });
+      const offset = (maker: number) => Math.ceil((mirror(maker) * 5) / 10_000 / 0.1) * 0.1;
+      // 11.4 bps adverse: below the 15 bps rescue trigger, the corridor logic is unchanged.
+      expect(planDecibelPatientTPV1(at(base, 75800), side)).toEqual(
+        planDecibelPatientTPV1({ ...at(base, 75800), priceRangeBps: undefined }, side),
       );
-      // 11.4 bps adverse (maker 75800 vs basis 75713.4) with a 6 bps 5-minute range.
-      const far = { ...movePatientMarket(base, mirror(75800)), priceRangeBps: 6 };
-      const maker = mirror(75800);
+      // 18 bps adverse (maker 75850 vs basis 75713.4) with a 6 bps 5-minute range:
+      // offset clamp(0.5 x 6, 5, 20) = 5 bps from maker.
+      const far = at(base, 75850);
       const rescue = planDecibelPatientTPV1(far, side);
-      // Offset clamp(0.25 x 6, 2, 8) = 2 bps of 75800 = 15.16 -> 152 ticks.
-      expect(rescue.targetPrice).toBeCloseTo(maker - direction * 15.2, 8);
-      // Without rescue the TP would keep the whole recovery corridor from maker.
-      expect(15.2).toBeLessThan(rescue.movementBandUsd!);
-      expect(rescue.minimumStepTicks).toBe(152);
+      expect(rescue.targetPrice).toBeCloseTo(mirror(75850) - direction * offset(75850), 8);
+      expect(offset(75850)).toBeLessThan(rescue.movementBandUsd!);
       const policy = assessDecibelAdaptiveTPV1(far, side, rescue.targetPrice!);
       expect(policy).toMatchObject({ mode: 'ADVERSE_EXIT_REPRICE', allowed: true });
       expect(policy.projectedSessionPnlUsd).toBeLessThan(0);
@@ -10399,27 +10412,27 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           openOrders: [{ ...far.input.openOrders[0]!, price: rescue.targetPrice! }],
         },
       };
-      // Another 10 USD adverse is less than one offset: keep the queue position.
-      expect(
-        planDecibelPatientTPV1(
-          { ...movePatientMarket(rested, mirror(75810)), priceRangeBps: 6 },
-          side,
-        ).targetPrice,
-      ).toBeNull();
-      // A recovery never moves the TP back.
-      expect(
-        planDecibelPatientTPV1(
-          { ...movePatientMarket(rested, mirror(75790)), priceRangeBps: 6 },
-          side,
-        ).targetPrice,
-      ).toBeNull();
-      // Two offsets further adverse: follow again, still one offset from maker.
-      expect(
-        planDecibelPatientTPV1(
-          { ...movePatientMarket(rested, mirror(75820)), priceRangeBps: 6 },
-          side,
-        ).targetPrice,
-      ).toBeCloseTo(mirror(75820) - direction * 15.2, 8);
+      // Less than one more offset adverse, or a recovery: keep the queue position.
+      expect(planDecibelPatientTPV1(at(rested, 75870), side).targetPrice).toBeNull();
+      expect(planDecibelPatientTPV1(at(rested, 75830), side).targetPrice).toBeNull();
+      // Two more offsets adverse right after the previous step: wait out the cooldown.
+      const committed = { ...rested, tpAdverseProgress: rescue.authorization };
+      expect(planDecibelPatientTPV1(at(committed, 75940), side)).toMatchObject({
+        targetPrice: null,
+        reason: 'TP_ADVERSE_RESCUE_COOLDOWN',
+      });
+      // After the cooldown it follows again, still one offset from maker.
+      const cooled = {
+        ...rested,
+        tpAdverseProgress: {
+          ...rescue.authorization!,
+          observedAt: rescue.authorization!.observedAt - 60_000,
+        },
+      };
+      expect(planDecibelPatientTPV1(at(cooled, 75940), side).targetPrice).toBeCloseTo(
+        mirror(75940) - direction * offset(75940),
+        8,
+      );
     },
   );
 

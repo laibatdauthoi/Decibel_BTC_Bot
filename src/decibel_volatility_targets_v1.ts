@@ -107,14 +107,20 @@ export function getDecibelEntryReplacementBandBpsV1(rangeBps: number | null | un
  * Rescue TP: once the maker price is at least the trigger (bps) adverse to the entry basis,
  * an adverse-exit TP rests only the offset (bps) away from the maker price instead of a whole
  * recovery corridor away, trading some PnL for a reachable exit. The Max Loss budget check
- * still applies. Trigger clamp(1.0 x range, 10, 30); offset clamp(0.25 x range, 2, 8).
+ * still applies. Trigger clamp(1.5 x range, 15, 50); offset clamp(0.5 x range, 5, 20).
+ * After a rescue step the TP waits at least the cooldown before following again.
+ *
+ * Live 2026-11-13 (first version: trigger 1.0 x range >= 10, offset 0.25 x range >= 2, no
+ * cooldown): in a fast 35 bps drop the TP followed the maker 3 times in 30 s and sold at the
+ * low for -33 bps. The wider trigger/offset and the cooldown leave room for a bounce.
  */
-export const DECIBEL_TP_RESCUE_TRIGGER_FACTOR_V1 = 1;
-export const DECIBEL_TP_RESCUE_TRIGGER_MIN_BPS_V1 = 10;
-export const DECIBEL_TP_RESCUE_TRIGGER_MAX_BPS_V1 = 30;
-export const DECIBEL_TP_RESCUE_OFFSET_FACTOR_V1 = 0.25;
-export const DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1 = 2;
-export const DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1 = 8;
+export const DECIBEL_TP_RESCUE_TRIGGER_FACTOR_V1 = 1.5;
+export const DECIBEL_TP_RESCUE_TRIGGER_MIN_BPS_V1 = 15;
+export const DECIBEL_TP_RESCUE_TRIGGER_MAX_BPS_V1 = 50;
+export const DECIBEL_TP_RESCUE_OFFSET_FACTOR_V1 = 0.5;
+export const DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1 = 5;
+export const DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1 = 20;
+export const DECIBEL_TP_RESCUE_COOLDOWN_MS_V1 = 60_000;
 
 export function getDecibelTPRescueTriggerBpsV1(rangeBps: number | null | undefined): number {
   if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
