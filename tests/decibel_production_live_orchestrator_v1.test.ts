@@ -8644,6 +8644,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   it.each([1, -1])(
     'does not submit a second exit before exact cancellation reconciliation (%s)',
     async (sign) => {
+      // The TP covers 6/7 (above the 75% replacement threshold): kept, not replaced.
       const base = twoSidedSnapshot(sign * 0.0007);
       const side = sign > 0 ? ('SELL' as const) : ('BUY' as const);
       const price = side === 'SELL' ? 80100 : 79900;
@@ -8654,7 +8655,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         market: 'BTC/USD',
         side,
         price,
-        quantity: 0.0005,
+        quantity: 0.0006,
         tickSize: base.input.metadata.tickSize,
         lotSize: base.input.metadata.lotSize,
         clientOrderId: (side === 'SELL' ? 'd1s' : 'd1b') + 'a'.repeat(29),
@@ -8672,7 +8673,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         strategyConfigId: base.input.strategyConfigId,
         side,
         price,
-        quantity: 0.0005,
+        quantity: 0.0006,
         reduceOnly: true,
         postOnly: true,
         timeInForce: 'PostOnly' as const,
@@ -9775,7 +9776,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     [1, true],
     [-1, true],
   ] as const)(
-    'blocks position growth at candidate and final admission (sign %s, protection contract %s)',
+    'blocks position growth without an admitted maker DCA (sign %s, protection contract %s)',
     async (sign, withContract) => {
       const fixture = tpPriceFixture(sign).snapshot;
       const snapshot = withContract
@@ -9807,11 +9808,74 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           },
         });
         expect(side === 'BUY' ? decision.bidEligible : decision.askEligible).toBe(false);
-        expect(decision.actionPlan[side].reason).toBe('POSITION_GROWTH_DISABLED');
+        expect(decision.actionPlan[side].reason).toBe('DCA_MAKER_POST_ONLY_REQUIRED');
+        // A maker candidate still needs an admitted DCA (this fixture has no sizing policy).
+        const maker = evaluateTradingDecision(snapshot, {
+          now: snapshot.input.now,
+          sessionId: snapshot.input.sessionId,
+          state: 'RUNNING',
+          candidate: {
+            side,
+            price: side === 'BUY' ? snapshot.input.book.bestBid : snapshot.input.book.bestAsk,
+            quantity: 0.00013,
+            reduceOnly: false,
+            postOnly: true,
+            timeInForce: 'PostOnly',
+          },
+        });
+        expect(side === 'BUY' ? maker.bidEligible : maker.askEligible).toBe(false);
+        expect(maker.actionPlan[side].reason).toMatch(/^DCA_/);
         expect(test.submitted()).toEqual([]);
       } finally {
         await test.orchestrator.close();
       }
+    },
+  );
+  it.each([1, -1])(
+    'admits a maker DCA addition far enough adverse within capacity (%s)',
+    (sign) => {
+      const fixture = tpPriceFixture(sign).snapshot;
+      const side = sign > 0 ? 'BUY' : 'SELL';
+      const maker = side === 'BUY' ? fixture.input.book.bestBid : fixture.input.book.bestAsk;
+      const position = fixture.input.actualInventoryBase;
+      const snapshot = (basisOffsetBps: number) => ({
+        ...fixture,
+        authenticatedPositions: [
+          {
+            market: 'BTC/USD',
+            size: position,
+            source: 'BOT' as const,
+            // A long's basis above the maker (a short's below) by the given distance.
+            entryPrice: maker * (1 + (sign * basisOffsetBps) / 10_000),
+          },
+        ],
+        sessionConfiguration: {
+          ...fixture.sessionConfiguration!,
+          sizingPolicyVersion: 1 as const,
+          preferredEntrySizeUsd: Math.abs(position) * maker,
+          exposureLimits: {
+            ...fixture.sessionConfiguration!.exposureLimits!,
+            riskCapacityUsd: Math.abs(position) * maker * 3,
+          },
+        },
+      });
+      const decide = (snap: ReturnType<typeof snapshot>) =>
+        evaluateTradingDecision(snap, {
+          now: snap.input.now,
+          sessionId: snap.input.sessionId,
+          state: 'RUNNING',
+          candidate: {
+            side,
+            price: maker,
+            quantity: Math.abs(position),
+            reduceOnly: false,
+            postOnly: true,
+            timeInForce: 'PostOnly',
+          },
+        });
+      const far = decide(snapshot(40));
+      expect(far.actionPlan[side].reason).not.toMatch(/^(DCA_|POSITION_GROWTH)/);
+      expect(decide(snapshot(10)).actionPlan[side].reason).toBe('DCA_ADVERSE_DISTANCE_REQUIRED');
     },
   );
   it.each(
@@ -13817,8 +13881,9 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     [
       { sign: 1, quantity: 0.00089, remaining: 0.00071 },
       { sign: -1, quantity: 0.00089, remaining: 0.00071 },
-      { sign: 1, quantity: 0.00102, remaining: 0.00071 },
-      { sign: -1, quantity: 0.00102, remaining: 0.00071 },
+      // 0.00071 / 0.00094 stays above the 75% replacement threshold.
+      { sign: 1, quantity: 0.00094, remaining: 0.00071 },
+      { sign: -1, quantity: 0.00094, remaining: 0.00071 },
       { sign: 1, quantity: 0.00079, remaining: 0.00061 },
       { sign: -1, quantity: 0.00079, remaining: 0.00061 },
     ].flatMap((scenario) => [false, true].map((contract) => ({ ...scenario, contract }))),
@@ -13945,9 +14010,10 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
               price: snapshot.input.openOrders[0]!.price,
               quantity: position,
             });
+            // Below 75% coverage the same-price TP is replaced; above it, kept.
             expect(
               evaluateDecibelReplacementDecisionV1(repair!, snapshot, 0, 30000, 50)?.cancel,
-            ).toBe(false);
+            ).toBe(isDecibelTPCoverageSeverelyUndersizedV1(covered, position));
             const stale = {
               ...snapshot,
               practicalCapacityInputs: {
@@ -14040,7 +14106,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     });
   });
   it.each([1, -1])(
-    'replaces an unchanged-price TP that covers less than half of the position (%s)',
+    'replaces an unchanged-price TP that covers less than 75% of the position (%s)',
     (sign) => {
       const incident = inventoryIncident(sign);
       const resting = incident.input.openOrders[0]!;
@@ -14055,7 +14121,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         reason: 'EXIT_COVERAGE_UPSIZE',
       });
       expect(isDecibelTPCoverageSeverelyUndersizedV1(0.00003, position)).toBe(true);
-      expect(isDecibelTPCoverageSeverelyUndersizedV1(position * 0.6, position)).toBe(false);
+      expect(isDecibelTPCoverageSeverelyUndersizedV1(position * 0.8, position)).toBe(false);
       const decision = evaluateDecibelReplacementDecisionV1(
         action(small),
         snapshot,
@@ -15318,9 +15384,10 @@ describe('Authenticated inventory coverage and TP preservation', () => {
           validUntil: after.now + after.maxBboAgeMs,
         })),
       };
+      // 5 of 7 units (71%) is below the 75% threshold: replaced at the same price.
       expect(
         evaluateDecibelReplacementDecisionV1(replacement, snapshot, 0, 30000, 50)?.cancel,
-      ).toBe(false);
+      ).toBe(true);
       expect(classifyDecibelCancelV1(replacement)).toBe('STRATEGIC_REPRICE_CANCEL');
       // Cancel remains pending: no replacement can claim working coverage or resubmit.
       const cancelling = {
@@ -15354,6 +15421,35 @@ describe('Authenticated inventory coverage and TP preservation', () => {
       ).toBe(0);
     },
   );
+  it.each([1, -1])('rests one maker DCA level only with an admitted growth limit (%s)', (sign) => {
+    const covered = fixture(sign * 0.005, 0.005);
+    const entrySide = sign > 0 ? 'BUY' : 'SELL';
+    const desiredEntry = (
+      evaluation: ReturnType<typeof evaluateDecibelAuthenticatedPassiveRecyclingV1>,
+    ) => (entrySide === 'BUY' ? evaluation.desiredBid : evaluation.desiredAsk);
+    const reason = (
+      evaluation: ReturnType<typeof evaluateDecibelAuthenticatedPassiveRecyclingV1>,
+    ) => (entrySide === 'BUY' ? evaluation.bidEligibilityReason : evaluation.askEligibilityReason);
+    const blocked = evaluateDecibelAuthenticatedPassiveRecyclingV1(covered, sizing);
+    expect(desiredEntry(blocked)).toBeNull();
+    expect(reason(blocked)).toBe('POSITION_GROWTH_DISABLED');
+    // The maker price is beyond the DCA limit: one growth level rests.
+    const admitted = evaluateDecibelAuthenticatedPassiveRecyclingV1(covered, {
+      ...sizing,
+      positionGrowth: { side: entrySide, priceLimit: sign > 0 ? 1e9 : 1e-9 },
+    });
+    expect(desiredEntry(admitted)).not.toBeNull();
+    expect(
+      admitted.actions.filter((a) => a.side === entrySide && a.action === 'WOULD_PLACE'),
+    ).toHaveLength(1);
+    // Not far enough adverse yet.
+    const near = evaluateDecibelAuthenticatedPassiveRecyclingV1(covered, {
+      ...sizing,
+      positionGrowth: { side: entrySide, priceLimit: sign > 0 ? 1e-9 : 1e9 },
+    });
+    expect(desiredEntry(near)).toBeNull();
+    expect(reason(near)).toBe('DCA_ADVERSE_DISTANCE_REQUIRED');
+  });
   it('does not count duplicate order projections or inflight exits as confirmed coverage', () => {
     const source = fixture(0.007, 0.005);
     const duplicated = {

@@ -1,4 +1,5 @@
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
+import { assessDecibelSnapshotDCAV1 } from './decibel_dca_v1.js';
 import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_workflow_v1.js';
 import {
   calculateDecibelMidpointRangeBpsV1,
@@ -1341,7 +1342,7 @@ export function evaluateDecibelReplacementDecisionV1(
           tpSustainedAgeMs,
         )
       : null;
-  // A TP covering less than half of the position protects too little to be worth keeping:
+  // A TP covering less than 75% of the position protects too little to be worth keeping:
   // a quantity-only cancel/replace at the same price goes through the verified coverage
   // workflow below instead of leaving most of the inventory without a TP.
   const severelyUndersized =
@@ -1453,7 +1454,8 @@ export function evaluateDecibelReplacementDecisionV1(
 }
 
 /** Below this fraction of the desired quantity, an unchanged-price TP is replaced. */
-export const DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 = 0.5;
+// 0.75: after a DCA fill (at least a third of the position) the old TP covers at most 75%.
+export const DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 = 0.75;
 
 export function isDecibelTPCoverageSeverelyUndersizedV1(
   currentQuantity: number,
@@ -2277,8 +2279,21 @@ export class decibel_production_live_orchestrator_v1 {
       partialPrice ??
         (exitSide === 'SELL' ? snapshot.input.book.bestAsk : snapshot.input.book.bestBid),
     );
+    // Single DCA addition: admitted only far enough adverse and within the risk capacity
+    // left after the current position (never a raised limit).
+    const dca =
+      snapshot.input.actualInventoryBase !== 0 &&
+      !this.sessionUnwindRequested &&
+      !this.riskReductionRequested &&
+      snapshot.sessionConfiguration?.sizingPolicyVersion === 1
+        ? assessDecibelSnapshotDCAV1(snapshot)
+        : null;
     const constrainedSizing = {
       ...sizing,
+      positionGrowth:
+        dca?.allowed && dca.side !== null && dca.priceLimit !== null
+          ? { side: dca.side, priceLimit: dca.priceLimit }
+          : null,
       entryEvidenceBlocker: limits?.capacityBlocker ?? null,
       ...(snapshot.reductionCapacity
         ? {
@@ -2398,12 +2413,15 @@ export class decibel_production_live_orchestrator_v1 {
                 sizing.maximumNotionalUsd,
               ),
               // Shrink to the stress-loss capacity the risk gate enforces instead of
-              // proposing an entry it would block outright.
-              ...(snapshot.sessionConfiguration.exposureLimits?.riskCapacityUsd === undefined
-                ? {}
-                : {
-                    riskCapacityUsd: snapshot.sessionConfiguration.exposureLimits.riskCapacityUsd,
-                  }),
+              // proposing an entry it would block outright. A DCA addition gets only the
+              // capacity left after the current position.
+              ...(snapshot.input.actualInventoryBase !== 0
+                ? { riskCapacityUsd: dca?.allowed ? dca.maximumNotionalUsd : 0 }
+                : snapshot.sessionConfiguration.exposureLimits?.riskCapacityUsd === undefined
+                  ? {}
+                  : {
+                      riskCapacityUsd: snapshot.sessionConfiguration.exposureLimits.riskCapacityUsd,
+                    }),
             })
           : null;
         let assessment = calculateDecibelDynamicQuoteSizeV1({

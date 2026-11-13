@@ -4,6 +4,7 @@ import {
   isDecibelPositionReductionV1,
 } from './decibel_order_action_v1.js';
 import { calculateDecibelExitCoverageV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
+import { assessDecibelSnapshotDCAV1, isDecibelDCAPriceAdmittedV1 } from './decibel_dca_v1.js';
 import { calculateDecibelSidePositionBudgetBtcV1 } from './decibel_dynamic_quote_size_v1.js';
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 import type { DecibelAuthenticatedPassiveRecyclingEvaluationV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
@@ -167,7 +168,7 @@ export function evaluateTradingDecision(
     );
   const entryCapacityOnly = (reason: string | null | undefined) =>
     reason != null &&
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
       reason,
     );
   if (candidate && snapshot && !positionReduction) {
@@ -409,10 +410,23 @@ export function evaluateTradingDecision(
         (source.actualInventoryBase > 0 && side === 'SELL')) &&
       order.quantity <= Math.abs(source.actualInventoryBase) + 1e-12 &&
       (!candidate || candidate.reduceOnly);
-    // DCA was removed: an open position is never grown, only reduced.
+    // An open position grows only through the single admitted maker DCA addition.
     if (!reducing && source && source.actualInventoryBase !== 0) {
-      tpReasons[side] = 'POSITION_GROWTH_DISABLED';
-      return null;
+      const dca = assessDecibelSnapshotDCAV1(snapshot);
+      const blocker =
+        candidate && (candidate.postOnly !== true || candidate.timeInForce !== 'PostOnly')
+          ? 'DCA_MAKER_POST_ONLY_REQUIRED'
+          : !dca.allowed
+            ? dca.reason
+            : !isDecibelDCAPriceAdmittedV1(dca, side, order.price)
+              ? 'DCA_ADVERSE_DISTANCE_REQUIRED'
+              : order.quantity * order.price > dca.maximumNotionalUsd + 1e-9
+                ? 'DCA_RISK_CAPACITY_EXHAUSTED'
+                : null;
+      if (blocker) {
+        tpReasons[side] = blocker;
+        return null;
+      }
     }
     if (!reducing && snapshot.sessionConfiguration?.sizingPolicyVersion === 1) {
       const config = snapshot.sessionConfiguration;
@@ -633,7 +647,7 @@ export function evaluateTradingDecision(
     ((source.actualInventoryBase < 0 && side === 'BUY') ||
       (source.actualInventoryBase > 0 && side === 'SELL'));
   const entryOnly = (reason: string) =>
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
       reason,
     );
   const executableReduction =

@@ -496,6 +496,8 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     entryPriceLimits?: Readonly<{ BUY?: number; SELL?: number }>;
     /** Volatility floor for repricing a resting entry toward the market (bps). */
     entryReplacementMinimumBps?: number;
+    /** Admitted single DCA addition: the growth side may rest at or beyond `priceLimit`. */
+    positionGrowth?: Readonly<{ side: 'BUY' | 'SELL'; priceLimit: number }> | null;
     availableMarginUsd: number;
     maximumEffectiveLeverage: number;
     halfSpreadBps?: number;
@@ -1654,16 +1656,31 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     }
   }
   const coverage = calculateDecibelExitCoverageV1(input);
-  // DCA was removed: an open position is never grown, only reduced.
+  // An open position grows only through the single admitted DCA addition: one maker level
+  // at or beyond the DCA price limit. Everything else on the growth side is blocked.
   if (input.actualInventoryBase !== 0) {
+    const growth = sizing?.positionGrowth ?? null;
+    const admitted = (side: 'BUY' | 'SELL', price: number) =>
+      growth !== null &&
+      growth.side === side &&
+      !sessionUnwind &&
+      (side === 'BUY' ? price <= growth.priceLimit : price >= growth.priceLimit);
     if (input.actualInventoryBase > 0 && desiredBid !== null) {
-      desiredBid = null;
-      desiredBidLadder = [];
-      bidEligibilityReason = 'POSITION_GROWTH_DISABLED';
+      if (admitted('BUY', desiredBid.price)) desiredBidLadder = [desiredBid];
+      else {
+        desiredBid = null;
+        desiredBidLadder = [];
+        bidEligibilityReason =
+          growth === null ? 'POSITION_GROWTH_DISABLED' : 'DCA_ADVERSE_DISTANCE_REQUIRED';
+      }
     } else if (input.actualInventoryBase < 0 && desiredAsk !== null) {
-      desiredAsk = null;
-      desiredAskLadder = [];
-      askEligibilityReason = 'POSITION_GROWTH_DISABLED';
+      if (admitted('SELL', desiredAsk.price)) desiredAskLadder = [desiredAsk];
+      else {
+        desiredAsk = null;
+        desiredAskLadder = [];
+        askEligibilityReason =
+          growth === null ? 'POSITION_GROWTH_DISABLED' : 'DCA_ADVERSE_DISTANCE_REQUIRED';
+      }
     }
   }
   if (sizing?.entryHeadroomUsd !== undefined && coverage.entryPaused && !sessionUnwind) {
