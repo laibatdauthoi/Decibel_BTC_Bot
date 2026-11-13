@@ -285,7 +285,7 @@ export function planDecibelPatientTPV1(
       minimumStepTicks,
     );
   };
-  // Break-even hold: most adverse excursions come back to the entry within 20-30 minutes.
+  // Break-even hold: many adverse excursions come back to the entry within minutes.
   // Until the position (from its opening fill) is older than the hold, an adverse step
   // moves the TP at most to the net >= 0 price, never past it. Max Loss stays the hard stop.
   const positionAgeMs = input.now - (epoch?.openedAt ?? Number.NaN);

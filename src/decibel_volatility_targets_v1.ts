@@ -123,7 +123,7 @@ export const DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1 = 20;
 export const DECIBEL_TP_RESCUE_COOLDOWN_MS_V1 = 60_000;
 /** Until a position (from its opening fill) is this old, an adverse TP step never moves
  * past the break-even price; the rescue offset applies only afterwards. */
-export const DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 = 30 * 60_000;
+export const DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 = 15 * 60_000;
 
 export function getDecibelTPRescueTriggerBpsV1(rangeBps: number | null | undefined): number {
   if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
