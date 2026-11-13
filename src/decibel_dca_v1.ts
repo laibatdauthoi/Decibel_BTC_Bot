@@ -1,18 +1,19 @@
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 
 /**
- * Single DCA addition (re-added 2026-11-13 at the user's request).
+ * DCA additions (re-added 2026-11-13 at the user's request).
  *
- * While a position is open, one maker (PostOnly) addition on the growth side is allowed when
- * the price is at least `DECIBEL_DCA_TRIGGER_BPS_V1` adverse to the authenticated entry basis.
+ * While a position is open, up to `DECIBEL_DCA_MAXIMUM_ADDITIONS_V1` maker (PostOnly) additions
+ * on the growth side are allowed, each when the price is at least `DECIBEL_DCA_TRIGGER_BPS_V1`
+ * adverse to the current authenticated (average) entry basis. Additions are counted as filled
+ * opening orders after the first one in the current position epoch.
  * The addition never raises a limit: it is capped by the preferred entry size and by the
  * session risk capacity left after the current position, and the risk engine still checks the
  * projected position. An addition smaller than a third of the position is refused, so after
  * a fill the existing TP covers at most 75% and is replaced at full size.
  */
 export const DECIBEL_DCA_TRIGGER_BPS_V1 = 25;
-/** A position worth less than this many preferred entries has not used its addition yet. */
-export const DECIBEL_DCA_SINGLE_ENTRY_FACTOR_V1 = 1.5;
+export const DECIBEL_DCA_MAXIMUM_ADDITIONS_V1 = 2;
 /** Smallest addition, as a fraction of the current position notional. */
 export const DECIBEL_DCA_MINIMUM_ADDITION_FRACTION_V1 = 1 / 3;
 
@@ -37,6 +38,8 @@ export function assessDecibelDCAV1(
     markPrice: number;
     preferredEntrySizeUsd: number | null | undefined;
     riskCapacityUsd: number | null | undefined;
+    /** Distinct filled opening orders in the current position epoch; null if unproven. */
+    openingOrderCount: number | null;
   }>,
 ): decibel_dca_assessment_v1 {
   const { positionBase, entryBasis, markPrice } = input;
@@ -60,9 +63,11 @@ export function assessDecibelDCAV1(
     entryBasis * (1 + ((side === 'BUY' ? -1 : 1) * DECIBEL_DCA_TRIGGER_BPS_V1) / 10_000);
   const preferred = input.preferredEntrySizeUsd;
   if (!finitePositive(preferred)) return result('DCA_ENTRY_SIZE_REQUIRED', priceLimit);
-  const positionNotionalUsd = Math.abs(positionBase) * entryBasis;
-  if (positionNotionalUsd >= preferred * DECIBEL_DCA_SINGLE_ENTRY_FACTOR_V1)
-    return result('DCA_ADDITION_ALREADY_USED', priceLimit);
+  const openings = input.openingOrderCount;
+  if (openings === null || !Number.isSafeInteger(openings) || openings < 1)
+    return result('DCA_FILL_HISTORY_REQUIRED', priceLimit);
+  if (openings - 1 >= DECIBEL_DCA_MAXIMUM_ADDITIONS_V1)
+    return result('DCA_ADDITIONS_USED', priceLimit);
   const capacity = input.riskCapacityUsd;
   if (typeof capacity !== 'number' || !Number.isFinite(capacity) || capacity < 0)
     return result('DCA_RISK_CAPACITY_REQUIRED', priceLimit);
@@ -90,6 +95,30 @@ export function isDecibelDCAPriceAdmittedV1(
   );
 }
 
+/**
+ * Distinct venue orders whose fills opened or grew the current position epoch (reset at flat
+ * or a flip). Null when the authenticated fill ledger does not reconcile with the position.
+ */
+export function countDecibelOpeningOrdersV1(
+  snapshot: decibel_production_live_snapshot_v1,
+): number | null {
+  const ledger = snapshot.input.actualFillLedger;
+  const position = snapshot.input.actualInventoryBase;
+  if (position === 0 || ledger.inventoryBase !== position) return null;
+  let inventory = 0;
+  let orders = new Set<string>();
+  for (const app of ledger.applications) {
+    if (app.inventoryBefore !== inventory) return null;
+    const after = app.inventoryAfter;
+    const flipped = inventory !== 0 && after !== 0 && Math.sign(after) !== Math.sign(inventory);
+    if (after === 0 || flipped || inventory === 0) orders = new Set();
+    if (after !== 0 && (inventory === 0 || flipped || Math.abs(after) > Math.abs(inventory)))
+      orders.add(app.venueOrderId);
+    inventory = after;
+  }
+  return inventory === position && orders.size > 0 ? orders.size : null;
+}
+
 /** The DCA assessment for a production snapshot (authenticated basis, fresh book, session). */
 export function assessDecibelSnapshotDCAV1(
   snapshot: decibel_production_live_snapshot_v1,
@@ -105,5 +134,6 @@ export function assessDecibelSnapshotDCAV1(
     markPrice: (book.bestBid + book.bestAsk) / 2,
     preferredEntrySizeUsd: snapshot.sessionConfiguration?.preferredEntrySizeUsd,
     riskCapacityUsd: snapshot.sessionConfiguration?.exposureLimits?.riskCapacityUsd,
+    openingOrderCount: countDecibelOpeningOrdersV1(snapshot),
   });
 }

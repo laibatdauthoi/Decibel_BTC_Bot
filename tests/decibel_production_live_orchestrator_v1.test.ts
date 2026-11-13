@@ -9838,8 +9838,34 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const side = sign > 0 ? 'BUY' : 'SELL';
       const maker = side === 'BUY' ? fixture.input.book.bestBid : fixture.input.book.bestAsk;
       const position = fixture.input.actualInventoryBase;
+      // One authenticated opening fill: the entry, no addition used yet.
+      const entryOrder = {
+        venueOrderId: 'dca-entry',
+        localIntentId: 'dca-entry',
+        localExecutionRequestId: 'dca-entry',
+        marketAddress: fixture.input.market,
+        side,
+        requestedQuantity: Math.abs(position),
+      };
+      const ledger = applyDecibelActualFillTruthV1(createDecibelActualFillLedgerV1([entryOrder]), {
+        venueFillId: 'dca-entry-fill',
+        venueOrderId: entryOrder.venueOrderId,
+        localExecutionRequestId: entryOrder.localExecutionRequestId,
+        marketAddress: entryOrder.marketAddress,
+        side,
+        executedPrice: maker,
+        executedBaseQuantity: Math.abs(position),
+        executedUsdNotional: Math.abs(position) * maker,
+        makerOrTaker: 'MAKER',
+        receivedAt: new Date(fixture.input.now - 1000),
+        venueTimestamp: new Date(fixture.input.now - 1000),
+        fee: { availability: 'AVAILABLE', amount: 0.001, currency: 'USD' },
+        rebate: { availability: 'UNAVAILABLE', amount: null, currency: null },
+        executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM',
+      });
       const snapshot = (basisOffsetBps: number) => ({
         ...fixture,
+        input: { ...fixture.input, actualFillLedger: ledger },
         authenticatedPositions: [
           {
             market: 'BTC/USD',
