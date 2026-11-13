@@ -117,10 +117,11 @@ describe('Dynamic entry allocation and independent hard risk', () => {
     expect(result.riskCapacityUsd).toBeCloseTo(0.19 / 0.0153);
   });
   it.each([
-    [100, 10],
-    [300, 15],
-    [500, 25],
-    [1000, 50],
+    [50, 10],
+    [100, 15],
+    [300, 45],
+    [500, 75],
+    [1000, 150],
   ])('target %s prefers %s', (target, expected) => {
     expect(
       calculateDecibelPreferredEntrySizeUsdV1({
@@ -224,13 +225,13 @@ describe('Dynamic entry allocation and independent hard risk', () => {
       venueMaximumNotionalUsd: 160,
       maximumAggregateCollateralFraction: 0.5,
     };
-    expect(projectDecibelNextSessionEntrySizeUsdV1(input)).toBeCloseTo(14.4);
+    expect(projectDecibelNextSessionEntrySizeUsdV1(input)).toBeCloseTo(44.8);
     expect(
       projectDecibelNextSessionEntrySizeUsdV1({
         ...input,
         settings: { ...settings, maxLossUsd: 2 },
       }),
-    ).toBeCloseTo(14.4);
+    ).toBeCloseTo(44.8);
     expect(projectDecibelNextSessionEntrySizeUsdV1({ ...input, accountReady: false })).toBeNull();
     expect(
       projectDecibelNextSessionEntrySizeUsdV1({

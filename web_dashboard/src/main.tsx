@@ -892,7 +892,7 @@ export const SessionInlineDetail = (
             {props.session.configSnapshot.sizingPolicyVersion === 1
               ? props.session.configSnapshot.targetMakerVolumeUsd > 0
                 ? formatNumber(
-                    Math.max(10, props.session.configSnapshot.targetMakerVolumeUsd / 20),
+                    Math.max(10, (props.session.configSnapshot.targetMakerVolumeUsd * 3) / 20),
                     2,
                     '$',
                   )
