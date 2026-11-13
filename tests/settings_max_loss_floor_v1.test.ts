@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { DECIBEL_CAPACITY_POLICY_V1 } from '../src/decibel_risk_capacity_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 as SharedPolicy } from '../src/decibel_capacity_policy_v1.js';
 import {
+  calculateSettingsMinimumMaxLossForDCAUsdV1,
   calculateSettingsMinimumMaxLossUsdV1,
   formatSettingsMinimumMaxLossUsdV1,
+  isSettingsMaxLossBelowDCAFloorV1,
   isSettingsMaxLossBelowEntryFloorV1,
 } from '../src/settings_max_loss_floor_v1.js';
 
@@ -47,5 +49,21 @@ describe('Settings Max Loss entry floor', () => {
     for (const draft of ['', ' ', '0', '-1', 'abc'])
       expect(isSettingsMaxLossBelowEntryFloorV1(draft, 15)).toBe(false);
     expect(isSettingsMaxLossBelowEntryFloorV1('0.01', null)).toBe(false);
+  });
+
+  it('requires enough Max Loss for the smallest DCA addition at the trigger', () => {
+    // $30 entry: capacity for 4/3 of it at 153 bps, plus 25 bps loss and a 10 bps fee.
+    const floor = calculateSettingsMinimumMaxLossForDCAUsdV1(30)!;
+    expect(floor).toBeCloseTo((30 * ((4 / 3) * 153 + 35)) / 10_000 / 0.95, 9);
+    expect(floor).toBeGreaterThan(calculateSettingsMinimumMaxLossUsdV1(30)!);
+    // At the floor, capacity after the unrealized loss covers the entry plus a third.
+    const lossRemaining = floor * 0.95 - (30 * 35) / 10_000;
+    expect(lossRemaining / (153 / 10_000)).toBeCloseTo(40, 9);
+    expect(isSettingsMaxLossBelowDCAFloorV1('0.5', 30)).toBe(true);
+    expect(
+      isSettingsMaxLossBelowDCAFloorV1(formatSettingsMinimumMaxLossUsdV1(floor).slice(1), 30),
+    ).toBe(false);
+    expect(isSettingsMaxLossBelowDCAFloorV1('', 30)).toBe(false);
+    expect(isSettingsMaxLossBelowDCAFloorV1('0.5', null)).toBe(false);
   });
 });

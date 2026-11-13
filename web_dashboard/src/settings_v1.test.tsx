@@ -184,6 +184,28 @@ describe('Settings draft, saved and active configuration', () => {
     },
   );
 
+  it.each([
+    ['0.5', 30, 'NOT ENOUGH FOR DCA (MIN $0.76)'],
+    ['0.76', 30, null],
+    ['0.1', 10, null], // the entry warning takes precedence
+  ] as const)(
+    'warns inline when Max Loss %s cannot fund a DCA addition for a $%s entry',
+    (maxLoss, entry, warning) => {
+      const props = createProps();
+      let view = renderView(props);
+      view.inputs[2].props.onChange!({ target: { value: maxLoss } });
+      resolveEntryProjection(props, entry);
+      view = renderView(props);
+      const maxLossRow = view.html
+        .match(/<label class="setting-row">.*?<\/label>/g)
+        ?.find((row) => row.includes('MAX LOSS'));
+      expect(maxLossRow).toBeDefined();
+      if (warning) expect(maxLossRow).toContain(`<small>${warning}</small>`);
+      else expect(maxLossRow).not.toContain('NOT ENOUGH FOR DCA');
+      expect(view.button('SAVE CHANGES').props.disabled).toBe(false);
+    },
+  );
+
   it('does not label a pending projection as insufficient capital', () => {
     const view = renderView(createProps());
     expect(view.html).not.toContain('INSUFFICIENT CAPITAL FOR ENTRY');

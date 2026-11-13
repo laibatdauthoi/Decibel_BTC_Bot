@@ -1,4 +1,8 @@
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_capacity_policy_v1.js';
+import {
+  DECIBEL_DCA_MINIMUM_ADDITION_FRACTION_V1,
+  DECIBEL_DCA_TRIGGER_BPS_V1,
+} from './decibel_dca_v1.js';
 
 /**
  * Smallest Max Loss whose stress-loss capacity can admit one entry of `entrySizeUsd`
@@ -41,4 +45,45 @@ export function isSettingsMaxLossBelowEntryFloorV1(
 /** Display the floor rounded up to whole cents, so entering the shown value clears the warning. */
 export function formatSettingsMinimumMaxLossUsdV1(minimumUsd: number): string {
   return `$${(Math.ceil(minimumUsd * 100 - 1e-9) / 100).toFixed(2)}`;
+}
+
+/**
+ * Smallest Max Loss whose stress-loss capacity can still admit the smallest DCA addition
+ * (a third of the position) when the price is at the DCA trigger, using the same policy
+ * floors: the entry is already `DECIBEL_DCA_TRIGGER_BPS_V1` in loss plus its entry fee, and
+ * the capacity must cover the entry plus the addition. A lower bound, like the entry floor.
+ */
+export function calculateSettingsMinimumMaxLossForDCAUsdV1(
+  entrySizeUsd: number | null,
+): number | null {
+  if (entrySizeUsd === null || !Number.isFinite(entrySizeUsd) || entrySizeUsd <= 0) return null;
+  const Policy = DECIBEL_CAPACITY_POLICY_V1;
+  const lossBps =
+    Policy.adverseMoveFloorBps +
+    2 * Policy.feePerLegBps +
+    Policy.maximumBookSlippageBps +
+    Policy.adverseSelectionBps;
+  const capacityBps = (1 + DECIBEL_DCA_MINIMUM_ADDITION_FRACTION_V1) * lossBps;
+  const unrealizedBps = DECIBEL_DCA_TRIGGER_BPS_V1 + Policy.feePerLegBps;
+  return (
+    (entrySizeUsd * (capacityBps + unrealizedBps)) /
+    10_000 /
+    (1 - Policy.transactionLossReserveFraction)
+  );
+}
+
+/** True for a valid positive Max Loss draft that cannot fund even the smallest DCA addition. */
+export function isSettingsMaxLossBelowDCAFloorV1(
+  maxLoss: string,
+  entrySizeUsd: number | null,
+): boolean {
+  const minimum = calculateSettingsMinimumMaxLossForDCAUsdV1(entrySizeUsd);
+  const value = Number(maxLoss);
+  return (
+    minimum !== null &&
+    maxLoss.trim() !== '' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value + 1e-9 < minimum
+  );
 }

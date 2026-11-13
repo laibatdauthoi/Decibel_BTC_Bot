@@ -3,8 +3,10 @@ import { SessionHistoryActions } from './activity_actions_v1';
 import { parseSavedSettingsV1, selectSavedSettingsV1 } from './settings_state_v1';
 import { validateSettingsCapitalMarginV1 } from '../../src/settings_capital_margin_v1';
 import {
+  calculateSettingsMinimumMaxLossForDCAUsdV1,
   calculateSettingsMinimumMaxLossUsdV1,
   formatSettingsMinimumMaxLossUsdV1,
+  isSettingsMaxLossBelowDCAFloorV1,
   isSettingsMaxLossBelowEntryFloorV1,
 } from '../../src/settings_max_loss_floor_v1';
 import { calculateOverviewCostPerMillionV1 } from './overview_share_v1';
@@ -1270,6 +1272,9 @@ export const SettingsView = (
   // Advisory only: a Max Loss below the policy-floor minimum makes every entry RISK_BLOCKED.
   const maxLossFloorUsd = calculateSettingsMinimumMaxLossUsdV1(draftEntrySizeUsd);
   const maxLossBelowFloor = isSettingsMaxLossBelowEntryFloorV1(pending.maxLoss, draftEntrySizeUsd);
+  // Advisory: below this the risk capacity cannot fund even the smallest DCA addition.
+  const maxLossDCAFloorUsd = calculateSettingsMinimumMaxLossForDCAUsdV1(draftEntrySizeUsd);
+  const maxLossBelowDCAFloor = isSettingsMaxLossBelowDCAFloorV1(pending.maxLoss, draftEntrySizeUsd);
   const sessionStatusCode = StartRequest.isBusy()
     ? startRequest.phase === 'CHECKING_ACCOUNT'
       ? 'CHECKING_ACCOUNT'
@@ -1366,6 +1371,8 @@ export const SettingsView = (
           <small>INSUFFICIENT CAPITAL FOR ENTRY</small>
         ) : key === 'maxLoss' && maxLossBelowFloor && maxLossFloorUsd !== null ? (
           <small>{`TOO SMALL FOR ENTRY (MIN ${formatSettingsMinimumMaxLossUsdV1(maxLossFloorUsd)})`}</small>
+        ) : key === 'maxLoss' && maxLossBelowDCAFloor && maxLossDCAFloorUsd !== null ? (
+          <small>{`NOT ENOUGH FOR DCA (MIN ${formatSettingsMinimumMaxLossUsdV1(maxLossDCAFloorUsd)})`}</small>
         ) : changed ? (
           <small>CHANGED</small>
         ) : null}
