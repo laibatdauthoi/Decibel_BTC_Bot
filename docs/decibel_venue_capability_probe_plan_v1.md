@@ -1,6 +1,6 @@
 # Plan: mainnet probe of Decibel order-update semantics
 
-**Status:** plan only. No script exists yet and no order has been sent. Running any stage below
+**Status:** Stage A and Stage D have run (results in section 6). Running any stage below
 sends real mainnet orders and needs the user's explicit go-ahead for that stage.
 **Date:** 2026-11-12
 
@@ -123,6 +123,27 @@ Estimated total cost for all stages: under $0.20, dominated by price movement du
    catastrophe stop.
 
 ## 6. Results
+
+### Stage D, run 2026-11-13 13:59 UTC (report `stage-D-1794578366388.json`) — answered
+
+Long 0.00002 BTC (taker IOC), full-size reduce-only PostOnly TP resting, SL trigger 62,547
+(10% below), limit 61,852. Ended flat with zero orders (verified independently afterwards).
+
+- **Q7 — yes.** `place_tp_sl_order_for_position` with a size was accepted next to the full-size
+  reduce-only TP (`PositionUpdateEvent.fixed_sized_sls`). Both orders rested together.
+- **How a stop appears.** Open-order row: `is_tpsl: true`, `is_reduce_only: true`,
+  `client_order_id: ""`, `order_type: "Stop Limit"`, `trigger_condition: "Price below 62547"`,
+  `price` = the limit price; its `sl_*` fields are null. A sized stop leaves the position's
+  `sl_order_id` null and sets `has_fixed_sized_tpsls: true`.
+- **Cancel** with `cancel_tp_sl_order_for_position` works and removes it from both views.
+- **Q9 — yes.** Without a size the venue stores a `full_sized_sl`: the position's `sl_order_id`,
+  `sl_trigger_price` and `sl_limit_price` are set, `has_fixed_sized_tpsls` is false and the row's
+  `orig_size` / `remaining_size` are null (it follows the position size).
+- **Q10 — yes.** Closing the position (reduce-only IOC) removed the full-size SL and the
+  reduce-only TP: no TP/SL row remained afterwards.
+- **Still open:** which price the trigger compares (mark or last trade), and whether a "Stop
+  Limit" fills in a gap past its limit. A limit only 1% beyond the trigger may not fill in a fast
+  crash; the production design must choose the limit distance (or test a stop without a limit).
 
 ### Stage D, run 2026-11-13 13:51 UTC (report `stage-D-1794577881747.json`)
 
