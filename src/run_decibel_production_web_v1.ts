@@ -2450,7 +2450,17 @@ export async function runDecibelProductionWebV1(
   };
   const refresh = (): Promise<void> => {
     if (RefreshInFlight !== null) return RefreshInFlight;
-    const PendingRefresh = runRefresh();
+    // Telemetry is presentation only: a failed refresh is logged and skipped, never an
+    // unhandled rejection that terminates the trading process (crash 2026-11-13 20:30).
+    const PendingRefresh = runRefresh().catch((error: unknown) => {
+      console.error(
+        // Console output in this process is already redacted (installDecibelConsoleRedactionV1).
+        `DECIBEL_PRODUCTION_WEB_TELEMETRY_REFRESH=FAILED DETAIL=${(error instanceof Error
+          ? error.message
+          : String(error)
+        ).slice(0, 300)}`,
+      );
+    });
     RefreshInFlight = PendingRefresh;
     void PendingRefresh.finally(() => {
       if (RefreshInFlight === PendingRefresh) RefreshInFlight = null;

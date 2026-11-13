@@ -1068,6 +1068,22 @@ export function calculateDecibelBotScopedPnlV1(
   });
 }
 
+/**
+ * Presentation-only decision projection. An inconsistent snapshot (for example a
+ * reduction-capacity batch from another read) degrades to missing evidence instead of
+ * throwing out of telemetry, which once terminated the process (2026-11-13 20:30).
+ */
+export function projectDecibelTelemetryTradingDecisionV1(
+  snapshot: Parameters<typeof evaluateTradingDecision>[0],
+  context: Parameters<typeof evaluateTradingDecision>[1],
+): ReturnType<typeof evaluateTradingDecision> {
+  try {
+    return evaluateTradingDecision(snapshot, context);
+  } catch {
+    return evaluateTradingDecision(null, context);
+  }
+}
+
 export function mapDecibelProductionWebTelemetryV1(
   input: Readonly<{
     overviewTotalSessionsExecuted?: number | null;
@@ -1337,7 +1353,7 @@ export function mapDecibelProductionWebTelemetryV1(
           ? 'EVALUATION_UNAVAILABLE'
           : [evaluation.bidEligibilityReason, evaluation.askEligibilityReason].join(' / ')));
   const storedDecision = input.execution?.tradingDecision ?? snapshot?.tradingDecision;
-  const projectedDecision = evaluateTradingDecision(snapshot, {
+  const decisionContext: Parameters<typeof evaluateTradingDecision>[1] = {
     now: input.generatedAt,
     sessionId: input.execution?.sessionId ?? null,
     state:
@@ -1357,7 +1373,8 @@ export function mapDecibelProductionWebTelemetryV1(
       storedDecision?.primaryReason === 'SESSION_MAX_LOSS_REACHED'
         ? 'SESSION_MAX_LOSS_REACHED'
         : null,
-  });
+  };
+  const projectedDecision = projectDecibelTelemetryTradingDecisionV1(snapshot, decisionContext);
   const sameSnapshot =
     storedDecision?.evidence.sourceStateHash === snapshot?.sourceStateHash &&
     storedDecision?.evidence.sessionId === input.execution?.sessionId;

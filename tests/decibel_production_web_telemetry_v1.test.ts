@@ -30,12 +30,14 @@ import Database from 'better-sqlite3';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDecibelActualFillLedgerV1 } from '../src/decibel_actual_fill_truth_v1.js';
+import { evaluateTradingDecision } from '../src/decibel_trading_decision_v1.js';
 import { buildDecibelExecutionIntentV1 } from '../src/decibel_execution_intent_v1.js';
 import { decibel_execution_lifecycle_journal_v1 } from '../src/decibel_execution_lifecycle_journal_v1.js';
 import {
   assertDecibelWebTelemetrySanitizedV1,
   calculateDecibelBotScopedPnlV1,
   mapDecibelProductionWebTelemetryV1,
+  projectDecibelTelemetryTradingDecisionV1,
   reconcileAllDecibelAcknowledgedOrdersV1,
   reconcileDecibelActiveIdentityConflictV1,
   reconcileDecibelAcknowledgedTerminalOrdersV1,
@@ -2602,6 +2604,37 @@ describe('Authenticated refresh forward progress', () => {
     expect(signal?.aborted).toBe(true);
     expect(Supervisor.isAuthenticatedRefreshInFlight()).toBe(false);
   });
+});
+
+it('degrades instead of throwing when the reduction capacity is from another read batch', () => {
+  // Live 2026-11-13 20:30: an exit capacity observed in a different read than the account
+  // made evaluateTradingDecision throw REDUCTION_CAPACITY_BATCH_MISMATCH inside telemetry,
+  // which terminated the process.
+  const base = makeSnapshot();
+  const snapshot: decibel_production_live_snapshot_v1 = {
+    ...base,
+    authenticatedPositions: [
+      { market: 'BTC/USD', size: 0.0012, source: 'BOT', entryPrice: 79_000 },
+    ],
+    reductionCapacity: {
+      maximumQuantityBtc: 0.0012,
+      venueMaximumOrderNotionalUsd: null,
+      observedAt: 1,
+    },
+    input: { ...base.input, actualInventoryBase: 0.0012 },
+  };
+  const context = {
+    now: 10_001,
+    sessionId: 'session',
+    state: 'RUNNING' as const,
+    candidate: { side: 'SELL' as const, price: 80_100, quantity: 0.0012, reduceOnly: true },
+  };
+  expect(() => evaluateTradingDecision(snapshot, context)).toThrow(
+    'REDUCTION_CAPACITY_BATCH_MISMATCH',
+  );
+  const projected = projectDecibelTelemetryTradingDecisionV1(snapshot, context);
+  expect(projected.state).not.toBe('TRADE');
+  expect(projected.bidEligible || projected.askEligible).toBe(false);
 });
 
 it('reports an overdue control loop unhealthy even while its scheduler is running', () => {
