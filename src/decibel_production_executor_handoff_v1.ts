@@ -18,8 +18,23 @@ export type production_execution_result_v1 = Readonly<{
   transactionHash?: string;
   expirationTimestampMs?: number;
 }>;
+/** A full-size position stop-loss (catastrophe stop); see decibel_catastrophe_stop_v1. */
+export type decibel_catastrophe_stop_request_v1 = Readonly<{
+  side: 'BUY' | 'SELL';
+  triggerPrice: number;
+  limitPrice: number;
+}>;
+export type decibel_catastrophe_stop_result_v1 = Readonly<{
+  outcome: 'STOP_SUBMITTED' | 'STOP_REJECTED' | 'STOP_OUTCOME_UNKNOWN';
+  transactionHash?: string;
+  detail?: string;
+}>;
+
 export interface DecibelProductionExecutionExecutorV1 {
   placePostOnlyLimit(intent: place_intent_v1): Promise<production_execution_result_v1>;
+  placeCatastropheStop?(
+    request: decibel_catastrophe_stop_request_v1,
+  ): Promise<decibel_catastrophe_stop_result_v1>;
   placeReduceOnlyImmediateOrCancel?(
     intent: place_intent_v1,
   ): Promise<production_execution_result_v1>;
@@ -97,6 +112,21 @@ export class decibel_production_executor_gate_v1 implements DecibelExecutionExec
       const result = await this.External.cancelExactOrder(intent);
       this.haltCanary();
       return mapResult(result);
+    } finally {
+      this.outstandingMutation = false;
+    }
+  }
+  /** Same kill switch and one-mutation-at-a-time guard as every other submission. */
+  async placeCatastropheStop(
+    request: decibel_catastrophe_stop_request_v1,
+  ): Promise<decibel_catastrophe_stop_result_v1> {
+    this.assertEnabled();
+    if (this.outstandingMutation) throw new Error('CANARY_OUTSTANDING_MUTATION_BLOCKED');
+    if (this.External.placeCatastropheStop === undefined)
+      throw new Error('EXECUTION_CATASTROPHE_STOP_UNSUPPORTED');
+    this.outstandingMutation = true;
+    try {
+      return await this.External.placeCatastropheStop(request);
     } finally {
       this.outstandingMutation = false;
     }

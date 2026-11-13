@@ -12,6 +12,8 @@ import { scaleDecimalToChainUnitsV1, getDecibelQuantityUnitsV1 } from './decibel
 import {
   DECIBEL_PRODUCTION_EXECUTOR_HANDOFF_V1,
   type DecibelProductionExecutionExecutorV1,
+  type decibel_catastrophe_stop_request_v1,
+  type decibel_catastrophe_stop_result_v1,
   type production_execution_result_v1,
 } from './decibel_production_executor_handoff_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
@@ -49,6 +51,13 @@ export interface DecibelProductionWriteClientV1 {
     marketAddr: string;
     subaccountAddr?: string;
   }): Promise<unknown>;
+  /** Full-size position SL: no size, so the venue sizes it to the whole position. */
+  placeTpSlOrderForPosition?(input: {
+    marketAddr: string;
+    slTriggerPrice: decibel_chain_unit;
+    slLimitPrice: decibel_chain_unit;
+    subaccountAddr?: string;
+  }): Promise<Readonly<{ success?: boolean; hash?: string; vm_status?: string }>>;
 }
 
 export type decibel_execution_gas_diagnostics_v1 = Readonly<{
@@ -243,6 +252,14 @@ async function createWriteClient(
       };
     },
     cancelOrder: (input) => Client.cancelOrder({ ...input, accountOverride: Signer }),
+    placeTpSlOrderForPosition: (input) =>
+      Client.placeTpSlOrderForPosition({
+        ...input,
+        // Chain units, as for placeOrder: SDK 0.7.0 forwards these to Move u64 arguments.
+        slTriggerPrice: input.slTriggerPrice as unknown as number,
+        slLimitPrice: input.slLimitPrice as unknown as number,
+        accountOverride: Signer,
+      }),
   };
   const getAptBalance = async (accountAddress: string | AccountAddress): Promise<number> =>
     (await Client.aptos.getAccountAPTAmount({ accountAddress })) / APT_OCTAS_PER_APT;
@@ -415,6 +432,40 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
       return Object.freeze({ outcome: 'CANCEL_OUTCOME_UNKNOWN' });
     } finally {
       if (Timeout !== undefined) clearTimeout(Timeout);
+    }
+  }
+
+  async placeCatastropheStop(
+    request: decibel_catastrophe_stop_request_v1,
+  ): Promise<decibel_catastrophe_stop_result_v1> {
+    if (
+      !['BUY', 'SELL'].includes(request.side) ||
+      ![request.triggerPrice, request.limitPrice].every((v) => Number.isFinite(v) && v > 0) ||
+      (request.side === 'SELL'
+        ? request.limitPrice >= request.triggerPrice
+        : request.limitPrice <= request.triggerPrice)
+    )
+      throw new Error('PRODUCTION_EXECUTOR_CATASTROPHE_STOP_CONTRACT_REJECTED');
+    try {
+      const { client, subaccount } = await this.getConnection();
+      if (client.placeTpSlOrderForPosition === undefined)
+        return Object.freeze({ outcome: 'STOP_REJECTED', detail: 'CLIENT_UNSUPPORTED' });
+      const result = await client.placeTpSlOrderForPosition({
+        marketAddr: BTC_USD_MARKET_ADDRESS,
+        slTriggerPrice: scaleDecimalToChainUnitsV1(request.triggerPrice, BTC_USD_PRICE_DECIMALS),
+        slLimitPrice: scaleDecimalToChainUnitsV1(request.limitPrice, BTC_USD_PRICE_DECIMALS),
+        subaccountAddr: subaccount,
+      });
+      return Object.freeze({
+        outcome: result.success === false ? 'STOP_REJECTED' : 'STOP_SUBMITTED',
+        ...(result.hash ? { transactionHash: result.hash } : {}),
+        ...(result.vm_status ? { detail: result.vm_status.slice(0, 200) } : {}),
+      });
+    } catch (error) {
+      return Object.freeze({
+        outcome: 'STOP_OUTCOME_UNKNOWN',
+        detail: (error instanceof Error ? error.message : String(error)).slice(0, 200),
+      });
     }
   }
 

@@ -30,6 +30,8 @@ const PositionSchema = z
     is_isolated: z.boolean().optional(),
     tp_order_id: z.string().nullable(),
     sl_order_id: z.string().nullable(),
+    sl_trigger_price: z.number().finite().positive().nullable().optional(),
+    sl_limit_price: z.number().finite().positive().nullable().optional(),
   })
   .passthrough();
 
@@ -136,6 +138,8 @@ export type decibel_authenticated_http_position_v1 = Readonly<{
   is_isolated?: boolean;
   tp_order_id: string | null;
   sl_order_id: string | null;
+  sl_trigger_price?: number | null;
+  sl_limit_price?: number | null;
 }>;
 export type decibel_authenticated_http_open_order_v1 = Readonly<{
   market: string;
@@ -325,6 +329,10 @@ export function createDecibelAuthenticatedHttpReaderV1(
             ...(value.is_isolated === undefined ? {} : { is_isolated: value.is_isolated }),
             tp_order_id: value.tp_order_id,
             sl_order_id: value.sl_order_id,
+            ...(value.sl_trigger_price === undefined
+              ? {}
+              : { sl_trigger_price: value.sl_trigger_price }),
+            ...(value.sl_limit_price === undefined ? {} : { sl_limit_price: value.sl_limit_price }),
           }),
         ),
       );

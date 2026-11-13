@@ -1,5 +1,10 @@
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { assessDecibelSnapshotDCAV1 } from './decibel_dca_v1.js';
+import {
+  DECIBEL_CATASTROPHE_STOP_RETRY_INTERVAL_MS_V1,
+  planDecibelCatastropheStopV1,
+  validateDecibelCatastropheStopV1,
+} from './decibel_catastrophe_stop_v1.js';
 import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_workflow_v1.js';
 import {
   calculateDecibelMidpointRangeBpsV1,
@@ -159,6 +164,8 @@ const ProductionLiveEnvironmentSchema = z.object({
     .min(1)
     .default('config/decibel_regime_edge_model_v1.json'),
   DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: z.enum(['true', 'false']).default('true'),
+  /** Wide venue-side catastrophe stop for offline protection (decibel_catastrophe_stop_v1). */
+  DECIBEL_CATASTROPHE_STOP_ENABLED: z.enum(['true', 'false']).default('true'),
 });
 
 export type decibel_production_live_configuration_v1 = Readonly<{
@@ -190,6 +197,7 @@ export type decibel_production_live_configuration_v1 = Readonly<{
   minimumActiveOrderLifetimeMs: number;
   regimeEdgeModelPath: string;
   regimeEdgeGateEnabled: boolean;
+  catastropheStopEnabled: boolean;
 }>;
 
 export type decibel_production_live_snapshot_v1 = Readonly<{
@@ -210,6 +218,9 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
   strategyAllocationRemainingUsd?: number;
   /** Verified venue/order ceiling for strict inventory reduction, never entry headroom. */
   maximumReductionNotionalUsd?: number;
+  /** The position's full-size catastrophe stop (decibel_catastrophe_stop_v1), or null. */
+  catastropheStop?:
+    import('./decibel_catastrophe_stop_v1.js').decibel_catastrophe_stop_state_v1 | null;
   reductionCapacity?: Readonly<{
     maximumQuantityBtc: number;
     venueMaximumOrderNotionalUsd: number | null;
@@ -346,6 +357,8 @@ export interface DecibelProductionLiveStateSourceV1 {
       >;
       actualInventoryBase: number;
       openOrders: decibel_production_live_snapshot_v1['input']['openOrders'];
+      catastropheStop?: decibel_production_live_snapshot_v1['catastropheStop'];
+      activeTpSlCount?: number;
     }>
   >;
   readAuthenticatedFillLedger?(
@@ -579,6 +592,7 @@ export function parseDecibelProductionLiveConfigurationV1(
     minimumActiveOrderLifetimeMs: parsed.DECIBEL_PRODUCTION_MIN_ACTIVE_ORDER_LIFETIME_MS,
     regimeEdgeModelPath: parsed.DECIBEL_PRODUCTION_REGIME_EDGE_MODEL_PATH,
     regimeEdgeGateEnabled: parsed.DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED === 'true',
+    catastropheStopEnabled: parsed.DECIBEL_CATASTROPHE_STOP_ENABLED === 'true',
   });
 }
 
@@ -1912,6 +1926,9 @@ export class decibel_production_live_orchestrator_v1 {
   private FinalValidation:
     import('./decibel_execution_lifecycle_v1.js').execution_submission_validation_v1 | null = null;
   private LatestSnapshot: decibel_production_live_snapshot_v1 | null = null;
+  private CatastropheStopAttemptAt = Number.NEGATIVE_INFINITY;
+  /** Latest catastrophe stop plan reason, for telemetry. */
+  public CatastropheStopStatus: string | null = null;
   private readonly MidpointHistory: decibel_market_regime_observation_v1[] = [];
   private readonly OpenOrderFirstObservedAt = new Map<string, number>();
   private readonly LastPolicyCancelledOrderKeyBySide = new Map<'BUY' | 'SELL', string>();
@@ -2734,6 +2751,85 @@ export class decibel_production_live_orchestrator_v1 {
     );
   }
 
+  /**
+   * Offline protection: keep one wide full-size stop on an open position. Runs after the
+   * cycle, never in the same cycle as another submission, never while a submission is in flight
+   * and at most once per retry interval; each attempt is decided from a fresh venue read
+   * (the venue keeps at most one full-size SL, so a repeat cannot duplicate it). Never throws.
+   */
+  private async maintainCatastropheStop(
+    cycle: decibel_production_live_cycle_result_v1,
+  ): Promise<void> {
+    try {
+      const snapshot = this.LatestSnapshot;
+      if (
+        !this.Config.catastropheStopEnabled ||
+        this.Config.dryRun ||
+        !this.Config.executorEnabled ||
+        this.Config.releaseStage === 'DISABLED' ||
+        snapshot === null ||
+        snapshot.catastropheStop === undefined
+      )
+        return;
+      const position = snapshot.input.actualInventoryBase;
+      const basis = snapshot.authenticatedPositions?.filter(
+        (p) => p.market === 'BTC/USD' && p.size === position,
+      );
+      const book = snapshot.input.book;
+      const markPrice = (book.bestBid + book.bestAsk) / 2;
+      const plan = planDecibelCatastropheStopV1({
+        positionBase: position,
+        entryBasis: basis?.length === 1 ? basis[0]!.entryPrice : null,
+        markPrice,
+        maxLossUsd: snapshot.sessionConfiguration?.maxLossUsd,
+        tickSize: snapshot.input.metadata.tickSize,
+        existing: snapshot.catastropheStop,
+        foreignTpSlCount: snapshot.input.activeTpSlCount,
+      });
+      this.CatastropheStopStatus = plan.reason;
+      if (plan.action !== 'PLACE') return;
+      const now = this.getDecisionNow();
+      if (
+        cycle.action === 'ACKNOWLEDGED' ||
+        // A resting order (ACKNOWLEDGED) is fine; a submission still in flight or unresolved
+        // is not.
+        this.Journal.nonTerminal().some((row) => row.status !== 'ACKNOWLEDGED') ||
+        now - this.CatastropheStopAttemptAt < DECIBEL_CATASTROPHE_STOP_RETRY_INTERVAL_MS_V1 ||
+        now - book.observedAt > snapshot.input.maxBboAgeMs
+      )
+        return;
+      const blocker = validateDecibelCatastropheStopV1(plan, position, markPrice);
+      if (blocker !== null) {
+        this.CatastropheStopStatus = blocker;
+        return;
+      }
+      this.CatastropheStopAttemptAt = now;
+      const result = await this.ExecutorGate.placeCatastropheStop({
+        side: plan.side!,
+        triggerPrice: plan.triggerPrice!,
+        limitPrice: plan.limitPrice!,
+      });
+      this.CatastropheStopStatus = `CATASTROPHE_STOP_${result.outcome}`;
+      console.info(
+        JSON.stringify({
+          event: 'DECIBEL_CATASTROPHE_STOP',
+          positionBase: position,
+          side: plan.side,
+          triggerPrice: plan.triggerPrice,
+          limitPrice: plan.limitPrice,
+          outcome: result.outcome,
+          transactionHash: result.transactionHash ?? null,
+          detail: result.detail ?? null,
+        }),
+      );
+    } catch (error) {
+      this.CatastropheStopStatus = 'CATASTROPHE_STOP_ERROR';
+      console.error(
+        `DECIBEL_CATASTROPHE_STOP=ERROR DETAIL=${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`,
+      );
+    }
+  }
+
   public async evaluateOnce(): Promise<decibel_production_live_cycle_result_v1> {
     this.IntendedAction = null;
     this.FinalValidation = null;
@@ -2743,7 +2839,9 @@ export class decibel_production_live_orchestrator_v1 {
     this.DecisionSelectedAt = null;
     this.CancelToReplacementReadyMs = null;
     try {
-      return await this.evaluateOnceInternal();
+      const cycle = await this.evaluateOnceInternal();
+      await this.maintainCatastropheStop(cycle);
+      return cycle;
     } catch (error) {
       if (
         getErrorChain(error).some(

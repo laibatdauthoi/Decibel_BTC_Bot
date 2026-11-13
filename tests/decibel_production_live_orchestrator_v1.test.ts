@@ -10537,6 +10537,62 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   );
 
   it.each([1, -1])(
+    'places one wide catastrophe stop for an open position after the cycle (%s)',
+    async (sign) => {
+      const stops: Array<{ side: 'BUY' | 'SELL'; triggerPrice: number; limitPrice: number }> = [];
+      const fixture = { ...adaptiveTPFixture(sign), catastropheStop: null };
+      const executor: DecibelProductionExecutionExecutorV1 = {
+        placePostOnlyLimit: () => Promise.resolve({ outcome: 'PLACE_OUTCOME_UNKNOWN' }),
+        cancelExactOrder: () => Promise.resolve({ outcome: 'CANCEL_OUTCOME_UNKNOWN' }),
+        placeCatastropheStop: (request) => {
+          stops.push(request);
+          return Promise.resolve({ outcome: 'STOP_SUBMITTED', transactionHash: '0xstop' });
+        },
+      };
+      const test = make({
+        readSnapshot: () => fixture,
+        executor,
+        reconciliationState: 'ORDER_OPEN',
+        environment: { DECIBEL_EXECUTOR_DRY_RUN: 'false' },
+      });
+      ownIncidentTP(test, fixture);
+      try {
+        for (let cycle = 0; cycle < 3 && stops.length === 0; cycle++)
+          await test.orchestrator.evaluateOnce();
+        expect(stops).toHaveLength(1);
+        const basis = 75713.4;
+        const stop = stops[0]!;
+        expect(stop.side).toBe(sign > 0 ? 'SELL' : 'BUY');
+        // At least 2% beyond the entry, limit further beyond the trigger.
+        expect((sign * (basis - stop.triggerPrice)) / basis).toBeGreaterThanOrEqual(0.02 - 1e-9);
+        expect(sign * (stop.triggerPrice - stop.limitPrice)).toBeGreaterThan(0);
+        // Within the retry interval, and once the venue reports the stop, nothing more is sent.
+        await test.orchestrator.evaluateOnce();
+        expect(stops).toHaveLength(1);
+        expect(test.orchestrator.CatastropheStopStatus).toBe('CATASTROPHE_STOP_MISSING');
+      } finally {
+        await test.orchestrator.close();
+      }
+      const protectedTest = make({
+        readSnapshot: () => ({
+          ...fixture,
+          catastropheStop: { venueOrderId: 'sl', triggerPrice: 1, limitPrice: null },
+        }),
+        executor,
+        reconciliationState: 'ORDER_OPEN',
+        environment: { DECIBEL_EXECUTOR_DRY_RUN: 'false' },
+      });
+      ownIncidentTP(protectedTest, fixture);
+      try {
+        await protectedTest.orchestrator.evaluateOnce();
+        expect(stops).toHaveLength(1);
+      } finally {
+        await protectedTest.orchestrator.close();
+      }
+    },
+  );
+
+  it.each([1, -1])(
     'Break-even hold keeps an adverse TP at net >= 0 until the position is old enough (%s)',
     (sign) => {
       const side = sign < 0 ? 'BUY' : 'SELL';

@@ -76,6 +76,7 @@ export function mergeDecibelVenueReconciliationSnapshotV1(
     ...(account.marketMetadata ? { metadata: account.marketMetadata } : {}),
     actualInventoryBase: account.actualInventoryBase,
     openOrders: account.openOrders,
+    ...(account.activeTpSlCount === undefined ? {} : { activeTpSlCount: account.activeTpSlCount }),
     actualFillLedger: history?.ledger ?? previous.input.actualFillLedger,
   });
   const terminalOrderEvidence =
@@ -85,6 +86,7 @@ export function mergeDecibelVenueReconciliationSnapshotV1(
     availableMarginUsd: account.availableMarginUsd ?? Number.NaN,
     accountMetrics: account.accountMetrics,
     authenticatedPositions: account.authenticatedPositions,
+    ...(account.catastropheStop === undefined ? {} : { catastropheStop: account.catastropheStop }),
     input,
     venueReadWindow,
     ...(terminalOrderEvidence === undefined ? {} : { terminalOrderEvidence }),

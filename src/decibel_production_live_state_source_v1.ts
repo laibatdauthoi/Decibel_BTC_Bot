@@ -1,3 +1,4 @@
+import { isDecibelOwnedCatastropheStopV1 } from './decibel_catastrophe_stop_v1.js';
 import {
   CapacityDepthSchema,
   parseDecibelVenueMarginRulesV1,
@@ -232,6 +233,8 @@ type position_row = Readonly<{
   size: number;
   tp_order_id: string | null;
   sl_order_id: string | null;
+  sl_trigger_price?: number | null;
+  sl_limit_price?: number | null;
 }>;
 type account_overview_row = Readonly<{
   secondary_collateral?: unknown;
@@ -1091,6 +1094,55 @@ export function makeSDKReader(
   return Object.freeze(adapter);
 }
 
+/**
+ * The bot's catastrophe stop is the position's full-size SL with the wide-stop shape. Every
+ * other position TP/SL (a TP, a sized SL, a tight SL) is foreign activity.
+ */
+export function deriveDecibelPositionStopStateV1(
+  BTCPositions: readonly position_row[],
+  openOrderRows: readonly open_order_row[],
+): Readonly<{
+  catastropheStop:
+    import('./decibel_catastrophe_stop_v1.js').decibel_catastrophe_stop_state_v1 | null;
+  foreignTpSlCount: number;
+}> {
+  const position = BTCPositions[0];
+  const catastropheStop =
+    position !== undefined &&
+    position.sl_order_id !== null &&
+    position.tp_order_id === null &&
+    isDecibelOwnedCatastropheStopV1(
+      { triggerPrice: position.sl_trigger_price ?? null },
+      position.size,
+      position.entry_price ?? null,
+    )
+      ? Object.freeze({
+          venueOrderId: position.sl_order_id,
+          triggerPrice: position.sl_trigger_price!,
+          limitPrice: position.sl_limit_price ?? null,
+        })
+      : null;
+  const foreignTpSlCount =
+    BTCPositions.reduce(
+      (count, row) =>
+        count +
+        (row.tp_order_id !== null ? 1 : 0) +
+        (row.sl_order_id !== null && row.sl_order_id !== catastropheStop?.venueOrderId ? 1 : 0),
+      0,
+    ) +
+    openOrderRows.filter(
+      (row) =>
+        row.is_tpsl === true &&
+        isDecibelBTCMarketActivityV1({
+          market: row.market,
+          market_address: row.market_address,
+          market_id: row.market_id,
+        }) &&
+        !BTCPositions.some((p) => row.order_id === p.tp_order_id || row.order_id === p.sl_order_id),
+    ).length;
+  return Object.freeze({ catastropheStop, foreignTpSlCount });
+}
+
 export function normalizeDecibelAuthenticatedOpenOrdersV1(
   rows: readonly open_order_row[],
   marketAddress: string,
@@ -1099,12 +1151,16 @@ export function normalizeDecibelAuthenticatedOpenOrdersV1(
 ): readonly decibel_authenticated_strategy_order_v1[] {
   return Object.freeze(
     rows
-      .filter((row) =>
-        isDecibelBTCMarketActivityV1({
-          market: row.market,
-          market_address: row.market_address,
-          market_id: row.market_id,
-        }),
+      .filter(
+        (row) =>
+          // Position TP/SL (trigger) orders are not resting limit orders: they are reported
+          // separately (catastrophe stop / foreign TP-SL) and never count as TP coverage.
+          row.is_tpsl !== true &&
+          isDecibelBTCMarketActivityV1({
+            market: row.market,
+            market_address: row.market_address,
+            market_id: row.market_id,
+          }),
       )
       .map((row) => {
         const known = isStrategyClientOrderId(row.client_order_id);
@@ -1896,6 +1952,10 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     if (BTCPositions.length > 1) throw new Error('PRODUCTION_LIVE_SOURCE_POSITION_AMBIGUOUS');
     const position = BTCPositions[0];
     const actualInventoryBase = position?.size ?? 0;
+    const { catastropheStop, foreignTpSlCount } = deriveDecibelPositionStopStateV1(
+      BTCPositions,
+      values.openOrders,
+    );
     if (
       !Number.isFinite(values.accountOverview.perp_equity_balance) ||
       !Number.isFinite(values.accountOverview.total_margin) ||
@@ -2050,7 +2110,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       inventoryDirectionProven: true,
       openOrders,
       activeTwapCount: ActiveBTCTwaps.length,
-      activeTpSlCount: BTCTpSlPositions.length,
+      activeTpSlCount: foreignTpSlCount,
       activeBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,
       manualOrDelegatedActivityCount: 0,
       unresolvedExecutionPlanCount: 0,
@@ -2097,6 +2157,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
           : null,
         masterAptGas: null,
       }),
+      catastropheStop,
       authenticatedPositions: Object.freeze(
         values.positions
           .filter((row) => Number.isFinite(row.size) && row.size !== 0)
@@ -2137,7 +2198,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
         rawTpSlMarketIdentities: getDecibelMarketIdentityDiagnosticsV1(BTCTpSlPositions),
         historicalOutOfBandBTCFillCount: outOfBandBTCFillCount,
         activeTwapCount: ActiveBTCTwaps.length,
-        activeTpSlCount: BTCTpSlPositions.length,
+        activeTpSlCount: foreignTpSlCount,
         activeBulkOrderCount: bulk.bulkOrderActivityClear ? 0 : 1,
       }),
       input: strategyInput,
@@ -2157,6 +2218,8 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       >;
       actualInventoryBase: number;
       openOrders: decibel_production_live_snapshot_v1['input']['openOrders'];
+      catastropheStop: decibel_production_live_snapshot_v1['catastropheStop'];
+      activeTpSlCount: number;
     }>
   > {
     const configuration = ProductionLiveSourceEnvironmentSchema.parse(this.Environment);
@@ -2267,6 +2330,13 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
           DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
           configuration.DECIBEL_PRODUCTION_LIVE_STRATEGY_CONFIG_ID,
         ),
+        ...(() => {
+          const stops = deriveDecibelPositionStopStateV1(BTCPositions, rawOpenOrders);
+          return {
+            catastropheStop: stops.catastropheStop,
+            activeTpSlCount: stops.foreignTpSlCount,
+          };
+        })(),
       });
     } catch (error) {
       if (isDecibelSourceRateLimitError(error)) {
