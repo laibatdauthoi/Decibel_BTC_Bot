@@ -1,5 +1,6 @@
 ﻿import Database from 'better-sqlite3';
 import { existsSync } from 'node:fs';
+import { DECIBEL_LIFETIME_ARCHIVE_TABLE_V1 } from './decibel_lifetime_totals_v1.js';
 
 /** UI-only read model; never opens or mutates the trading/session stores for writing. */
 export function readDecibelOverviewSessionCountV1(path: string): number | null {
@@ -7,8 +8,15 @@ export function readDecibelOverviewSessionCountV1(path: string): number | null {
   try {
     const Reader = new Database(path, { readonly: true, fileMustExist: true });
     try {
+      // Sessions removed by retention stay counted through the lifetime archive.
+      const archived =
+        Reader.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(
+          DECIBEL_LIFETIME_ARCHIVE_TABLE_V1,
+        ) === undefined
+          ? 0
+          : `(SELECT COALESCE(SUM(session_count),0) FROM ${DECIBEL_LIFETIME_ARCHIVE_TABLE_V1})`;
       const row: unknown = Reader.prepare(
-        'SELECT COUNT(*) AS count FROM production_sessions_v1 WHERE started_at IS NOT NULL',
+        `SELECT COUNT(*) + ${archived} AS count FROM production_sessions_v1 WHERE started_at IS NOT NULL`,
       ).get();
       if (typeof row !== 'object' || row === null || !('count' in row)) return null;
       return typeof row.count === 'number' && Number.isSafeInteger(row.count) && row.count >= 0

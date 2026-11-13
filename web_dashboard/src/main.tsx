@@ -78,6 +78,10 @@ type Telemetry = {
     totalSessionsExecuted: Value;
     utcDayStart: number;
     volumeSinceUTCStartUsd: Value;
+    lifetimeVolumeUsd?: Value;
+    allTimeNetPnlUsd?: Value;
+    allTimeGrossPnlUsd?: Value;
+    allTimeIncompletePnlCount?: Value;
   };
   generatedAt: number;
   degraded: boolean;
@@ -353,13 +357,8 @@ export const OverviewView = (
   const pnl = matched && accountingFresh ? (e?.sessionPnlUsd ?? null) : null;
   // Gross PnL (before trading fees) shown next to the net session PnL.
   const sessionBotPnl = t.pnl.sessionPnl;
-  const sessionGross =
-    matched &&
-    accountingFresh &&
-    sessionBotPnl?.realizedUsd != null &&
-    sessionBotPnl.unrealizedUsd != null
-      ? sessionBotPnl.realizedUsd + sessionBotPnl.unrealizedUsd
-      : null;
+  // PnL before fees = net + trading fees (unrealized is not reported separately when flat).
+  const sessionGross = calculateGrossPnlUsdV1(pnl, sessionBotPnl?.feesUsd ?? null);
   const limit = activeSession ? active.configSnapshot.maxLossUsd : null;
   const volume = matched && accountingFresh ? (e?.totalExecutedVolumeUsd ?? null) : null;
   const maker = matched && accountingFresh ? (e?.makerVolumeUsd ?? null) : null;
@@ -692,26 +691,34 @@ export const OverviewView = (
         </div>
         <div>
           <small>TOTAL EXECUTED VOLUME</small>
-          <strong title="Current session verified executed fills">{sessionMetric(volume)}</strong>
+          <strong title="All sessions ever run (sessions removed by retention stay counted) plus the current session in real time">
+            {!frameFresh
+              ? 'STALE'
+              : history?.lifetimeVolumeUsd == null
+                ? 'UNVERIFIED'
+                : formatNumber(history.lifetimeVolumeUsd, 2, '$')}
+          </strong>
         </div>
         <div>
           <small>ALL-TIME PNL</small>
           <strong
             className={getPnlSemanticClassV1(
-              t.pnl.allTimePnl?.complete ? t.pnl.allTimePnl.valueUsd : null,
+              frameFresh ? (history?.allTimeNetPnlUsd ?? null) : null,
             )}
-            title="Verified bot-scoped all-time accounting. PnL = realized + unrealized; Net = PnL - trading fees - gas. Incomplete history or cost evidence is not a verified total"
+            title={`All sessions plus the current session in real time. PnL = before fees; Net = PnL - trading fees; gas excluded.${
+              history?.allTimeIncompletePnlCount
+                ? ` ${history.allTimeIncompletePnlCount} session(s) without final PnL are excluded.`
+                : ''
+            }`}
           >
-            {t.pnl.allTimePnl?.complete &&
-            t.pnl.allTimePnl.valueUsd !== null &&
-            Number.isFinite(t.pnl.allTimePnl.valueUsd)
-              ? formatOperatorPnlPairV1(
-                  t.pnl.allTimePnl.realizedUsd != null && t.pnl.allTimePnl.unrealizedUsd != null
-                    ? t.pnl.allTimePnl.realizedUsd + t.pnl.allTimePnl.unrealizedUsd
-                    : null,
-                  t.pnl.allTimePnl.valueUsd,
-                )
-              : 'NOT VERIFIED'}
+            {!frameFresh
+              ? 'STALE'
+              : history?.allTimeNetPnlUsd == null
+                ? 'UNVERIFIED'
+                : formatOperatorPnlPairV1(
+                    history.allTimeGrossPnlUsd ?? null,
+                    history.allTimeNetPnlUsd,
+                  )}
           </strong>
         </div>
         <div>

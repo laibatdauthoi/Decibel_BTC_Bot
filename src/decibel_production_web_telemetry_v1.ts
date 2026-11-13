@@ -1,3 +1,7 @@
+import {
+  combineDecibelLifetimeTotalsV1,
+  type decibel_overview_lifetime_totals_v1,
+} from './decibel_lifetime_totals_v1.js';
 import { calculateDecibelOverviewUTCVolumeV1 } from './decibel_overview_metrics_v1.js';
 import { DECIBEL_PRODUCTION_SESSION_HEARTBEAT_STALE_MS_V1 } from './decibel_production_session_v1.js';
 import { deriveDecibelPositionSafetyStatusV1 } from './decibel_position_safety_status_v1.js';
@@ -78,6 +82,11 @@ export type decibel_production_web_telemetry_v1 = Readonly<{
     totalSessionsExecuted: number | null;
     utcDayStart: number;
     volumeSinceUTCStartUsd: number | null;
+    /** Lifetime totals: archived + closed sessions + the live session in real time. */
+    lifetimeVolumeUsd?: number | null;
+    allTimeNetPnlUsd?: number | null;
+    allTimeGrossPnlUsd?: number | null;
+    allTimeIncompletePnlCount?: number | null;
   }>;
   generatedAt: number;
   degraded: boolean;
@@ -1063,6 +1072,7 @@ export function calculateDecibelBotScopedPnlV1(
 export function mapDecibelProductionWebTelemetryV1(
   input: Readonly<{
     overviewTotalSessionsExecuted?: number | null;
+    overviewLifetime?: decibel_overview_lifetime_totals_v1 | null;
     snapshot: decibel_production_live_snapshot_v1 | null;
     history: decibel_production_web_history_v1;
     configuration: decibel_production_live_configuration_v1;
@@ -1614,9 +1624,24 @@ export function mapDecibelProductionWebTelemetryV1(
       targetSemanticsVersion,
     }),
     overviewHistory: Object.freeze({
-      totalSessionsExecuted: input.overviewTotalSessionsExecuted ?? null,
+      totalSessionsExecuted:
+        input.overviewLifetime?.sessionCount ?? input.overviewTotalSessionsExecuted ?? null,
       utcDayStart: utcVolume.utcDayStart,
       volumeSinceUTCStartUsd: utcVolume.volumeUsd,
+      ...(() => {
+        const lifetime = combineDecibelLifetimeTotalsV1(input.overviewLifetime ?? null, {
+          sessionId,
+          volumeUsd: sessionId === null ? null : totalExecutedVolumeUsd,
+          netPnlUsd: snapshot?.sessionConfiguration?.pnlUsd ?? null,
+          feesUsd: sessionPnl.feesUsd,
+        });
+        return {
+          lifetimeVolumeUsd: lifetime.volumeUsd,
+          allTimeNetPnlUsd: lifetime.netPnlUsd,
+          allTimeGrossPnlUsd: lifetime.grossPnlUsd,
+          allTimeIncompletePnlCount: lifetime.incompletePnlCount,
+        };
+      })(),
     }),
     overviewEvidence: Object.freeze({
       sessionId,

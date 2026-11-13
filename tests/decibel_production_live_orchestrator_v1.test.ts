@@ -6882,6 +6882,43 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     },
   );
 
+  it('keeps a flat entry open when the remaining target is below the venue minimum', () => {
+    // Live 2026-11-13: $199.26 of $200 executed. The two-side budget was capped at the
+    // $0.74 remainder, below the venue minimum, so both sides were blocked and the
+    // session never finished.
+    const base = twoSidedSnapshot(0, 200);
+    const snapshot: decibel_production_live_snapshot_v1 = {
+      ...base,
+      minimumNotionalUsd: base.input.metadata.minimumSize * base.input.book.bestBid,
+      sessionConfiguration: {
+        ...base.sessionConfiguration!,
+        sizingPolicyVersion: 1,
+        preferredEntrySizeUsd: 15,
+        targetSemanticsVersion: 2,
+        totalExecutedVolumeUsd: 199.26,
+        exposureLimits: { ...base.sessionConfiguration!.exposureLimits!, riskCapacityUsd: 100 },
+      },
+    };
+    const instance = make({ snapshots: [snapshot] });
+    try {
+      const evaluation = instance.orchestrator.evaluateAuthenticatedSnapshot(snapshot);
+      const orders = [evaluation.desiredBid, evaluation.desiredAsk].filter((o) => o !== null);
+      expect(orders.length, JSON.stringify(evaluation)).toBeGreaterThan(0);
+      for (const order of orders) expect(order.quantity * order.price).toBeGreaterThan(0.74);
+      expect([evaluation.bidEligibilityReason, evaluation.askEligibilityReason]).not.toContain(
+        'COMBINED_BUDGET_BELOW_TWO_SIDE_MINIMUM',
+      );
+      // Target reached: nothing new opens.
+      const reached = instance.orchestrator.evaluateAuthenticatedSnapshot({
+        ...snapshot,
+        sessionConfiguration: { ...snapshot.sessionConfiguration!, totalExecutedVolumeUsd: 200 },
+      });
+      expect([reached.desiredBid, reached.desiredAsk]).toEqual([null, null]);
+    } finally {
+      instance.journal.close();
+    }
+  });
+
   it('shrinks new ENTRY quantities to the Max Loss risk capacity in live quote construction', () => {
     const base = twoSidedSnapshot();
     const snapshot: decibel_production_live_snapshot_v1 = {

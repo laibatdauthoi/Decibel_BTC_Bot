@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { archiveDecibelSessionRowsV1 } from './decibel_lifetime_totals_v1.js';
 
 /**
  * Keep-N retention for the session store and the execution journal's decision snapshots.
@@ -116,6 +117,8 @@ export function applyDecibelRetentionPlanV1(
   if (plan.deleteSessionIds.length > 0 && tableExists(sessionDb, 'production_sessions_v1')) {
     const remove = sessionDb.prepare('DELETE FROM production_sessions_v1 WHERE session_id=?');
     sessionDb.transaction(() => {
+      // Keep lifetime totals: archive the rows' volume / PnL / fees before deleting them.
+      archiveDecibelSessionRowsV1(sessionDb, plan.deleteSessionIds, Date.now());
       for (const id of plan.deleteSessionIds) deletedSessions += remove.run(id).changes;
     })();
   }

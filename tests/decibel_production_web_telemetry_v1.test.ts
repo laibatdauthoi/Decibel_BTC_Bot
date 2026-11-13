@@ -156,6 +156,11 @@ describe('Decibel runtime supervisor V1', () => {
         totalSessionsExecuted: 125,
         utcDayStart: 0,
         volumeSinceUTCStartUsd: null,
+        // No session store read model in this fixture: lifetime totals are unverified.
+        lifetimeVolumeUsd: null,
+        allTimeNetPnlUsd: null,
+        allTimeGrossPnlUsd: null,
+        allTimeIncompletePnlCount: null,
       });
       expect(telemetry.overviewEvidence).toEqual({
         sessionId: Base.input.sessionId,

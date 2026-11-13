@@ -22,7 +22,15 @@ function createProps(): Props {
       activeSession: null,
     },
     telemetry: {
-      overviewHistory: { totalSessionsExecuted: 104, utcDayStart: 0, volumeSinceUTCStartUsd: 1234 },
+      overviewHistory: {
+        totalSessionsExecuted: 104,
+        utcDayStart: 0,
+        volumeSinceUTCStartUsd: 1234,
+        lifetimeVolumeUsd: 2654.5,
+        allTimeNetPnlUsd: 12,
+        allTimeGrossPnlUsd: 12.5,
+        allTimeIncompletePnlCount: 0,
+      },
       quoteSizing: null,
       generatedAt: 20000,
       degraded: false,
@@ -303,7 +311,7 @@ describe('Overview evidence and original presentation', () => {
     activateSession(p);
     p.telemetry.market.bookAgeMs = 20000;
     expect(getSection(renderOverview(p), 'market-header')).toContain('STALE');
-    expect(getSection(renderOverview(p), 'inventory-strip')).toContain('$30.00');
+    expect(getSection(renderOverview(p), 'inventory-strip')).toContain('$2,654.50');
     expect(getSection(renderOverview(p), 'bot-state-panel')).toContain('$8.00');
   });
   it('shows actual pending reconciliation and waits on missing data', () => {
@@ -498,18 +506,9 @@ it('Share Card requires a current running session and hides no valid data when d
   expect(renderOverview(p)).toMatch(/<button[^>]*aria-label="Share Card"[^>]*disabled=""/);
 });
 
-it('prioritizes session fields, removes volume subtext and binds all-time PnL independently', () => {
+it('prioritizes session fields, removes volume subtext and binds lifetime totals independently', () => {
   const p = createProps();
   activateSession(p);
-  p.telemetry.pnl.allTimePnl = {
-    valueUsd: 12,
-    realizedUsd: 12,
-    unrealizedUsd: 0,
-    feesUsd: 0,
-    gasUsd: 0,
-    complete: true,
-    scope: 'BOT_ONLY',
-  };
   let html = renderOverview(p);
   const bot = getSection(html, 'bot-state-panel');
   const labels = [...bot.matchAll(/<span>([^<]+)<\/span>/g)].map((match) => match[1]);
@@ -527,17 +526,19 @@ it('prioritizes session fields, removes volume subtext and binds all-time PnL in
     'REASON',
   ]);
   const cards = getSection(html, 'inventory-strip');
-  expect(cards).toContain('$12.00');
+  // Lifetime volume (all sessions), not the current session's volume.
+  expect(cards).toContain('$2,654.50');
+  expect(cards).toContain('PnL +$12.50 · Net +$12.00');
   expect(cards).not.toContain('MAKER');
   expect(cards).not.toContain('TAKER');
   p.telemetry.overviewEvidence!.sessionPnlUsd = 77;
-  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('$12.00');
+  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('Net +$12.00');
   p.session = { ...p.session!, state: 'IDLE', activeSession: null };
-  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('$12.00');
-  p.telemetry.pnl.allTimePnl.complete = false;
+  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('Net +$12.00');
+  p.telemetry.overviewHistory = { ...p.telemetry.overviewHistory!, allTimeNetPnlUsd: null };
   html = renderOverview(p);
-  expect(getSection(html, 'inventory-strip')).toContain('NOT VERIFIED');
-  expect(getSection(html, 'inventory-strip')).not.toContain('$12.00');
+  expect(getSection(html, 'inventory-strip')).toContain('UNVERIFIED');
+  expect(getSection(html, 'inventory-strip')).not.toContain('Net +$12.00');
 });
 
 it('keeps Share inactive for a RUNNING session with unavailable share evidence even with fresh market data', () => {

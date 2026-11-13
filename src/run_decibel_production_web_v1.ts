@@ -1,3 +1,4 @@
+import { readDecibelOverviewLifetimeTotalsV1 } from './decibel_lifetime_totals_v1.js';
 import { deriveDecibelEntryCycleV1 } from './decibel_entry_cycle_v1.js';
 import { runDecibelStartupRetentionV1 } from './decibel_data_retention_v1.js';
 import Database from 'better-sqlite3';
@@ -2411,6 +2412,9 @@ export async function runDecibelProductionWebV1(
       overviewTotalSessionsExecuted: readDecibelOverviewSessionCountV1(
         web.DECIBEL_PRODUCTION_SESSION_STORE_PATH,
       ),
+      overviewLifetime: readDecibelOverviewLifetimeTotalsV1(
+        web.DECIBEL_PRODUCTION_SESSION_STORE_PATH,
+      ),
       snapshot: RuntimeSupervisor.getExecutionSnapshot<decibel_production_live_snapshot_v1>(),
       history,
       configuration,
@@ -2456,6 +2460,9 @@ export async function runDecibelProductionWebV1(
 
   telemetry = mapDecibelProductionWebTelemetryV1({
     overviewTotalSessionsExecuted: readDecibelOverviewSessionCountV1(
+      web.DECIBEL_PRODUCTION_SESSION_STORE_PATH,
+    ),
+    overviewLifetime: readDecibelOverviewLifetimeTotalsV1(
       web.DECIBEL_PRODUCTION_SESSION_STORE_PATH,
     ),
     snapshot: null,
