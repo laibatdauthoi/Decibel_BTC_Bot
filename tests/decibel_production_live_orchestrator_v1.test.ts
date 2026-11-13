@@ -10478,6 +10478,45 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         targetPrice: null,
         reason: 'TP_ADVERSE_POSITION_TOO_YOUNG',
       });
+      // Production re-stamps receivedAt on every read; the age comes from the venue time.
+      const restamp = (snapshot: decibel_production_live_snapshot_v1) => {
+        const ledger = snapshot.input.actualFillLedger;
+        return {
+          ...snapshot,
+          input: {
+            ...snapshot.input,
+            actualFillLedger: {
+              ...ledger,
+              fills: ledger.fills.map((fill) => ({
+                ...fill,
+                receivedAt: new Date(snapshot.input.now),
+              })),
+            },
+          },
+        };
+      };
+      const restamped = at(restamp(withRegime(adaptiveTPFixture(sign))), 75850);
+      expect(planDecibelPatientTPV1(restamped, side).reason).toBe(
+        'REPRICE:TP_ADVERSE_EXIT_REPRICE',
+      );
+      // An unknown venue time never freezes the TP: it counts as an old position.
+      const unknownTime = at(withRegime(adaptiveTPFixture(sign, 60000, 40000)), 75850);
+      const unknownLedger = unknownTime.input.actualFillLedger;
+      expect(
+        planDecibelPatientTPV1(
+          {
+            ...unknownTime,
+            input: {
+              ...unknownTime.input,
+              actualFillLedger: {
+                ...unknownLedger,
+                fills: unknownLedger.fills.map((fill) => ({ ...fill, venueTimestamp: null })),
+              },
+            },
+          },
+          side,
+        ).reason,
+      ).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
       // Past the delay, inside the hold.
       const fresh = withRegime(
         adaptiveTPFixture(sign, 60000, DECIBEL_TP_ADVERSE_DELAY_MS_V1 + 40000),

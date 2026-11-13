@@ -23,7 +23,8 @@ export function getDecibelTPPositionKeyV1(
   return getDecibelTPPositionEpochV1(snapshot)?.key ?? null;
 }
 
-/** The position key plus the receipt time of its opening fill. */
+/** The position key plus the venue execution time of its opening fill (NaN if unknown).
+ * `receivedAt` is not usable: production re-stamps it on every authenticated read. */
 function getDecibelTPPositionEpochV1(
   snapshot: decibel_production_live_snapshot_v1,
 ): Readonly<{ key: string; openedAt: number }> | null {
@@ -48,7 +49,7 @@ function getDecibelTPPositionEpochV1(
       return null;
     if (inventory === 0 || Math.sign(inventory) !== Math.sign(app.inventoryAfter)) {
       opening = app.applicationId;
-      openedAt = fill.receivedAt.getTime();
+      openedAt = fill.venueTimestamp?.getTime() ?? Number.NaN;
     }
     inventory = app.inventoryAfter;
     if (inventory === 0) opening = null;
@@ -289,7 +290,10 @@ export function planDecibelPatientTPV1(
   // Break-even hold: many adverse excursions come back to the entry within minutes.
   // Until the position (from its opening fill) is older than the hold, an adverse step
   // moves the TP at most to the net >= 0 price, never past it. Max Loss stays the hard stop.
-  const positionAgeMs = input.now - (epoch?.openedAt ?? Number.NaN);
+  // An unknown opening time counts as an old position: the age gates only ever delay a
+  // step, so a missing timestamp must never freeze the TP.
+  const openedAt = epoch?.openedAt ?? Number.NaN;
+  const positionAgeMs = Number.isFinite(openedAt) ? input.now - openedAt : Infinity;
   // A young position keeps its original TP; noise in the first minutes is not a trend.
   if (!(positionAgeMs >= DECIBEL_TP_ADVERSE_DELAY_MS_V1))
     return result(null, 'TP_ADVERSE_POSITION_TOO_YOUNG', band);
