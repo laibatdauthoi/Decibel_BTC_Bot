@@ -1202,6 +1202,7 @@ export const SettingsView = (
   const projectionQuery = new URLSearchParams({
     capitalToUseUsd: String(current.capital ?? ''),
     maxLossUsd: String(current.maxLoss ?? ''),
+    maxPositionUsd: String(current.maxPosition ?? ''),
     targetMakerVolumeUsd: String(current.targetVolume ?? -1),
   }).toString();
   const projectionKey = `${props.settings?.revision}:${projectionQuery}:${props.telemetryGeneratedAt}:${props.projectionReady}`;
@@ -1239,6 +1240,7 @@ export const SettingsView = (
   const draftQuery = new URLSearchParams({
     capitalToUseUsd: pending.capital,
     maxLossUsd: pending.maxLoss,
+    maxPositionUsd: pending.maxPosition,
     targetMakerVolumeUsd: volumeMode === 'UNTIL_LIMIT' ? '-1' : pending.targetVolume,
   }).toString();
   const draftKey = `${props.settings?.revision}:${draftQuery}:${props.telemetryGeneratedAt}:${props.projectionReady}`;
@@ -1465,6 +1467,7 @@ export const SettingsView = (
           <fieldset disabled={saving}>
             <legend>RISK</legend>
             {renderField('maxLoss', 'MAX LOSS', riskWarning)}
+            {renderField('maxPosition', 'MAX SIZE PER TRADE')}
             <div className="setting-row read-only-row">
               <span title="Per-entry notional USD after venue rounding and available margin constraints.">
                 ENTRY SIZE

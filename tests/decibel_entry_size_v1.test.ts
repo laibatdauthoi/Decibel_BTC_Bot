@@ -239,7 +239,7 @@ describe('Dynamic entry allocation and independent hard risk', () => {
       maxLossUsd: 0.2,
       targetMakerVolumeUsd: 300,
       orderNotionalUsd: 10,
-      maxPositionUsd: 11.91,
+      maxPositionUsd: 100,
     };
     const input = {
       settings,
@@ -256,6 +256,13 @@ describe('Dynamic entry allocation and independent hard risk', () => {
         settings: { ...settings, maxLossUsd: 2 },
       }),
     ).toBeCloseTo(44.8);
+    // "Max size per trade" caps the projected entry.
+    expect(
+      projectDecibelNextSessionEntrySizeUsdV1({
+        ...input,
+        settings: { ...settings, maxPositionUsd: 20 },
+      }),
+    ).toBeLessThanOrEqual(20);
     expect(projectDecibelNextSessionEntrySizeUsdV1({ ...input, accountReady: false })).toBeNull();
     expect(
       projectDecibelNextSessionEntrySizeUsdV1({

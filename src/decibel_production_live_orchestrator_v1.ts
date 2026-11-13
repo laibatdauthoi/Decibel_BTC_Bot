@@ -230,6 +230,8 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
     maxLossUsd: number;
     targetMakerVolumeUsd: number;
     maxPositionUsd: number;
+    /** Settings "Max size per trade": caps each opening order (entry or DCA), not the position. */
+    maximumTradeNotionalUsd?: number;
     exposureLimits?: Readonly<{
       capacityBlocker?: string | null;
       capacityDiagnostics?: unknown;
@@ -2411,6 +2413,7 @@ export class decibel_production_live_orchestrator_v1 {
                 sizing.availableMarginUsd * sizing.maximumEffectiveLeverage +
                   (currentEntry ? currentEntry.price * currentEntry.quantity : 0),
                 sizing.maximumNotionalUsd,
+                snapshot.sessionConfiguration.maximumTradeNotionalUsd ?? Infinity,
               ),
               // Shrink to the stress-loss capacity the risk gate enforces instead of
               // proposing an entry it would block outright. A DCA addition gets only the

@@ -416,6 +416,7 @@ export function projectDecibelNextSessionEntrySizeUsdV1(
       minimumNotionalUsd: snapshot.input.metadata.minimumNotionalUsd ?? 0,
       lotSize: snapshot.input.metadata.lotSize,
       maximumExecutableNotionalUsd: Math.min(
+        input.settings.maxPositionUsd,
         limits.availableHeadroomUsd,
         limits.maximumOrderNotionalUsd,
         limits.availableMarginUsd *
@@ -1671,6 +1672,7 @@ export async function runDecibelProductionWebV1(
           maxLossUsd: session.configSnapshot.maxLossUsd,
           targetMakerVolumeUsd: session.configSnapshot.targetMakerVolumeUsd,
           maxPositionUsd: limits.maximumPositionUsd,
+          maximumTradeNotionalUsd: session.configSnapshot.maxPositionUsd,
           exposureLimits: {
             ...limits,
             ...(session.configSnapshot.sizingPolicyVersion === 1 && limits.capacityDiagnostics
@@ -2558,6 +2560,7 @@ export async function runDecibelProductionWebV1(
                 .finite()
                 .refine((value) => value !== 0)
                 .optional(),
+              maxPositionUsd: z.coerce.number().finite().positive().optional(),
             })
             .safeParse(Object.fromEntries(params));
           const state = RuntimeSupervisor.getSnapshot();
@@ -2587,6 +2590,7 @@ export async function runDecibelProductionWebV1(
                   maxLossUsd: queryValues.data.maxLossUsd ?? saved.values.maxLossUsd,
                   targetMakerVolumeUsd:
                     queryValues.data.targetMakerVolumeUsd ?? saved.values.targetMakerVolumeUsd,
+                  maxPositionUsd: queryValues.data.maxPositionUsd ?? saved.values.maxPositionUsd,
                 },
                 snapshot: projectedSnapshot,
                 accountReady: state.readiness.accountReady,

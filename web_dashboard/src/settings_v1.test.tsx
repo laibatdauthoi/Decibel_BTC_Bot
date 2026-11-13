@@ -111,10 +111,16 @@ function renderView(props: Props) {
 // Supply the server projection at the exact draft key; effects are disabled in this handler harness.
 function resolveEntryProjection(props: MutableProps, value: number | null = 10) {
   props.projectionReady = true;
-  const pending = Hooks.values[0] as { capital: string; maxLoss: string; targetVolume: string };
+  const pending = Hooks.values[0] as {
+    capital: string;
+    maxLoss: string;
+    maxPosition: string;
+    targetVolume: string;
+  };
   const query = new URLSearchParams({
     capitalToUseUsd: pending.capital,
     maxLossUsd: pending.maxLoss,
+    maxPositionUsd: pending.maxPosition,
     targetMakerVolumeUsd: Hooks.values[1] === 'UNTIL_LIMIT' ? '-1' : pending.targetVolume,
   }).toString();
   Hooks.values[11] = {
@@ -329,6 +335,7 @@ describe('Settings draft, saved and active configuration', () => {
     const query = new URLSearchParams({
       capitalToUseUsd: '5',
       maxLossUsd: '1',
+      maxPositionUsd: '20',
       targetMakerVolumeUsd: '300',
     }).toString();
     Hooks.values[10] = { key: `2:${query}:1000:true`, value: 15 };
