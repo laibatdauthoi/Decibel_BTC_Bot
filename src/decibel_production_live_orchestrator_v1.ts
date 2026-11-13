@@ -1750,6 +1750,24 @@ function buildAdoptedOpenOrderIntent(
 }
 
 /**
+ * Entry volume budget left by the session target. While any volume is missing the last
+ * entry keeps its normal size (the preferred entry, at least one venue-minimum order)
+ * instead of shrinking to a remainder below the venue minimum, which would block both
+ * sides and leave the session unfinished. No target: unbounded; target reached: zero.
+ */
+function remainingTargetBudgetUsd(
+  target: number | undefined,
+  executed: number | undefined,
+  preferredEntrySizeUsd: number | undefined,
+  minimumOrderUsd: number,
+): number {
+  if (target === undefined || target <= 0) return Infinity;
+  const remaining = target - (executed ?? 0);
+  if (!(remaining > 1e-9)) return 0;
+  return Math.max(remaining, preferredEntrySizeUsd ?? 0, minimumOrderUsd);
+}
+
+/**
  * Anti-chase band for repricing a resting entry. Every snapshot read from the venue carries
  * priceRangeBps (null without enough history, which still applies the floor); snapshots
  * without the field keep the legacy band.
@@ -2482,7 +2500,16 @@ export class decibel_production_live_orchestrator_v1 {
           0,
           Math.min(
             collateralNotional + pendingUsd,
-            target !== undefined && target > 0 ? target - (executed ?? 0) : Infinity,
+            remainingTargetBudgetUsd(
+              target,
+              executed,
+              snapshot.sessionConfiguration?.preferredEntrySizeUsd,
+              Math.max(
+                snapshot.input.metadata.minimumSize *
+                  Math.max(baseline.desiredBid.price, baseline.desiredAsk.price),
+                snapshot.minimumNotionalUsd,
+              ),
+            ),
           ),
         ),
         preferredSide:
