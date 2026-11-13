@@ -168,7 +168,7 @@ export function evaluateTradingDecision(
     );
   const entryCapacityOnly = (reason: string | null | undefined) =>
     reason != null &&
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
       reason,
     );
   if (candidate && snapshot && !positionReduction) {
@@ -580,15 +580,17 @@ export function evaluateTradingDecision(
     }
     // The target still triggers canonical session unwind when reached. Its
     // remaining entry budget cannot truncate a protective inventory reduction.
+    // Each side is checked on its own: near the end both entries rest so whichever fills
+    // first finishes the target (live 2026-11-13 21:40: summing the resting BUY into the
+    // SELL check left only one side quoted). Resting reductions never count.
     if (!reducing && config && config.targetMakerVolumeUsd > 0) {
       const executed =
         config.targetSemanticsVersion === 2 ? config.totalExecutedVolumeUsd : config.makerVolumeUsd;
       if (executed === undefined || executed === null) return null;
-      const pending = snapshot.input.openOrders.reduce(
-        (sum, resting) => sum + resting.quantity * resting.price,
-        0,
-      );
-      if (notional + pending > config.targetMakerVolumeUsd - executed + 1e-9) return null;
+      if (notional > config.targetMakerVolumeUsd - executed + 1e-9) {
+        tpReasons[side] = 'ENTRY_EXCEEDS_REMAINING_TARGET';
+        return null;
+      }
     }
 
     if (
@@ -647,7 +649,7 @@ export function evaluateTradingDecision(
     ((source.actualInventoryBase < 0 && side === 'BUY') ||
       (source.actualInventoryBase > 0 && side === 'SELL'));
   const entryOnly = (reason: string) =>
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
       reason,
     );
   const executableReduction =
