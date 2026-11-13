@@ -1,6 +1,10 @@
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { assessDecibelSnapshotDCAV1 } from './decibel_dca_v1.js';
 import {
+  DECIBEL_GAS_BALANCE_REFRESH_MS_V1,
+  getDecibelGasEntryBlockerV1,
+} from './decibel_gas_reserve_v1.js';
+import {
   DECIBEL_CATASTROPHE_STOP_RETRY_INTERVAL_MS_V1,
   planDecibelCatastropheStopV1,
   validateDecibelCatastropheStopV1,
@@ -208,6 +212,8 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
   tpAdverseProgress?: import('./decibel_execution_intent_v1.js').tp_adverse_progress_v1 | null;
   /** Midpoint range over the last 5 minutes (bps); null without enough history. */
   priceRangeBps?: number | null;
+  /** Set while the gas wallet is below the entry reserve (decibel_gas_reserve_v1). */
+  executionGasBlocker?: string | null;
   /** Recent midpoints (volatility lookback) for the adverse-TP candle rule. */
   recentMidpoints?: readonly Readonly<{ at: number; midpoint: number }>[];
   venueReadWindow?: Readonly<{
@@ -1934,6 +1940,32 @@ export class decibel_production_live_orchestrator_v1 {
     import('./decibel_execution_lifecycle_v1.js').execution_submission_validation_v1 | null = null;
   private LatestSnapshot: decibel_production_live_snapshot_v1 | null = null;
   private CatastropheStopAttemptAt = Number.NEGATIVE_INFINITY;
+  private GasBalanceApt: number | null = null;
+  private GasBalanceCheckedAt = Number.NEGATIVE_INFINITY;
+
+  /** Re-read the gas wallet at most once per refresh interval; failures keep the last value. */
+  private async refreshGasBalance(): Promise<void> {
+    const read = this.ExternalExecutor.readAccountDiagnostics?.bind(this.ExternalExecutor);
+    if (read === undefined || this.Config.dryRun) return;
+    const now = Date.now();
+    if (now - this.GasBalanceCheckedAt < DECIBEL_GAS_BALANCE_REFRESH_MS_V1) return;
+    this.GasBalanceCheckedAt = now;
+    let Timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const diagnostics = await Promise.race([
+        read(),
+        new Promise<null>((resolve) => {
+          Timeout = setTimeout(() => resolve(null), 5_000);
+        }),
+      ]);
+      if (diagnostics !== null && Number.isFinite(diagnostics.primaryAccountAptBalance))
+        this.GasBalanceApt = diagnostics.primaryAccountAptBalance;
+    } catch {
+      // Keep the last known balance; a read failure must not block or unblock entries.
+    } finally {
+      if (Timeout !== undefined) clearTimeout(Timeout);
+    }
+  }
   /** Latest catastrophe stop plan reason, for telemetry. */
   public CatastropheStopStatus: string | null = null;
   private readonly MidpointHistory: decibel_market_regime_observation_v1[] = [];
@@ -2319,7 +2351,10 @@ export class decibel_production_live_orchestrator_v1 {
           ? { side: dca.side, priceLimit: dca.priceLimit }
           : null,
       positionGrowthBlocker: dca !== null && !dca.allowed ? dca.reason : null,
-      entryPauseReason: getDecibelEntryVolatilityPauseReasonV1(snapshot.priceRangeBps),
+      entryPauseReason:
+        getDecibelEntryVolatilityPauseReasonV1(snapshot.priceRangeBps) ??
+        snapshot.executionGasBlocker ??
+        null,
       entryEvidenceBlocker: limits?.capacityBlocker ?? null,
       ...(snapshot.reductionCapacity
         ? {
@@ -2680,7 +2715,7 @@ export class decibel_production_live_orchestrator_v1 {
   public constructor(
     private readonly Journal: decibel_execution_lifecycle_journal_v1,
     private readonly Source: DecibelProductionLiveStateSourceV1,
-    executor: DecibelProductionExecutionExecutorV1,
+    private readonly ExternalExecutor: DecibelProductionExecutionExecutorV1,
     private readonly Config: decibel_production_live_configuration_v1,
     private readonly Budget: execution_mutation_budget_v1,
     regimeBootstrap?: decibel_market_regime_bootstrap_v1,
@@ -2713,7 +2748,7 @@ export class decibel_production_live_orchestrator_v1 {
     if (Config.releaseStage === 'DISABLED' || !Config.executorEnabled) {
       // The constructor remains non-mutating; evaluateOnce records the blocker.
     }
-    const Gate = new decibel_production_executor_gate_v1(executor, {
+    const Gate = new decibel_production_executor_gate_v1(ExternalExecutor, {
       executorEnabled: Config.executorEnabled,
       releaseStage: Config.releaseStage === 'AUTONOMOUS' ? 'AUTONOMOUS' : 'CANARY',
       ...(Config.reconciledCanaryEvidenceHash
@@ -2848,6 +2883,7 @@ export class decibel_production_live_orchestrator_v1 {
     this.DecisionSelectedAt = null;
     this.CancelToReplacementReadyMs = null;
     try {
+      await this.refreshGasBalance();
       const cycle = await this.evaluateOnceInternal();
       await this.maintainCatastropheStop(cycle);
       return cycle;
@@ -4729,6 +4765,7 @@ export class decibel_production_live_orchestrator_v1 {
     return {
       ...snapshot,
       priceRangeBps: calculateDecibelMidpointRangeBpsV1(this.MidpointHistory, snapshot.input.now),
+      executionGasBlocker: getDecibelGasEntryBlockerV1(this.GasBalanceApt),
       ...(this.Config.tpCandleRuleEnabled
         ? {
             recentMidpoints: this.MidpointHistory.map((sample) => ({

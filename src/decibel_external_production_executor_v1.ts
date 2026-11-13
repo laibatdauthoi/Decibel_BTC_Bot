@@ -25,7 +25,21 @@ const DECIBEL_POST_ONLY_TIME_IN_FORCE = 1;
 const DECIBEL_IMMEDIATE_OR_CANCEL_TIME_IN_FORCE = 2;
 const BTC_USD_PRICE_DECIMALS = 6;
 const BTC_USD_SIZE_DECIMALS = 8;
-export const DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1 = 200_000;
+// 200,000 -> 20,000 (2026-11-14): a transaction uses about 300-500 gas units, but Aptos
+// requires balance >= max gas x gas price; with 200,000 a 0.1995 APT wallet (enough for
+// hundreds of transactions) could not submit anything. 20,000 keeps a ~40x margin.
+export const DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1 = 20_000;
+
+/**
+ * A fullnode "Invalid transaction: Type: Validation" error means the transaction was
+ * refused before it reached the chain (for example INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE
+ * or SEQUENCE_NUMBER_TOO_OLD). It can never execute, so it is a rejection, not an unknown
+ * outcome, and the order state is unchanged.
+ */
+export function isDecibelPreSubmissionRejectionV1(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Invalid transaction: Type: Validation/i.test(message);
+}
 export const DECIBEL_PRODUCTION_CANCEL_TRANSPORT_TIMEOUT_MS_V1 = 20_000;
 const APT_OCTAS_PER_APT = 100_000_000;
 
@@ -375,6 +389,8 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
         subaccountAddr: subaccount,
       });
       this.logSubmissionStage(intent, 'SDK_PLACE_ORDER_COMPLETE', startedAt);
+      if (!result.success && isDecibelPreSubmissionRejectionV1(result.error))
+        return Object.freeze({ outcome: 'PLACE_REJECTED' });
       if (!result.success || !result.orderId)
         return Object.freeze({
           outcome: 'PLACE_OUTCOME_UNKNOWN',
@@ -393,6 +409,8 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
       });
     } catch (error) {
       this.logSubmissionFailure(intent, error);
+      if (isDecibelPreSubmissionRejectionV1(error))
+        return Object.freeze({ outcome: 'PLACE_REJECTED' });
       return Object.freeze({ outcome: 'PLACE_OUTCOME_UNKNOWN' });
     }
   }
@@ -429,6 +447,8 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
       });
     } catch (error) {
       this.logCancelStage(intent, 'SDK_CANCEL_ORDER_ERROR', startedAt, error);
+      if (isDecibelPreSubmissionRejectionV1(error))
+        return Object.freeze({ outcome: 'CANCEL_REJECTED' });
       return Object.freeze({ outcome: 'CANCEL_OUTCOME_UNKNOWN' });
     } finally {
       if (Timeout !== undefined) clearTimeout(Timeout);
@@ -463,7 +483,9 @@ export class decibel_external_production_executor_v1 implements DecibelProductio
       });
     } catch (error) {
       return Object.freeze({
-        outcome: 'STOP_OUTCOME_UNKNOWN',
+        outcome: isDecibelPreSubmissionRejectionV1(error)
+          ? 'STOP_REJECTED'
+          : 'STOP_OUTCOME_UNKNOWN',
         detail: (error instanceof Error ? error.message : String(error)).slice(0, 200),
       });
     }

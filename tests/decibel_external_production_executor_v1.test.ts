@@ -10,6 +10,7 @@ import {
   readDecibelGasAccountEvidenceV1,
   createDecibelProductionExecutorV1,
   DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1,
+  isDecibelPreSubmissionRejectionV1,
   DECIBEL_EXTERNAL_PRODUCTION_EXECUTOR_V1,
   decibel_external_production_executor_v1,
   type DecibelProductionWriteClientV1,
@@ -86,11 +87,39 @@ function setup(input?: {
 }
 
 describe('Decibel external production executor V1', () => {
+  it('treats a fullnode validation refusal as a rejection, never an unknown outcome', async () => {
+    const refused = new Error(
+      'Request to [Fullnode]: POST https://api.mainnet.aptoslabs.com/v1/transactions failed with: {"message":"Invalid transaction: Type: Validation Code: INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE"}',
+    );
+    expect(isDecibelPreSubmissionRejectionV1(refused)).toBe(true);
+    expect(isDecibelPreSubmissionRejectionV1(new Error('socket hang up'))).toBe(false);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      const place = setup({ place: () => Promise.reject(refused) });
+      await expect(place.Executor.placePostOnlyLimit(buildPlace())).resolves.toMatchObject({
+        outcome: 'PLACE_REJECTED',
+      });
+      const cancel = setup({ cancel: () => Promise.reject(refused) });
+      await expect(cancel.Executor.cancelExactOrder(buildCancel())).resolves.toMatchObject({
+        outcome: 'CANCEL_REJECTED',
+      });
+      // A transport failure stays unknown: the transaction may have reached the chain.
+      const lost = setup({ cancel: () => Promise.reject(new Error('socket hang up')) });
+      await expect(lost.Executor.cancelExactOrder(buildCancel())).resolves.toMatchObject({
+        outcome: 'CANCEL_OUTCOME_UNKNOWN',
+      });
+    } finally {
+      error.mockRestore();
+      info.mockRestore();
+    }
+  });
+
   it('caps every transaction build at the conservative production gas limit', () => {
-    expect(capDecibelProductionMaxGasAmountV1()).toBe(200_000);
+    expect(capDecibelProductionMaxGasAmountV1()).toBe(20_000);
     expect(capDecibelProductionMaxGasAmountV1(10_000)).toBe(10_000);
-    expect(capDecibelProductionMaxGasAmountV1(2_000_000)).toBe(200_000);
-    expect(DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1).toBe(200_000);
+    expect(capDecibelProductionMaxGasAmountV1(2_000_000)).toBe(20_000);
+    expect(DECIBEL_PRODUCTION_MAX_GAS_AMOUNT_V1).toBe(20_000);
   });
 
   it('exports the frozen handoff identity', () => {

@@ -6926,6 +6926,42 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     }
   });
 
+  it('pauses new entries while the gas wallet is below the protection reserve', async () => {
+    const snapshot = twoSidedSnapshot(0, 200);
+    const executor = (balance: number): DecibelProductionExecutionExecutorV1 => ({
+      placePostOnlyLimit: () => Promise.resolve({ outcome: 'PLACE_OUTCOME_UNKNOWN' }),
+      cancelExactOrder: () => Promise.resolve({ outcome: 'CANCEL_OUTCOME_UNKNOWN' }),
+      readAccountDiagnostics: () =>
+        Promise.resolve({
+          primaryAccountAddress: '0xprimary',
+          subaccountAddress: '0xsubaccount',
+          primaryAccountAptBalance: balance,
+          subaccountAptBalance: 0,
+        }),
+    });
+    for (const [balance, blocked] of [
+      [0.05, true],
+      [0.5, false],
+    ] as const) {
+      const test = make({
+        snapshots: [snapshot, snapshot],
+        executor: executor(balance),
+        environment: { DECIBEL_EXECUTOR_DRY_RUN: 'false' },
+      });
+      try {
+        const result = await test.orchestrator.evaluateOnce();
+        const reasons = [
+          result.evaluation?.bidEligibilityReason,
+          result.evaluation?.askEligibilityReason,
+        ];
+        if (blocked) expect(reasons).toEqual(['ENTRY_GAS_BALANCE_LOW', 'ENTRY_GAS_BALANCE_LOW']);
+        else expect(reasons).not.toContain('ENTRY_GAS_BALANCE_LOW');
+      } finally {
+        await test.orchestrator.close();
+      }
+    }
+  });
+
   it('refuses opening orders while the 5-minute range is above 40 bps', () => {
     const base = twoSidedSnapshot(0, 200);
     const candidate = {
