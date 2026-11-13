@@ -31,6 +31,8 @@ import {
   DECIBEL_VENUE_PROBE_FAR_DISTANCE_FRACTION_V1,
   DECIBEL_VENUE_PROBE_STOP_DISTANCE_FRACTION_V1,
   assessDecibelVenueProbeOrderV1,
+  assessDecibelVenueProbeStopV1,
+  findDecibelVenueProbeStopOrderIdV1,
   assessDecibelVenueProbePreconditionsV1,
   buildDecibelVenueProbeClientOrderIdV1,
   compareDecibelVenueProbeOrdersV1,
@@ -75,6 +77,13 @@ const OpenOrderSchema = z.object({
   is_reduce_only: z.boolean().optional(),
   is_tpsl: z.boolean().optional(),
   unix_ms: z.number().nullable().optional(),
+  // Stage D records the venue's TP/SL vocabulary; values are not documented.
+  order_type: z.string().nullable().optional(),
+  trigger_condition: z.string().nullable().optional(),
+  tp_trigger_price: z.number().nullable().optional(),
+  tp_limit_price: z.number().nullable().optional(),
+  sl_trigger_price: z.number().nullable().optional(),
+  sl_limit_price: z.number().nullable().optional(),
 });
 const BulkOrderSchema = z.object({
   market: z.string(),
@@ -89,6 +98,9 @@ const PositionSchema = z.object({
   size: z.number(),
   tp_order_id: z.union([z.string(), z.number()]).nullable().optional(),
   sl_order_id: z.union([z.string(), z.number()]).nullable().optional(),
+  sl_trigger_price: z.number().nullable().optional(),
+  sl_limit_price: z.number().nullable().optional(),
+  has_fixed_sized_tpsls: z.boolean().nullable().optional(),
 });
 
 /** Readers return either an array, `{ items }`, or a single object. */
@@ -144,7 +156,8 @@ type probe_write_client_v1 = Readonly<{
     marketAddr: string;
     slTriggerPrice: bigint;
     slLimitPrice: bigint;
-    slSize: bigint;
+    /** Omitted: Stage D checks whether the venue sizes the stop to the whole position. */
+    slSize?: bigint;
     subaccountAddr: string;
   }): Promise<committed_tx_v1>;
   cancelTpSlOrderForPosition(input: {
@@ -370,6 +383,7 @@ async function main(): Promise<void> {
         positionBase: account.positionBase,
         position: account.position,
         openOrders: account.orderRows,
+        tpslOrders: account.openOrders.filter((row) => row.is_tpsl === true),
         bulkOrders: account.bulkOrders,
         ...(extra === undefined ? {} : { extra }),
       },
@@ -701,6 +715,7 @@ async function main(): Promise<void> {
       let tpId = await findOrderId(placed.clientOrderId, placed.orderId);
       if (!tpId) throw new Error('PROBE_TP_NOT_FOUND');
       if (current === 'D') {
+        // The long position closes with a SELL stop far below the market (never triggered).
         const trigger = getDecibelVenueProbePriceV1(
           market,
           'BUY',
@@ -713,7 +728,23 @@ async function main(): Promise<void> {
           DECIBEL_VENUE_PROBE_STOP_DISTANCE_FRACTION_V1 + 0.01,
           'AWAY',
         );
-        await submit('D3-place-position-sl-next-to-tp', { trigger, limit, size: quantity }, () =>
+        const stopBlocker = assessDecibelVenueProbeStopV1({
+          positionBase: opened.positionBase,
+          triggerPrice: trigger,
+          limitPrice: limit,
+          midPrice: market.midPrice,
+        });
+        if (stopBlocker) throw new Error(stopBlocker);
+        const stopOrderId = (account: Awaited<ReturnType<typeof readAccount>>) =>
+          findDecibelVenueProbeStopOrderIdV1(
+            account.openOrders.filter((row) => row.is_tpsl === true).map((row) => row.order_id),
+            account.position?.sl_order_id === null || account.position?.sl_order_id === undefined
+              ? null
+              : String(account.position.sl_order_id),
+          );
+        const settle = () => new Promise((done) => setTimeout(done, 2_000));
+        // Q7: a fixed-size stop next to a full-size reduce-only TP.
+        await submit('D3-place-sized-sl-next-to-tp', { trigger, limit, size: quantity }, () =>
           Client.placeTpSlOrderForPosition({
             marketAddr: BTC_USD_MARKET_ADDRESS,
             slTriggerPrice: px(trigger),
@@ -722,7 +753,52 @@ async function main(): Promise<void> {
             subaccountAddr: subaccount,
           }),
         );
-        await observe('D4-after-sl');
+        await settle();
+        const sized = await observe('D4-after-sized-sl');
+        const sizedId = stopOrderId(sized);
+        if (sizedId === null)
+          record({
+            step: 'D5-cancel-sized-sl',
+            at: Date.now(),
+            outcome: 'SKIPPED',
+            observation: 'no single stop order visible',
+          });
+        else {
+          await submit('D5-cancel-sized-sl', { orderId: sizedId }, () =>
+            Client.cancelTpSlOrderForPosition({
+              marketAddr: BTC_USD_MARKET_ADDRESS,
+              orderId: sizedId,
+              subaccountAddr: subaccount,
+            }),
+          );
+          await settle();
+          await observe('D5-after-cancel');
+        }
+        // A stop without a size: does the venue size it to the whole position?
+        await submit('D6-place-unsized-sl', { trigger, limit, size: null }, () =>
+          Client.placeTpSlOrderForPosition({
+            marketAddr: BTC_USD_MARKET_ADDRESS,
+            slTriggerPrice: px(trigger),
+            slLimitPrice: px(limit),
+            subaccountAddr: subaccount,
+          }),
+        );
+        await settle();
+        const unsized = await observe('D7-after-unsized-sl');
+        // Close the position while the TP and stop rest: is the stop removed with it?
+        const restingStopId = stopOrderId(unsized) ?? sizedId;
+        await closePosition('D8-close-position-with-sl-resting');
+        await new Promise((done) => setTimeout(done, 4_000));
+        const closed = await readAccount();
+        await observe('D9-after-close', {
+          positionBase: closed.positionBase,
+          stopOrderIdBeforeClose: restingStopId,
+          stopStillOpen:
+            restingStopId !== null &&
+            closed.openOrders.some((row) => row.order_id === restingStopId),
+          tpStillOpen: tpId !== null && closed.openOrders.some((row) => row.order_id === tpId),
+          tpslRowsAfterClose: closed.openOrders.filter((row) => row.is_tpsl === true).length,
+        });
         return;
       }
       tpId = await update(

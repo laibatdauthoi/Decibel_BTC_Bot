@@ -42,6 +42,8 @@ Already checked without trading (2026-11-12):
 | Q6  | After a partial fill, is the update `size` the new total or the new remaining?                    | C (opportunistic) |
 | Q7  | Can a position SL (`place_tp_sl_order_for_position`) rest next to a full-size reduce-only TP limit? (needed for the catastrophe stop) | D |
 | Q8  | Can the ENTRY be a one-level bulk order next to a regular reduce-only TP? Does a re-price keep or lose queue position, and is the bulk order visible in the bot's open-order reads? | E |
+| Q9  | Does a position SL placed without a size cover the whole position (`has_fixed_sized_tpsls = false`)? | D |
+| Q10 | When the position is closed, does the venue remove the resting SL (and the reduce-only TP)? A leftover SL could open a new position. | D |
 
 ## 3. Stages
 
@@ -66,9 +68,21 @@ back the remaining size to answer Q6; otherwise record Q6 as unanswered. Close a
 reduce-only IOC. Worst case: adverse move on about $12 during the stage (0.5% ≈ $0.06) plus fees.
 Answers Q3, Q5, Q6.
 
-**Stage D — position SL next to a TP.** With the Stage C position open and a full-size reduce-only TP
-resting, place a position SL about 10% away (`place_tp_sl_order_for_position`, SL only, size =
-position). Record acceptance or the abort code, then cancel the SL and close. Answers Q7.
+**Stage D — position SL next to a TP.** Open a 1 × minimum long (taker IOC) and rest a full-size
+reduce-only PostOnly TP. Then, reading back state after each step:
+
+1. D3: place a position SL about 10% below the market (`place_tp_sl_order_for_position`, SL only,
+   size = position, limit 1% beyond the trigger). Answers Q7.
+2. D5: cancel that SL with `cancel_tp_sl_order_for_position`.
+3. D6: place the same SL **without a size**. Answers Q9.
+4. D8: close the position with a reduce-only IOC while the TP and SL rest; D9 records whether the
+   SL and the TP are still open. Answers Q10.
+
+Every observation records the raw TP/SL rows (`order_type`, `trigger_condition`, trigger and limit
+prices) and the position's `sl_order_id`, `sl_trigger_price` and `has_fixed_sized_tpsls`. The probe
+gate refuses a stop closer than 5% to the midpoint, so the stop never triggers during the stage.
+What price triggers the stop (mark or last trade) and whether it executes as a limit or market
+order stay unanswered: that needs a real trigger.
 
 **Stage E — bulk order as ENTRY (no fill risk).** Place a one-level bulk BUY about 3% below the bid
 (`place_bulk_orders_to_subaccount`, increasing sequence number). Re-send it with a smaller size, then a

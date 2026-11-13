@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   assessDecibelVenueProbeOrderV1,
   assessDecibelVenueProbePreconditionsV1,
+  assessDecibelVenueProbeStopV1,
+  findDecibelVenueProbeStopOrderIdV1,
   buildDecibelVenueProbeClientOrderIdV1,
   compareDecibelVenueProbeOrdersV1,
   getDecibelVenueProbePriceV1,
@@ -254,5 +256,44 @@ describe('venue probe policy', () => {
       ),
     ).toEqual({ transactionHash: hash, abort: 'single_order_book::EORDER_NOT_FOUND(0x2)' });
     expect(parseDecibelMoveAbortV1('socket hang up')).toBeNull();
+  });
+
+  it('allows only a far stop on the closing side of an open position', () => {
+    const long = { positionBase: 0.0002, midPrice: 70000 };
+    expect(assessDecibelVenueProbeStopV1({ ...long, triggerPrice: 63000, limitPrice: 62300 })).toBe(
+      null,
+    );
+    // Too close, wrong side, limit on the market side of the trigger, or flat.
+    expect(assessDecibelVenueProbeStopV1({ ...long, triggerPrice: 69000, limitPrice: 68000 })).toBe(
+      'PROBE_STOP_TOO_CLOSE',
+    );
+    expect(assessDecibelVenueProbeStopV1({ ...long, triggerPrice: 77000, limitPrice: 78000 })).toBe(
+      'PROBE_STOP_TOO_CLOSE',
+    );
+    expect(assessDecibelVenueProbeStopV1({ ...long, triggerPrice: 63000, limitPrice: 63500 })).toBe(
+      'PROBE_STOP_TOO_CLOSE',
+    );
+    expect(
+      assessDecibelVenueProbeStopV1({
+        ...long,
+        positionBase: 0,
+        triggerPrice: 63000,
+        limitPrice: 62300,
+      }),
+    ).toBe('PROBE_STOP_POSITION_REQUIRED');
+    const short = { positionBase: -0.0002, midPrice: 70000 };
+    expect(
+      assessDecibelVenueProbeStopV1({ ...short, triggerPrice: 77000, limitPrice: 77700 }),
+    ).toBe(null);
+    expect(
+      assessDecibelVenueProbeStopV1({ ...short, triggerPrice: Number.NaN, limitPrice: 77700 }),
+    ).toBe('PROBE_STOP_PRICE_INVALID');
+  });
+
+  it('finds the stop order id from the position first, else a single TP/SL row', () => {
+    expect(findDecibelVenueProbeStopOrderIdV1(['7', '8'], '9')).toBe('9');
+    expect(findDecibelVenueProbeStopOrderIdV1(['7'], null)).toBe('7');
+    expect(findDecibelVenueProbeStopOrderIdV1(['7', '8'], null)).toBeNull();
+    expect(findDecibelVenueProbeStopOrderIdV1([], '')).toBeNull();
   });
 });

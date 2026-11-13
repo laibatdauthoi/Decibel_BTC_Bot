@@ -301,3 +301,40 @@ export function parseDecibelMoveAbortV1(
     abort: abort ? `${abort[1]}::${abort[2]}` : message.slice(index, index + 200),
   });
 }
+
+/** A probe stop must stay far from the market: never a realistic trigger during the stage. */
+export const DECIBEL_VENUE_PROBE_MINIMUM_STOP_DISTANCE_FRACTION_V1 = 0.05;
+
+/**
+ * Probe-only gate for a position stop-loss: an open position, a trigger on the closing side
+ * at least 5% from the midpoint, and a limit no closer to the market than the trigger.
+ */
+export function assessDecibelVenueProbeStopV1(
+  input: Readonly<{
+    positionBase: number;
+    triggerPrice: number;
+    limitPrice: number;
+    midPrice: number;
+  }>,
+): string | null {
+  const { positionBase, triggerPrice, limitPrice, midPrice } = input;
+  if (!Number.isFinite(positionBase) || positionBase === 0) return 'PROBE_STOP_POSITION_REQUIRED';
+  if (![triggerPrice, limitPrice, midPrice].every((value) => Number.isFinite(value) && value > 0))
+    return 'PROBE_STOP_PRICE_INVALID';
+  const distance = DECIBEL_VENUE_PROBE_MINIMUM_STOP_DISTANCE_FRACTION_V1;
+  // A long closes with a SELL stop below the market; a short with a BUY stop above it.
+  const far =
+    positionBase > 0
+      ? triggerPrice <= midPrice * (1 - distance) && limitPrice <= triggerPrice
+      : triggerPrice >= midPrice * (1 + distance) && limitPrice >= triggerPrice;
+  return far ? null : 'PROBE_STOP_TOO_CLOSE';
+}
+
+/** The position's stop-loss id, preferring the position's own pointer over open-order rows. */
+export function findDecibelVenueProbeStopOrderIdV1(
+  tpslOrderIds: readonly string[],
+  positionStopOrderId: string | null,
+): string | null {
+  if (positionStopOrderId !== null && positionStopOrderId.length > 0) return positionStopOrderId;
+  return tpslOrderIds.length === 1 ? tpslOrderIds[0]! : null;
+}
