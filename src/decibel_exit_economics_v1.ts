@@ -1,7 +1,11 @@
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
-import { getDecibelTPTargetNetBpsV1 } from './decibel_volatility_targets_v1.js';
+import {
+  getDecibelTPRescueOffsetBpsV1,
+  getDecibelTPRescueTriggerBpsV1,
+  getDecibelTPTargetNetBpsV1,
+} from './decibel_volatility_targets_v1.js';
 import { createHash } from 'node:crypto';
 import {
   floorDecibelQuantityToLotV1,
@@ -182,17 +186,38 @@ export function planDecibelPatientTPV1(
     (direction * (maker - (progress?.anchorPrice ?? entryBasis))) / tick + 1e-7,
   );
   const distanceTicks = Math.round((direction * (maker - resting.price)) / tick);
-  // Move only the NEW adverse excess outside the normal excursion. Retain a
-  // whole normal excursion between TP and maker for a recovery fill.
-  const stepTicks = Math.min(newAdverseTicks - bandTicks, distanceTicks - bandTicks);
+  // Rescue: far enough adverse (5-minute volatility scaled), rest the TP only a small
+  // offset from the maker price so it can fill on a modest bounce. Hysteresis: it moves
+  // again only after the maker drifts at least one more offset away.
+  const rescueTicks =
+    snapshot.priceRangeBps === undefined
+      ? null
+      : Math.max(
+          1,
+          Math.ceil(
+            (maker * getDecibelTPRescueOffsetBpsV1(snapshot.priceRangeBps)) / 10_000 / tick,
+          ),
+        );
+  const rescue =
+    rescueTicks !== null &&
+    rescueTicks < bandTicks &&
+    adverseTicks * tick * 10_000 >=
+      entryBasis * getDecibelTPRescueTriggerBpsV1(snapshot.priceRangeBps);
+  // Otherwise move only the NEW adverse excess outside the normal excursion and retain
+  // a whole normal excursion between TP and maker for a recovery fill.
+  const stepTicks = rescue
+    ? distanceTicks - rescueTicks
+    : Math.min(newAdverseTicks - bandTicks, distanceTicks - bandTicks);
   // A change smaller than both the observed normal excursion and the original
   // recovery corridor cannot justify surrendering the existing queue priority.
-  const minimumStepTicks = Math.ceil(
-    (recoveryDistancePrice > 0 ? Math.min(range, recoveryDistancePrice) : range) / tick,
-  );
+  const minimumStepTicks = rescue
+    ? rescueTicks
+    : Math.ceil(
+        (recoveryDistancePrice > 0 ? Math.min(range, recoveryDistancePrice) : range) / tick,
+      );
   if (
     range <= 0 ||
-    adverseTicks <= bandTicks ||
+    (adverseTicks <= bandTicks && !rescue) ||
     stepTicks <= Math.max(1, spreadTicks) ||
     stepTicks < minimumStepTicks
   )

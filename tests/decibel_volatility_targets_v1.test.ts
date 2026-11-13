@@ -10,6 +10,8 @@ import {
   getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
+  getDecibelTPRescueOffsetBpsV1,
+  getDecibelTPRescueTriggerBpsV1,
   getDecibelTPTargetNetBpsV1,
 } from '../src/decibel_volatility_targets_v1.js';
 
@@ -70,5 +72,14 @@ describe('volatility targets', () => {
       DECIBEL_ENTRY_REPLACEMENT_BAND_MAX_BPS_V1,
     );
     expect(getDecibelEntryReplacementBandBpsV1(-1)).toBe(DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1);
+  });
+
+  it('scales the rescue TP trigger and offset with the range', () => {
+    expect(getDecibelTPRescueTriggerBpsV1(null)).toBe(10);
+    expect(getDecibelTPRescueTriggerBpsV1(18.6)).toBeCloseTo(18.6, 12);
+    expect(getDecibelTPRescueTriggerBpsV1(100)).toBe(30);
+    expect(getDecibelTPRescueOffsetBpsV1(undefined)).toBe(2);
+    expect(getDecibelTPRescueOffsetBpsV1(10)).toBeCloseTo(2.5, 12);
+    expect(getDecibelTPRescueOffsetBpsV1(100)).toBe(8);
   });
 });
