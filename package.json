@@ -21,7 +21,8 @@
     "decibel:recycling:attribute-and-resync-v1": "tsx src/run_decibel_authenticated_btc_activity_resync_v1.ts",
     "decibel:execution:resolve-pre-submit-failure-v1": "tsx src/run_decibel_execution_journal_resolve_pre_submission_failure_v1.ts",
     "decibel:probe:venue-v1": "tsx src/run_decibel_venue_capability_probe_v1.ts",
-    "decibel:data-retention-v1": "tsx src/run_decibel_data_retention_v1.ts"
+    "decibel:data-retention-v1": "tsx src/run_decibel_data_retention_v1.ts",
+    "decibel:metrics-reset-v1": "tsx src/run_decibel_metrics_reset_v1.ts"
   },
   "repository": {
     "type": "git",

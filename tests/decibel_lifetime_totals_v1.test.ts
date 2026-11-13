@@ -11,8 +11,12 @@ import {
 import {
   combineDecibelLifetimeTotalsV1,
   readDecibelOverviewLifetimeTotalsV1,
+  resetDecibelLifetimeMetricsV1,
 } from '../src/decibel_lifetime_totals_v1.js';
-import { readDecibelOverviewSessionCountV1 } from '../src/decibel_overview_metrics_v1.js';
+import {
+  calculateDecibelOverviewUTCVolumeV1,
+  readDecibelOverviewSessionCountV1,
+} from '../src/decibel_overview_metrics_v1.js';
 
 const expectSameTotals = (
   actual: ReturnType<typeof readDecibelOverviewLifetimeTotalsV1>,
@@ -85,11 +89,10 @@ describe('lifetime totals', () => {
     const { directory, sessionPath, sessionDb, journalDb } = setup();
     try {
       const totals = readDecibelOverviewLifetimeTotalsV1(sessionPath)!;
-      const live = { sessionId: 'live', volumeUsd: 194.45, netPnlUsd: 0.0166, feesUsd: 0.0299 };
+      const live = { sessionId: 'live', volumeUsd: 194.45, netPnlUsd: 0.0166 };
       const combined = combineDecibelLifetimeTotalsV1(totals, live);
       expect(combined.volumeUsd).toBeCloseTo(3350 + 194.45, 9);
       expect(combined.netPnlUsd).toBeCloseTo(-0.33 + 0.0166, 9);
-      expect(combined.grossPnlUsd).toBeCloseTo(-0.33 + 0.66 + 0.0166 + 0.0299, 9);
       // An ended session is already in the closed totals: never counted twice.
       expect(combineDecibelLifetimeTotalsV1(totals, { ...live, sessionId: 's-1' }).volumeUsd).toBe(
         totals.closed.volumeUsd,
@@ -105,5 +108,78 @@ describe('lifetime totals', () => {
       journalDb.close();
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('resets lifetime metrics to zero without deleting data and counts from the next session', () => {
+    const { directory, sessionPath, sessionDb, journalDb } = setup();
+    try {
+      // Refused while a session is live: nothing straddles the reset.
+      expect(() => resetDecibelLifetimeMetricsV1(sessionDb, 1_000)).toThrow(
+        'METRICS_RESET_REQUIRES_NO_LIVE_SESSION',
+      );
+      expect(readDecibelOverviewLifetimeTotalsV1(sessionPath)!.resetAt).toBeNull();
+      sessionDb
+        .prepare("UPDATE production_sessions_v1 SET status='ENDED' WHERE session_id='live'")
+        .run();
+      // Archive something before the reset: the reset clears it too.
+      applyDecibelRetentionPlanV1(
+        sessionDb,
+        journalDb,
+        planDecibelDataRetentionV1(readDecibelRetentionInputsV1(sessionDb, journalDb)),
+      );
+      const rowsBefore = (
+        sessionDb.prepare('SELECT COUNT(*) n FROM production_sessions_v1').get() as { n: number }
+      ).n;
+      expect(resetDecibelLifetimeMetricsV1(sessionDb, 1_000)).toEqual({ resetAt: 1_000 });
+      const reset = readDecibelOverviewLifetimeTotalsV1(sessionPath)!;
+      expect(reset).toMatchObject({ sessionCount: 0, liveSessionIds: [], resetAt: 1_000 });
+      expect(reset.closed).toEqual({
+        sessionCount: 0,
+        volumeUsd: 0,
+        netPnlUsd: 0,
+        feesUsd: 0,
+        incompletePnlCount: 0,
+      });
+      expect(readDecibelOverviewSessionCountV1(sessionPath)).toBe(0);
+      // History is kept.
+      expect(
+        (sessionDb.prepare('SELECT COUNT(*) n FROM production_sessions_v1').get() as { n: number })
+          .n,
+      ).toBe(rowsBefore);
+      // Retention of pre-reset sessions adds nothing to the lifetime figures.
+      sessionDb
+        .prepare('INSERT INTO production_sessions_v1 VALUES(?,?,?,?,?,?,?,?,?,?)')
+        .run('next', 1_100, 1_100, 'RUNNING', null, 0, 30, 0, 30, null);
+      for (let index = 0; index < 5; index += 1)
+        sessionDb
+          .prepare('INSERT INTO production_sessions_v1 VALUES(?,?,?,?,?,?,?,?,?,?)')
+          .run(`old-${index}`, 10 + index, 10 + index, 'ENDED', -1, 1, 1000, 0, 1000, 0.5);
+      applyDecibelRetentionPlanV1(
+        sessionDb,
+        journalDb,
+        planDecibelDataRetentionV1(readDecibelRetentionInputsV1(sessionDb, journalDb)),
+      );
+      const next = readDecibelOverviewLifetimeTotalsV1(sessionPath)!;
+      expect(next.sessionCount).toBe(1);
+      expect(next.liveSessionIds).toEqual(['next']);
+      expect(next.closed.volumeUsd).toBe(0);
+      expect(
+        combineDecibelLifetimeTotalsV1(next, { sessionId: 'next', volumeUsd: 30, netPnlUsd: 0.01 }),
+      ).toEqual({ volumeUsd: 30, netPnlUsd: 0.01, incompletePnlCount: 0 });
+    } finally {
+      sessionDb.close();
+      journalDb.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("starts today's volume at the reset time", () => {
+    const fills = [
+      { fillId: 'a', quantity: 1, price: 10, observedAt: 1_000 },
+      { fillId: 'b', quantity: 1, price: 20, observedAt: 3_000 },
+    ];
+    expect(calculateDecibelOverviewUTCVolumeV1(fills, true, 5_000).volumeUsd).toBe(30);
+    expect(calculateDecibelOverviewUTCVolumeV1(fills, true, 5_000, 2_000).volumeUsd).toBe(20);
+    expect(calculateDecibelOverviewUTCVolumeV1(fills, true, 5_000, null).volumeUsd).toBe(30);
   });
 });

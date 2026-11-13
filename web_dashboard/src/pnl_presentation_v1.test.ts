@@ -1,23 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  calculateActivityFillNetPnlV1,
-  calculateGrossPnlUsdV1,
-  formatOperatorPnlPairV1,
-} from './presentation';
+import { calculateActivityFillNetPnlV1 } from './presentation';
 
-describe('PnL and net PnL presentation', () => {
-  it('derives gross PnL from net PnL and fees', () => {
-    // Live session 2026-11-12: net -0.01132 after 0.02928 of fees.
-    expect(calculateGrossPnlUsdV1(-0.01132, 0.02928)).toBeCloseTo(0.01796, 10);
-    expect(calculateGrossPnlUsdV1(null, 0.02928)).toBeNull();
-    expect(calculateGrossPnlUsdV1(-0.01, null)).toBeNull();
-  });
-
-  it('formats gross PnL next to net PnL', () => {
-    expect(formatOperatorPnlPairV1(0.018, -0.011)).toBe('PnL +$0.02 · Net $-0.01');
-    expect(formatOperatorPnlPairV1(null, -0.011)).toBe('PnL — · Net $-0.01');
-  });
-
+describe('Net PnL presentation', () => {
   it('computes net PnL per closing fill with FIFO opening fees', () => {
     const net = calculateActivityFillNetPnlV1([
       {

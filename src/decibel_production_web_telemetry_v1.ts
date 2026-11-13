@@ -85,7 +85,6 @@ export type decibel_production_web_telemetry_v1 = Readonly<{
     /** Lifetime totals: archived + closed sessions + the live session in real time. */
     lifetimeVolumeUsd?: number | null;
     allTimeNetPnlUsd?: number | null;
-    allTimeGrossPnlUsd?: number | null;
     allTimeIncompletePnlCount?: number | null;
   }>;
   generatedAt: number;
@@ -1245,6 +1244,7 @@ export function mapDecibelProductionWebTelemetryV1(
     input.history.accountingFills,
     input.history.journalAvailable,
     input.generatedAt,
+    input.overviewLifetime?.resetAt ?? null,
   );
   const sessionId = stateInput?.sessionId ?? null;
   const sessionAccountingFills = input.history.accountingFills.filter(
@@ -1633,12 +1633,10 @@ export function mapDecibelProductionWebTelemetryV1(
           sessionId,
           volumeUsd: sessionId === null ? null : totalExecutedVolumeUsd,
           netPnlUsd: snapshot?.sessionConfiguration?.pnlUsd ?? null,
-          feesUsd: sessionPnl.feesUsd,
         });
         return {
           lifetimeVolumeUsd: lifetime.volumeUsd,
           allTimeNetPnlUsd: lifetime.netPnlUsd,
-          allTimeGrossPnlUsd: lifetime.grossPnlUsd,
           allTimeIncompletePnlCount: lifetime.incompletePnlCount,
         };
       })(),

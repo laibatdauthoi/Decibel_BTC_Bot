@@ -9,7 +9,6 @@ import {
 import type { ProductionSession } from './main';
 import {
   calculateActivityFillNetPnlV1,
-  calculateGrossPnlUsdV1,
   formatSessionDurationV1,
   formatOperatorPnlV1,
 } from './presentation';
@@ -79,11 +78,7 @@ export function buildSessionShareV1(
       ['Final Status', data.status],
       ['Duration', data.elapsed],
       ['Capital', data.capital],
-      [
-        'PnL (before fees)',
-        formatOperatorPnlV1(calculateGrossPnlUsdV1(session.sessionPnlUsd, session.feesUsd)),
-      ],
-      ['Net PnL (after fees)', data.pnl],
+      ['Net PnL', data.pnl],
       ['Executed Volume', data.volume],
       ['Fills', formatValue(session.fillCount, 0)],
       ['COST / 1M VOL', formatShareCostPerMillionV1(data.costPerMillion ?? null)],

@@ -919,24 +919,6 @@ export function formatSessionStartResponseV1(ok: boolean, body: unknown): string
   return 'SESSION STARTED';
 }
 
-/** Gross PnL before trading fees: net + fees. Null when either side is unknown. */
-export function calculateGrossPnlUsdV1(
-  netUsd: number | null | undefined,
-  feesUsd: number | null | undefined,
-): number | null {
-  if (netUsd === null || netUsd === undefined || feesUsd === null || feesUsd === undefined)
-    return null;
-  return Number.isFinite(netUsd) && Number.isFinite(feesUsd) ? netUsd + feesUsd : null;
-}
-
-/** "PnL +$x · Net -$y": gross PnL next to net PnL after trading fees. */
-export function formatOperatorPnlPairV1(
-  grossUsd: number | null | undefined,
-  netUsd: number | null | undefined,
-): string {
-  return `PnL ${formatOperatorPnlV1(grossUsd ?? null)} · Net ${formatOperatorPnlV1(netUsd ?? null)}`;
-}
-
 export type activity_fill_for_net_v1 = Readonly<{
   fillId: string;
   timestamp: number;

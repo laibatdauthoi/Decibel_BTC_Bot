@@ -28,7 +28,6 @@ function createProps(): Props {
         volumeSinceUTCStartUsd: 1234,
         lifetimeVolumeUsd: 2654.5,
         allTimeNetPnlUsd: 12,
-        allTimeGrossPnlUsd: 12.5,
         allTimeIncompletePnlCount: 0,
       },
       quoteSizing: null,
@@ -528,17 +527,18 @@ it('prioritizes session fields, removes volume subtext and binds lifetime totals
   const cards = getSection(html, 'inventory-strip');
   // Lifetime volume (all sessions), not the current session's volume.
   expect(cards).toContain('$2,654.50');
-  expect(cards).toContain('PnL +$12.50 · Net +$12.00');
+  expect(cards).toContain('+$12.00');
+  expect(cards).not.toContain('PnL +');
   expect(cards).not.toContain('MAKER');
   expect(cards).not.toContain('TAKER');
   p.telemetry.overviewEvidence!.sessionPnlUsd = 77;
-  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('Net +$12.00');
+  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('+$12.00');
   p.session = { ...p.session!, state: 'IDLE', activeSession: null };
-  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('Net +$12.00');
+  expect(getSection(renderOverview(p), 'inventory-strip')).toContain('+$12.00');
   p.telemetry.overviewHistory = { ...p.telemetry.overviewHistory!, allTimeNetPnlUsd: null };
   html = renderOverview(p);
   expect(getSection(html, 'inventory-strip')).toContain('UNVERIFIED');
-  expect(getSection(html, 'inventory-strip')).not.toContain('Net +$12.00');
+  expect(getSection(html, 'inventory-strip')).not.toContain('+$12.00');
 });
 
 it('keeps Share inactive for a RUNNING session with unavailable share evidence even with fresh market data', () => {

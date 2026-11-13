@@ -8,8 +8,13 @@ import { existsSync } from 'node:fs';
  * volume, net PnL and fees are added to a one-row archive in the same transaction, so the
  * lifetime numbers never shrink. Lifetime = archive + closed session rows + the live
  * session's real-time figures (the live row's persisted PnL is not final yet).
+ *
+ * Metrics reset: an operator reset stores a reset time (epoch) and clears the archive in one
+ * transaction. Nothing is deleted; every lifetime figure then counts only sessions started at
+ * or after the reset. A reset is refused while a session is live, so no session straddles it.
  */
 export const DECIBEL_LIFETIME_ARCHIVE_TABLE_V1 = 'production_lifetime_archive_v1';
+export const DECIBEL_METRICS_EPOCH_TABLE_V1 = 'production_metrics_epoch_v1';
 const LIVE_STATUSES = new Set(['STARTING', 'RUNNING', 'STOPPING']);
 
 type session_row_v1 = Readonly<Record<string, unknown>>;
@@ -28,6 +33,8 @@ export type decibel_overview_lifetime_totals_v1 = Readonly<{
   /** Archived + closed sessions only; the live session is added from real-time telemetry. */
   closed: decibel_lifetime_session_totals_v1;
   liveSessionIds: readonly string[];
+  /** Metrics reset time, or null when never reset. */
+  resetAt: number | null;
 }>;
 
 const finite = (value: unknown): number | null =>
@@ -59,6 +66,52 @@ function summarizeSessionRowsV1(
 const tableExists = (db: Database.Database, name: string) =>
   db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name) !== undefined;
 
+function readMetricsResetAtV1(db: Database.Database): number | null {
+  if (!tableExists(db, DECIBEL_METRICS_EPOCH_TABLE_V1)) return null;
+  const row = db
+    .prepare(`SELECT reset_at resetAt FROM ${DECIBEL_METRICS_EPOCH_TABLE_V1} WHERE id=1`)
+    .get() as { resetAt: unknown } | undefined;
+  return finite(row?.resetAt);
+}
+
+/** Sessions that count toward lifetime figures: started (or starting) at/after the reset. */
+const afterReset = (row: session_row_v1, resetAt: number | null) => {
+  const startedAt = finite(row.started_at);
+  return resetAt === null || startedAt === null || startedAt >= resetAt;
+};
+
+/**
+ * Operator metrics reset: lifetime volume, PnL, session count and today's volume restart
+ * from zero. Refused while any session is live. One transaction; deletes no session or fill.
+ */
+export function resetDecibelLifetimeMetricsV1(
+  db: Database.Database,
+  now: number,
+): Readonly<{ resetAt: number }> {
+  if (!Number.isSafeInteger(now) || now <= 0) throw new Error('METRICS_RESET_TIME_INVALID');
+  db.transaction(() => {
+    if (tableExists(db, 'production_sessions_v1')) {
+      const live = db
+        .prepare(
+          `SELECT COUNT(*) n FROM production_sessions_v1 WHERE status IN (${[...LIVE_STATUSES]
+            .map((status) => `'${status}'`)
+            .join(',')})`,
+        )
+        .get() as { n: number };
+      if (live.n > 0) throw new Error('METRICS_RESET_REQUIRES_NO_LIVE_SESSION');
+    }
+    db.exec(`CREATE TABLE IF NOT EXISTS ${DECIBEL_METRICS_EPOCH_TABLE_V1}(
+      id INTEGER PRIMARY KEY CHECK(id=1), reset_at INTEGER NOT NULL)`);
+    db.prepare(
+      `INSERT INTO ${DECIBEL_METRICS_EPOCH_TABLE_V1}(id,reset_at) VALUES(1,?)
+       ON CONFLICT(id) DO UPDATE SET reset_at=excluded.reset_at`,
+    ).run(now);
+    if (tableExists(db, DECIBEL_LIFETIME_ARCHIVE_TABLE_V1))
+      db.exec(`DELETE FROM ${DECIBEL_LIFETIME_ARCHIVE_TABLE_V1}`);
+  })();
+  return Object.freeze({ resetAt: now });
+}
+
 function readArchiveV1(db: Database.Database): decibel_lifetime_session_totals_v1 {
   const empty = { sessionCount: 0, volumeUsd: 0, netPnlUsd: 0, feesUsd: 0, incompletePnlCount: 0 };
   if (!tableExists(db, DECIBEL_LIFETIME_ARCHIVE_TABLE_V1)) return Object.freeze(empty);
@@ -86,9 +139,11 @@ export function archiveDecibelSessionRowsV1(
     net_pnl_usd REAL NOT NULL, fees_usd REAL NOT NULL, incomplete_pnl_count INTEGER NOT NULL,
     updated_at INTEGER NOT NULL)`);
   const select = db.prepare('SELECT * FROM production_sessions_v1 WHERE session_id=?');
+  const resetAt = readMetricsResetAtV1(db);
+  // Sessions from before a metrics reset are already outside the lifetime figures.
   const rows = sessionIds
     .map((id) => select.get(id) as session_row_v1 | undefined)
-    .filter((row): row is session_row_v1 => row !== undefined);
+    .filter((row): row is session_row_v1 => row !== undefined && afterReset(row, resetAt));
   const added = summarizeSessionRowsV1(rows);
   db.prepare(
     `INSERT INTO ${DECIBEL_LIFETIME_ARCHIVE_TABLE_V1}
@@ -119,7 +174,10 @@ export function readDecibelOverviewLifetimeTotalsV1(
     const Reader = new Database(path, { readonly: true, fileMustExist: true });
     try {
       if (!tableExists(Reader, 'production_sessions_v1')) return null;
-      const rows = Reader.prepare('SELECT * FROM production_sessions_v1').all() as session_row_v1[];
+      const resetAt = readMetricsResetAtV1(Reader);
+      const rows = (
+        Reader.prepare('SELECT * FROM production_sessions_v1').all() as session_row_v1[]
+      ).filter((row) => afterReset(row, resetAt));
       const live = rows.filter(
         (row) => typeof row.status === 'string' && LIVE_STATUSES.has(row.status),
       );
@@ -139,6 +197,7 @@ export function readDecibelOverviewLifetimeTotalsV1(
         liveSessionIds: Object.freeze(
           live.map((row) => row.session_id).filter((id): id is string => typeof id === 'string'),
         ),
+        resetAt,
       });
     } finally {
       Reader.close();
@@ -158,32 +217,25 @@ export function combineDecibelLifetimeTotalsV1(
     sessionId: string | null;
     volumeUsd: number | null;
     netPnlUsd: number | null;
-    feesUsd: number | null;
   }>,
 ): Readonly<{
   volumeUsd: number | null;
   netPnlUsd: number | null;
-  grossPnlUsd: number | null;
   incompletePnlCount: number | null;
 }> {
-  if (totals === null)
-    return { volumeUsd: null, netPnlUsd: null, grossPnlUsd: null, incompletePnlCount: null };
+  if (totals === null) return { volumeUsd: null, netPnlUsd: null, incompletePnlCount: null };
   const counted = live.sessionId !== null && totals.liveSessionIds.includes(live.sessionId);
   const closed = totals.closed;
   if (!counted)
     return {
       volumeUsd: closed.volumeUsd,
       netPnlUsd: closed.netPnlUsd,
-      grossPnlUsd: closed.netPnlUsd + closed.feesUsd,
       incompletePnlCount: closed.incompletePnlCount,
     };
-  const pnlKnown = finite(live.netPnlUsd) !== null && finite(live.feesUsd) !== null;
+  const pnlKnown = finite(live.netPnlUsd) !== null;
   return {
     volumeUsd: finite(live.volumeUsd) === null ? null : closed.volumeUsd + live.volumeUsd!,
     netPnlUsd: pnlKnown ? closed.netPnlUsd + live.netPnlUsd! : null,
-    grossPnlUsd: pnlKnown
-      ? closed.netPnlUsd + closed.feesUsd + live.netPnlUsd! + live.feesUsd!
-      : null,
     incompletePnlCount: closed.incompletePnlCount,
   };
 }

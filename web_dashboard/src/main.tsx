@@ -38,8 +38,7 @@ import {
   canStartOperatorSessionV1,
   deriveDashboardPresentationV1,
   deriveSessionStartGateV1,
-  calculateGrossPnlUsdV1,
-  formatOperatorPnlPairV1,
+  formatOperatorPnlV1,
   formatOperatorValueV1,
   getOperatorStopReasonV1,
   getReadinessFooterLabelV1,
@@ -80,7 +79,6 @@ type Telemetry = {
     volumeSinceUTCStartUsd: Value;
     lifetimeVolumeUsd?: Value;
     allTimeNetPnlUsd?: Value;
-    allTimeGrossPnlUsd?: Value;
     allTimeIncompletePnlCount?: Value;
   };
   generatedAt: number;
@@ -355,10 +353,6 @@ export const OverviewView = (
     e?.sessionId === active.sessionId &&
     t.runtime.executionSessionId === active.sessionId;
   const pnl = matched && accountingFresh ? (e?.sessionPnlUsd ?? null) : null;
-  // Gross PnL (before trading fees) shown next to the net session PnL.
-  const sessionBotPnl = t.pnl.sessionPnl;
-  // PnL before fees = net + trading fees (unrealized is not reported separately when flat).
-  const sessionGross = calculateGrossPnlUsdV1(pnl, sessionBotPnl?.feesUsd ?? null);
   const limit = activeSession ? active.configSnapshot.maxLossUsd : null;
   const volume = matched && accountingFresh ? (e?.totalExecutedVolumeUsd ?? null) : null;
   const maker = matched && accountingFresh ? (e?.makerVolumeUsd ?? null) : null;
@@ -589,9 +583,9 @@ export const OverviewView = (
                 <span>SESSION PNL</span>
                 <b
                   className={getPnlSemanticClassV1(pnl)}
-                  title="PnL = realized + unrealized (before fees). Net = PnL - trading fees; gas excluded"
+                  title="Net PnL in real time = realized + unrealized - trading fees; gas excluded"
                 >
-                  {pnl === null ? sessionMetric(pnl) : formatOperatorPnlPairV1(sessionGross, pnl)}
+                  {pnl === null ? sessionMetric(pnl) : formatOperatorPnlV1(pnl)}
                 </b>
                 <span>MAX LOSS</span>
                 <b
@@ -705,7 +699,7 @@ export const OverviewView = (
             className={getPnlSemanticClassV1(
               frameFresh ? (history?.allTimeNetPnlUsd ?? null) : null,
             )}
-            title={`All sessions plus the current session in real time. PnL = before fees; Net = PnL - trading fees; gas excluded.${
+            title={`Net PnL of all sessions plus the current session in real time (after trading fees; gas excluded).${
               history?.allTimeIncompletePnlCount
                 ? ` ${history.allTimeIncompletePnlCount} session(s) without final PnL are excluded.`
                 : ''
@@ -715,10 +709,7 @@ export const OverviewView = (
               ? 'STALE'
               : history?.allTimeNetPnlUsd == null
                 ? 'UNVERIFIED'
-                : formatOperatorPnlPairV1(
-                    history.allTimeGrossPnlUsd ?? null,
-                    history.allTimeNetPnlUsd,
-                  )}
+                : formatOperatorPnlV1(history.allTimeNetPnlUsd)}
           </strong>
         </div>
         <div>
@@ -840,10 +831,7 @@ export const SessionInlineDetail = (
         <span>
           SESSION PNL{' '}
           <b className={getPnlSemanticClassV1(props.session.sessionPnlUsd)}>
-            {formatOperatorPnlPairV1(
-              calculateGrossPnlUsdV1(props.session.sessionPnlUsd, props.session.feesUsd),
-              props.session.sessionPnlUsd,
-            )}
+            {formatOperatorPnlV1(props.session.sessionPnlUsd)}
             {!props.session.pnlComplete && ' PARTIAL'}
           </b>
         </span>
@@ -920,6 +908,18 @@ export const ActivityView = (
     () => sortOperatorSessionsNewestFirstV1(props.sessions),
     [props.sessions],
   );
+  // A live session's persisted PnL is not final yet: show the real-time net PnL instead.
+  const isLiveSession = (session: { sessionId: string; status: string }) =>
+    ['STARTING', 'RUNNING', 'STOPPING'].includes(session.status) &&
+    props.telemetry.overviewEvidence?.sessionId === session.sessionId;
+  const getLiveSessionPnl = (session: {
+    sessionId: string;
+    status: string;
+    sessionPnlUsd: number | null;
+  }) =>
+    isLiveSession(session)
+      ? (props.telemetry.overviewEvidence?.sessionPnlUsd ?? session.sessionPnlUsd)
+      : session.sessionPnlUsd;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = ordered.find((session) => session.sessionId === selectedId) ?? null;
   return (
@@ -969,12 +969,9 @@ export const ActivityView = (
                     />
                   </span>
                   <b className={session.status.toLowerCase()}>{session.status}</b>
-                  <strong className={getPnlSemanticClassV1(session.sessionPnlUsd)}>
-                    {formatOperatorPnlPairV1(
-                      calculateGrossPnlUsdV1(session.sessionPnlUsd, session.feesUsd),
-                      session.sessionPnlUsd,
-                    )}
-                    {!session.pnlComplete && <small>PARTIAL</small>}
+                  <strong className={getPnlSemanticClassV1(getLiveSessionPnl(session))}>
+                    {formatOperatorPnlV1(getLiveSessionPnl(session))}
+                    {!session.pnlComplete && !isLiveSession(session) && <small>PARTIAL</small>}
                   </strong>
                   <span>
                     {formatNumber(
