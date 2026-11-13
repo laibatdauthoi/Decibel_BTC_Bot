@@ -2,6 +2,7 @@ import type { decibel_production_live_snapshot_v1 } from './decibel_production_l
 import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
 import {
+  DECIBEL_TP_ADVERSE_DELAY_MS_V1,
   DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
   DECIBEL_TP_RESCUE_COOLDOWN_MS_V1,
   getDecibelTPRescueOffsetBpsV1,
@@ -289,6 +290,9 @@ export function planDecibelPatientTPV1(
   // Until the position (from its opening fill) is older than the hold, an adverse step
   // moves the TP at most to the net >= 0 price, never past it. Max Loss stays the hard stop.
   const positionAgeMs = input.now - (epoch?.openedAt ?? Number.NaN);
+  // A young position keeps its original TP; noise in the first minutes is not a trend.
+  if (!(positionAgeMs >= DECIBEL_TP_ADVERSE_DELAY_MS_V1))
+    return result(null, 'TP_ADVERSE_POSITION_TOO_YOUNG', band);
   if (!(positionAgeMs >= DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1)) {
     const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
     if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);

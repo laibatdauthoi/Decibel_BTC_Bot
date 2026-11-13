@@ -63,6 +63,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { calculateDecibelEntrySizeV1 } from '../src/decibel_entry_size_v1.js';
 import {
+  DECIBEL_TP_ADVERSE_DELAY_MS_V1,
   DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
   getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryPriceLimitV1,
@@ -10471,8 +10472,16 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ...movePatientMarket(snapshot, mirror(maker)),
         priceRangeBps: 6,
       });
-      // Opened 40 seconds ago: inside the hold.
-      const fresh = withRegime(adaptiveTPFixture(sign, 60000, 40000));
+      // Opened 40 seconds ago: too young for any adverse step.
+      const young = at(withRegime(adaptiveTPFixture(sign, 60000, 40000)), 75850);
+      expect(planDecibelPatientTPV1(young, side)).toMatchObject({
+        targetPrice: null,
+        reason: 'TP_ADVERSE_POSITION_TOO_YOUNG',
+      });
+      // Past the delay, inside the hold.
+      const fresh = withRegime(
+        adaptiveTPFixture(sign, 60000, DECIBEL_TP_ADVERSE_DELAY_MS_V1 + 40000),
+      );
       const far = at(fresh, 75850);
       const breakEven = getDecibelBreakEvenTPPriceV1(far, side)!;
       const net = (snapshot: decibel_production_live_snapshot_v1, price: number) =>
