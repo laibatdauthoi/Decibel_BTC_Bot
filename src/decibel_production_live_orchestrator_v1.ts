@@ -2,6 +2,7 @@ import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_workflow_v1.js';
 import {
   calculateDecibelMidpointRangeBpsV1,
+  getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
 } from './decibel_volatility_targets_v1.js';
@@ -1210,6 +1211,7 @@ export function evaluateDecibelReplacementDecisionV1(
       bookObservedAt: input.book.observedAt,
       now: input.now,
       maximumBookAgeMs: input.maxBboAgeMs,
+      ...entryReplacementStabilityFor(snapshot),
       observedPriceMovementBps: evaluation?.entryPriceMovementBps ?? 0,
     });
     const fresh =
@@ -1747,6 +1749,26 @@ function buildAdoptedOpenOrderIntent(
   });
 }
 
+/**
+ * Anti-chase band for repricing a resting entry. Every snapshot read from the venue carries
+ * priceRangeBps (null without enough history, which still applies the floor); snapshots
+ * without the field keep the legacy band.
+ */
+function entryReplacementBandFor(snapshot: decibel_production_live_snapshot_v1): {
+  entryReplacementMinimumBps?: number;
+} {
+  return snapshot.priceRangeBps === undefined
+    ? {}
+    : { entryReplacementMinimumBps: getDecibelEntryReplacementBandBpsV1(snapshot.priceRangeBps) };
+}
+function entryReplacementStabilityFor(snapshot: decibel_production_live_snapshot_v1): {
+  minimumStabilityBps?: number;
+} {
+  return snapshot.priceRangeBps === undefined
+    ? {}
+    : { minimumStabilityBps: getDecibelEntryReplacementBandBpsV1(snapshot.priceRangeBps) };
+}
+
 export class decibel_production_live_orchestrator_v1 {
   private HistoricalRecoveryBlocker: string | null = null;
   private UnrelatedRecoveryIntentIds: readonly string[] = [];
@@ -1910,6 +1932,7 @@ export class decibel_production_live_orchestrator_v1 {
         this.riskReductionRequested || hasVerifiedAccountMarginBreach(snapshot),
       sessionUnwindRequested: this.sessionUnwindRequested,
       sessionDrainOnTarget: true,
+      ...entryReplacementBandFor(snapshot),
       ...((limits) => (limits === null ? {} : { entryPriceLimits: limits }))(
         this.getReentryPriceLimits(snapshot),
       ),
@@ -3484,6 +3507,7 @@ export class decibel_production_live_orchestrator_v1 {
                   maximumBookAgeMs: snapshot.input.maxBboAgeMs,
                   observedPriceMovementBps:
                     this.LatestOperationalRegime?.inputs.realizedVolatilityBps ?? 0,
+                  ...entryReplacementStabilityFor(snapshot),
                   makerFeeBps: snapshot.economicInputs?.makerFeeBps ?? null,
                   gasCostUsd: snapshot.economicInputs?.estimatedGasCostUsd ?? null,
                   safetyMarginBps: snapshot.economicInputs?.safetyMarginBps ?? 1,

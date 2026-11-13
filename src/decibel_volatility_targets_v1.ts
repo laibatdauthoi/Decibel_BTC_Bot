@@ -83,3 +83,22 @@ export function getDecibelReentryPriceLimitV1(
     side === 'BUY' ? Math.floor(raw / tickSize + 1e-9) : Math.ceil(raw / tickSize - 1e-9);
   return Number((ticks * tickSize).toPrecision(15));
 }
+
+/**
+ * Entry replacement band: a resting entry is repriced toward the market only after the
+ * price has moved more than this (bps), so entries stop chasing every small tick.
+ * clamp(0.3 x 5-minute range, 3, 15) bps: about 3 bps in a typical market, ~9 bps when fast.
+ */
+export const DECIBEL_ENTRY_REPLACEMENT_BAND_FACTOR_V1 = 0.3;
+export const DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1 = 3;
+export const DECIBEL_ENTRY_REPLACEMENT_BAND_MAX_BPS_V1 = 15;
+
+export function getDecibelEntryReplacementBandBpsV1(rangeBps: number | null | undefined): number {
+  if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
+    return DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1;
+  return clamp(
+    DECIBEL_ENTRY_REPLACEMENT_BAND_FACTOR_V1 * rangeBps,
+    DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1,
+    DECIBEL_ENTRY_REPLACEMENT_BAND_MAX_BPS_V1,
+  );
+}

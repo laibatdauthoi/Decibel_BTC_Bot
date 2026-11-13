@@ -478,6 +478,8 @@ export function assessDecibelEntryReplacementEconomicsV1(
     now?: number;
     maximumBookAgeMs?: number;
     observedPriceMovementBps?: number;
+    /** Volatility floor of the stability band (bps): no repricing for smaller moves. */
+    minimumStabilityBps?: number;
   }>,
 ) {
   const comparable = [
@@ -670,6 +672,11 @@ export function assessDecibelEntryReplacementEconomicsV1(
         spreadTicks!,
         liquidityCellTicks ?? 0,
         observedMovementPrice === null ? 0 : Math.ceil(observedMovementPrice / input.tickSize!),
+        input.minimumStabilityBps === undefined ||
+          !Number.isFinite(input.minimumStabilityBps) ||
+          input.minimumStabilityBps <= 0
+          ? 0
+          : Math.ceil((input.restingPrice * input.minimumStabilityBps) / 10_000 / input.tickSize!),
       )
     : null;
   const improvementTicks =

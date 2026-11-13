@@ -4,7 +4,10 @@ import {
   DECIBEL_REENTRY_DISTANCE_MIN_BPS_V1,
   DECIBEL_TP_TARGET_NET_MAX_BPS_V1,
   DECIBEL_TP_TARGET_NET_MIN_BPS_V1,
+  DECIBEL_ENTRY_REPLACEMENT_BAND_MAX_BPS_V1,
+  DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1,
   calculateDecibelMidpointRangeBpsV1,
+  getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
   getDecibelTPTargetNetBpsV1,
@@ -55,5 +58,17 @@ describe('volatility targets', () => {
     expect(getDecibelReentryPriceLimitV1('SELL', 80_000, 5, 0.1)).toBe(80_040);
     expect(getDecibelReentryPriceLimitV1('BUY', 80_000.05, 5, 0.1)).toBe(79_960);
     expect(getDecibelReentryPriceLimitV1('SELL', 80_000.05, 5, 0.1)).toBe(80_040.1);
+  });
+
+  it('scales the entry replacement band with the range inside its floor and cap', () => {
+    expect(getDecibelEntryReplacementBandBpsV1(null)).toBe(
+      DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1,
+    );
+    expect(getDecibelEntryReplacementBandBpsV1(4)).toBe(DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1);
+    expect(getDecibelEntryReplacementBandBpsV1(28.8)).toBeCloseTo(8.64, 12);
+    expect(getDecibelEntryReplacementBandBpsV1(100)).toBe(
+      DECIBEL_ENTRY_REPLACEMENT_BAND_MAX_BPS_V1,
+    );
+    expect(getDecibelEntryReplacementBandBpsV1(-1)).toBe(DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1);
   });
 });

@@ -61,6 +61,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryPriceLimitV1,
   getDecibelTPTargetNetBpsV1,
 } from '../src/decibel_volatility_targets_v1.js';
@@ -17038,6 +17039,16 @@ describe('PID 22692 execution priority repair', () => {
     const action = evaluation.actions.find((a) => a.side === 'BUY')!;
     expect(action, JSON.stringify(evaluation)).toBeDefined();
     expect(action.action, JSON.stringify(action)).toBe('WOULD_REPLACE');
+    // Anti-chase band: the resting BUY is ~2.4 bps (17.9 USD) behind the candidate. A 2 bps
+    // band still replaces it; the 3 bps floor band and a fast-market band keep it resting.
+    const banded = (bps: number) =>
+      evaluateDecibelAuthenticatedPassiveRecyclingV1(snapshot.input, {
+        ...sizing,
+        entryReplacementMinimumBps: bps,
+      }).actions.find((a) => a.side === 'BUY')?.action;
+    expect(banded(2)).toBe('WOULD_REPLACE');
+    expect(banded(getDecibelEntryReplacementBandBpsV1(null))).not.toBe('WOULD_REPLACE');
+    expect(banded(getDecibelEntryReplacementBandBpsV1(400))).not.toBe('WOULD_REPLACE');
     expect(evaluateDecibelReplacementDecisionV1(action, snapshot, 0, 60000, 75)?.cancel).toBe(true);
     expect(
       evaluateDecibelReplacementDecisionV1(
@@ -17080,7 +17091,7 @@ it.each([
     strategyConfigId: base.input.strategyConfigId,
     market: base.input.market,
     side: 'BUY' as const,
-    price: 75984.8,
+    price: 75964.8, // ~5 bps below the recorded candidate: outside the anti-chase band
     quantity: 0.00047,
     orderType: 'LIMIT' as const,
     timeInForce: 'PostOnly' as const,
@@ -17152,8 +17163,8 @@ it.each([
         actualFillLedger: ledger,
         metadata: { ...base.input.metadata, lotSize: 0.00001, minimumSize: 0.00001 },
         book: {
-          bestBid: worsened ? 75970 : moved ? 76025 : 76023,
-          bestAsk: worsened ? 75970.8 : moved ? 76025.8 : 76023.8,
+          bestBid: worsened ? 75950 : moved ? 76025 : 76023,
+          bestAsk: worsened ? 75950.8 : moved ? 76025.8 : 76023.8,
           observedAt: bookStale ? -10000 : 1000,
           ...((mode === 'INTERMEDIATE' || mode === 'DEPTH_LOST') && !depthLost
             ? {
@@ -17163,7 +17174,7 @@ it.each([
                     { price: moved ? 76025 : 76023, size: 1 },
                     { price: 76010, size: 1 },
                     { price: 76000, size: 1 },
-                    { price: 75984.8, size: 0.00047 },
+                    { price: 75964.8, size: 0.00047 },
                   ],
                   asks: [{ price: moved ? 76025.8 : 76023.8, size: 1 }],
                 },

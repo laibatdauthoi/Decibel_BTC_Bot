@@ -494,6 +494,8 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     entryHeadroomUsd?: number;
     /** While flat after a TP fill: BUY entries rest at or below BUY, SELL at or above SELL. */
     entryPriceLimits?: Readonly<{ BUY?: number; SELL?: number }>;
+    /** Volatility floor for repricing a resting entry toward the market (bps). */
+    entryReplacementMinimumBps?: number;
     availableMarginUsd: number;
     maximumEffectiveLeverage: number;
     halfSpreadBps?: number;
@@ -1942,6 +1944,9 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
                 now: input.now,
                 maximumBookAgeMs: input.maxBboAgeMs,
                 observedPriceMovementBps: sizing?.entryPriceMovementBps ?? 0,
+                ...(sizing?.entryReplacementMinimumBps === undefined
+                  ? {}
+                  : { minimumStabilityBps: sizing.entryReplacementMinimumBps }),
               })
             : undefined;
           return Object.freeze({
