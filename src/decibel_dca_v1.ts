@@ -1,4 +1,5 @@
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import { getDecibelClosedCandlesV1 } from './decibel_volatility_targets_v1.js';
 
 /**
  * DCA additions (re-added 2026-11-13 at the user's request).
@@ -119,6 +120,22 @@ export function countDecibelOpeningOrdersV1(
   return inventory === position && orders.size > 0 ? orders.size : null;
 }
 
+/**
+ * Momentum gate (operator request 2026-11-14): an addition waits until the last closed
+ * 5-minute candle no longer extends the move against the position. Adding to a long needs
+ * its low at or above the previous candle's low; adding to a short needs its high at or
+ * below the previous candle's high. Null without enough candle history.
+ */
+export function isDecibelDCAMomentumSettledV1(
+  side: 'BUY' | 'SELL',
+  candles: readonly Readonly<{ low: number; high: number }>[] | null,
+): boolean | null {
+  if (candles === null || candles.length < 2) return null;
+  const previous = candles[candles.length - 2]!;
+  const last = candles[candles.length - 1]!;
+  return side === 'BUY' ? last.low >= previous.low : last.high <= previous.high;
+}
+
 /** The DCA assessment for a production snapshot (authenticated basis, fresh book, session). */
 export function assessDecibelSnapshotDCAV1(
   snapshot: decibel_production_live_snapshot_v1,
@@ -128,12 +145,31 @@ export function assessDecibelSnapshotDCAV1(
     snapshot.authenticatedPositions?.filter((p) => p.market === 'BTC/USD' && p.size === position) ??
     [];
   const book = snapshot.input.book;
-  return assessDecibelDCAV1({
+  const base = assessDecibelDCAV1({
     positionBase: position,
     entryBasis: positions.length === 1 ? positions[0]!.entryPrice : null,
     markPrice: (book.bestBid + book.bestAsk) / 2,
     preferredEntrySizeUsd: snapshot.sessionConfiguration?.preferredEntrySizeUsd,
     riskCapacityUsd: snapshot.sessionConfiguration?.exposureLimits?.riskCapacityUsd,
     openingOrderCount: countDecibelOpeningOrdersV1(snapshot),
+  });
+  if (!base.allowed || base.side === null) return base;
+  const settled = isDecibelDCAMomentumSettledV1(
+    base.side,
+    snapshot.recentMidpoints === undefined
+      ? null
+      : getDecibelClosedCandlesV1(snapshot.recentMidpoints, snapshot.input.now, 2),
+  );
+  if (settled === true) return base;
+  return Object.freeze({
+    ...base,
+    allowed: false,
+    reason:
+      settled === null
+        ? 'DCA_CANDLE_EVIDENCE_REQUIRED'
+        : base.side === 'BUY'
+          ? 'DCA_PRICE_STILL_MAKING_NEW_LOWS'
+          : 'DCA_PRICE_STILL_MAKING_NEW_HIGHS',
+    maximumNotionalUsd: 0,
   });
 }

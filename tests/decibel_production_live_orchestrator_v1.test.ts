@@ -10004,8 +10004,22 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         rebate: { availability: 'UNAVAILABLE', amount: null, currency: null },
         executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM',
       });
-      const snapshot = (basisOffsetBps: number) => ({
+      // Midpoints every 30 s for 15 minutes; one sample in the last closed 5-minute candle
+      // can extend the move against the position by `extremeUsd`.
+      const candleMs = 300_000;
+      const currentStart = Math.floor(fixture.input.now / candleMs) * candleMs;
+      const midpoints = (extremeUsd: number) =>
+        Array.from({ length: 31 }, (_, i) => {
+          const at = fixture.input.now - (30 - i) * 30_000;
+          const inLast = at >= currentStart - candleMs && at < currentStart;
+          return {
+            at,
+            midpoint: inLast && i % 7 === 0 ? maker - sign * extremeUsd : maker,
+          };
+        });
+      const snapshot = (basisOffsetBps: number, extremeUsd = 0) => ({
         ...fixture,
+        recentMidpoints: midpoints(extremeUsd),
         input: { ...fixture.input, actualFillLedger: ledger },
         authenticatedPositions: [
           {
@@ -10043,6 +10057,16 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const far = decide(snapshot(40));
       expect(far.actionPlan[side].reason).not.toMatch(/^(DCA_|POSITION_GROWTH)/);
       expect(decide(snapshot(10)).actionPlan[side].reason).toBe('DCA_ADVERSE_DISTANCE_REQUIRED');
+      // The last closed candle still extends the move: wait for it to settle.
+      expect(decide(snapshot(40, 10)).actionPlan[side].reason).toBe(
+        sign > 0 ? 'DCA_PRICE_STILL_MAKING_NEW_LOWS' : 'DCA_PRICE_STILL_MAKING_NEW_HIGHS',
+      );
+      // No candle history: no addition.
+      expect(
+        decide({ ...snapshot(40), recentMidpoints: undefined } as unknown as ReturnType<
+          typeof snapshot
+        >).actionPlan[side].reason,
+      ).toBe('DCA_CANDLE_EVIDENCE_REQUIRED');
     },
   );
   it.each(

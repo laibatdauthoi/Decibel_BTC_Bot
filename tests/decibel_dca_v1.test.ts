@@ -3,6 +3,7 @@ import {
   DECIBEL_DCA_TRIGGER_BPS_V1,
   assessDecibelDCAV1,
   countDecibelOpeningOrdersV1,
+  isDecibelDCAMomentumSettledV1,
   isDecibelDCAPriceAdmittedV1,
 } from '../src/decibel_dca_v1.js';
 import {
@@ -10,6 +11,7 @@ import {
   createDecibelActualFillLedgerV1,
 } from '../src/decibel_actual_fill_truth_v1.js';
 import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_orchestrator_v1.js';
+import { getDecibelClosedCandlesV1 } from '../src/decibel_volatility_targets_v1.js';
 
 describe('single DCA addition', () => {
   const long = {
@@ -127,5 +129,32 @@ describe('single DCA addition', () => {
     // A partial reduction does not consume or reset the additions.
     ledger = applyDecibelActualFillTruthV1(ledger, fill('f6', 'tp-partial', 'SELL', 0.0001, 3000));
     expect(count()).toBe(2);
+  });
+
+  it('waits until the last closed 5-minute candle stops extending the move', () => {
+    const minute = 60_000;
+    const now = 1_800_000_000_000 + 2 * minute;
+    // Two closed candles (12-7 and 7-2 minutes ago) plus the current one.
+    const samples = (previousLow: number, lastLow: number) =>
+      Array.from({ length: 15 }, (_, i) => {
+        const minutesAgo = 14 - i;
+        const midpoint = minutesAgo === 9 ? previousLow : minutesAgo === 4 ? lastLow : 100;
+        return { at: now - minutesAgo * minute, midpoint };
+      });
+    const settled = getDecibelClosedCandlesV1(samples(95, 96), now, 2);
+    expect(settled).toHaveLength(2);
+    expect(isDecibelDCAMomentumSettledV1('BUY', settled)).toBe(true);
+    expect(
+      isDecibelDCAMomentumSettledV1('BUY', getDecibelClosedCandlesV1(samples(95, 94), now, 2)),
+    ).toBe(false);
+    // For a short the highs matter: the last candle may not exceed the previous high.
+    const highs = getDecibelClosedCandlesV1(samples(105, 104), now, 2);
+    expect(isDecibelDCAMomentumSettledV1('SELL', highs)).toBe(true);
+    expect(
+      isDecibelDCAMomentumSettledV1('SELL', getDecibelClosedCandlesV1(samples(105, 106), now, 2)),
+    ).toBe(false);
+    // History that starts after the older candle opened is not enough.
+    expect(getDecibelClosedCandlesV1(samples(95, 96).slice(5), now, 2)).toBeNull();
+    expect(isDecibelDCAMomentumSettledV1('BUY', null)).toBeNull();
   });
 });

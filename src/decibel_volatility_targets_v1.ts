@@ -215,3 +215,36 @@ export function countDecibelAdverseCandleClosesV1(
   const candle = DECIBEL_TP_ADVERSE_CANDLE_MS_V1;
   return Math.max(0, Math.floor(now / candle) - Math.floor(reference / candle));
 }
+
+/**
+ * The last `count` closed clock-aligned 5-minute candles from midpoint samples, oldest
+ * first, or null when the history does not cover them (each needs two samples and the
+ * history must start within a minute of the oldest candle's open).
+ */
+export function getDecibelClosedCandlesV1(
+  samples: readonly Readonly<{ at: number; midpoint: number }>[],
+  now: number,
+  count: number,
+): readonly Readonly<{ start: number; low: number; high: number }>[] | null {
+  const candle = DECIBEL_TP_ADVERSE_CANDLE_MS_V1;
+  const currentStart = Math.floor(now / candle) * candle;
+  const first = samples[0];
+  if (first === undefined || first.at > currentStart - count * candle + 60_000) return null;
+  const candles: Array<Readonly<{ start: number; low: number; high: number }>> = [];
+  for (let k = count; k >= 1; k -= 1) {
+    const start = currentStart - k * candle;
+    const prices = samples
+      .filter((sample) => sample.at >= start && sample.at < start + candle)
+      .map((sample) => sample.midpoint)
+      .filter((midpoint) => Number.isFinite(midpoint) && midpoint > 0);
+    if (prices.length < 2) return null;
+    candles.push(
+      Object.freeze({
+        start,
+        low: prices.reduce((a, b) => Math.min(a, b)),
+        high: prices.reduce((a, b) => Math.max(a, b)),
+      }),
+    );
+  }
+  return Object.freeze(candles);
+}
