@@ -292,6 +292,7 @@ function make(input?: {
   cancelTargetState?:
     'ORDER_OPEN' | 'FULL_FILL' | 'ORDER_CANCELLED' | 'CANCELLED_EXTERNALLY' | 'UNRESOLVED';
   regimeBootstrap?: decibel_market_regime_bootstrap_v1;
+  exchangeCandles?: () => readonly import('../src/decibel_exchange_candles_v1.js').decibel_exchange_candle_v1[];
 }) {
   const journal = new decibel_execution_lifecycle_journal_v1(
     input?.journalPath ?? join(mkdtempSync(join(tmpdir(), 'decibel-live-')), 'journal.sqlite'),
@@ -307,6 +308,9 @@ function make(input?: {
   const submitted: Array<{ action: 'PLACE' | 'CANCEL'; side: 'BUY' | 'SELL' }> = [];
   const source: DecibelProductionLiveStateSourceV1 = {
     ...(input?.validateSubmission ? { validateSubmission: input.validateSubmission } : {}),
+    ...(input?.exchangeCandles
+      ? { readExchangeCandles1m: () => Promise.resolve(input.exchangeCandles!()) }
+      : {}),
     readAuthenticatedSnapshot: () => {
       reads += 1;
       const failure = input?.readFailuresAt?.get(reads);
@@ -6992,6 +6996,47 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       });
     expect(decide('SELL').actionPlan.SELL.reason).toBe('ENTRY_REQUIRES_NEW_HIGH');
     expect(decide('BUY')).toMatchObject({ bidEligible: true });
+  });
+
+  it('reads the candle rules from venue candles right after a restart, else falls back', async () => {
+    const snapshot = twoSidedSnapshot(0, 200);
+    const now = snapshot.input.now;
+    const minute = 60_000;
+    const lastClosed = Math.floor(now / minute) * minute - minute;
+    // 20 closed 1-minute candles; prices step down so the last 5-minute candle makes a new low.
+    const candles = (end: number) =>
+      Array.from({ length: 20 }, (_, i) => {
+        const start = end - (19 - i) * minute;
+        const price = 80_000 - i * 2;
+        return { start, open: price + 1, high: price + 2, low: price - 1, close: price };
+      });
+    for (const [label, end, source] of [
+      ['fresh', lastClosed, 'EXCHANGE'],
+      ['stale', lastClosed - 10 * minute, 'BBO_FALLBACK'],
+    ] as const) {
+      const test = make({
+        snapshots: [snapshot, snapshot],
+        exchangeCandles: () => candles(end),
+        environment: { DECIBEL_TP_CANDLE_RULE_ENABLED: 'true' },
+      });
+      try {
+        await test.orchestrator.evaluateOnce();
+        const latest = test.orchestrator.getLatestSnapshot()!;
+        expect(latest.candleSource, label).toBe(source);
+        if (source === 'EXCHANGE') {
+          // No warm-up: the BBO history is empty, yet the filter already has its candles.
+          expect(latest.entryCandleBlockers?.BUY).toBeNull();
+          expect(latest.entryCandleBlockers?.SELL).toBe('ENTRY_REQUIRES_NEW_HIGH');
+          expect(latest.priceRangeBps).not.toBeNull();
+        } else
+          expect(latest.entryCandleBlockers).toEqual({
+            BUY: 'ENTRY_CANDLE_EVIDENCE_REQUIRED',
+            SELL: 'ENTRY_CANDLE_EVIDENCE_REQUIRED',
+          });
+      } finally {
+        await test.orchestrator.close();
+      }
+    }
   });
 
   it('refuses opening orders while the 5-minute range is above 40 bps', () => {
