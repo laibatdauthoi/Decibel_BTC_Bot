@@ -113,6 +113,8 @@ export type decibel_production_web_telemetry_v1 = Readonly<{
     executionBlocker: string | null;
     strategyState: string | null;
     tradingDecision: trading_decision_v1;
+    /** Strategy rules passing / blocking now (decibel_strategy_status_v1). */
+    strategy: import('./decibel_strategy_status_v1.js').decibel_strategy_status_v1 | null;
     bidEligible: boolean | null;
     askEligible: boolean | null;
     whyNoAction: string | null;
@@ -1130,6 +1132,7 @@ export function mapDecibelProductionWebTelemetryV1(
     }>;
     execution?: Readonly<{
       tradingDecision?: trading_decision_v1 | null;
+      strategy?: import('./decibel_strategy_status_v1.js').decibel_strategy_status_v1 | null;
       running: boolean;
       sessionId: string | null;
       cycles: number;
@@ -1465,6 +1468,7 @@ export function mapDecibelProductionWebTelemetryV1(
       executionBlocker: input.execution?.blocker ?? null,
       strategyState: evaluation?.operatingState ?? evaluation?.strategyState ?? null,
       tradingDecision: unifiedDecision,
+      strategy: input.execution?.strategy ?? null,
       bidEligible: unifiedDecision.bidEligible,
       askEligible: unifiedDecision.askEligible,
       whyNoAction,

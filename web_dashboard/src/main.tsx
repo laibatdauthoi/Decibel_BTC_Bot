@@ -1,4 +1,5 @@
 import { useSessionSharePreviewV1 } from './share_preview_v1';
+import type { decibel_strategy_status_v1 } from '../../src/decibel_strategy_status_v1.js';
 import { SessionHistoryActions } from './activity_actions_v1';
 import { parseSavedSettingsV1, selectSavedSettingsV1 } from './settings_state_v1';
 import { validateSettingsCapitalMarginV1 } from '../../src/settings_capital_margin_v1';
@@ -104,6 +105,7 @@ type Telemetry = {
     executionBlocker: string | null;
     strategyState: string | null;
     tradingDecision?: trading_decision_v1;
+    strategy?: decibel_strategy_status_v1 | null;
     bidEligible: boolean | null;
     askEligible: boolean | null;
     whyNoAction: string | null;
@@ -743,7 +745,59 @@ export const OverviewView = (
           </strong>
         </div>
       </section>
+      <StrategyStrip status={t.runtime.strategy ?? null} fresh={frameFresh} />
     </div>
+  );
+};
+
+const STRATEGY_RULE_LABELS_V1: Readonly<Record<string, string>> = {
+  ENTRY_CANDLE_FILTER: 'ENTRY FILTER',
+  VOLATILITY_PAUSE: 'VOLATILITY',
+  GAS_RESERVE: 'GAS',
+  DCA: 'DCA',
+  TP_ADVERSE: 'TP ADVERSE',
+  CATASTROPHE_STOP: 'CATASTROPHE STOP',
+};
+
+/** Strategy rules: what passes or blocks now, why, and how often it blocked this session. */
+const StrategyStrip = (
+  props: Readonly<{ status: decibel_strategy_status_v1 | null; fresh: boolean }>,
+) => {
+  const status = props.status;
+  const source =
+    status?.candleSource === 'EXCHANGE'
+      ? 'VENUE CANDLES'
+      : status?.candleSource === 'BBO_FALLBACK'
+        ? 'BBO FALLBACK'
+        : 'NO CANDLES';
+  return (
+    <section className="strategy-strip" aria-label="Strategy rules">
+      <div className="strategy-summary">
+        <small>STRATEGY</small>
+        <strong>{!props.fresh || status === null ? 'STALE' : source}</strong>
+        <span>
+          {status === null
+            ? 'NO DECISION YET'
+            : `RANGE ${status.rangeBps === null ? '—' : formatNumber(status.rangeBps, 1)} BPS · DCA ${
+                status.dcaAdditionsUsed ?? 0
+              }/${status.dcaMaximumAdditions}${
+                status.catastropheStopTriggerPrice === null
+                  ? ''
+                  : ` · STOP ${formatNumber(status.catastropheStopTriggerPrice, 1)}`
+              }`}
+        </span>
+      </div>
+      {(status?.rules ?? []).map((rule) => (
+        <div key={rule.rule} className={`strategy-rule ${rule.state.toLowerCase()}`}>
+          <small>{STRATEGY_RULE_LABELS_V1[rule.rule] ?? rule.rule}</small>
+          <strong>{props.fresh ? rule.state : 'STALE'}</strong>
+          <span title={rule.reason ?? undefined}>{rule.reason ?? '—'}</span>
+          <em>
+            BLOCKED {status?.blockedCycles[rule.rule] ?? 0}/{status?.cycles ?? 0} CYCLES
+          </em>
+        </div>
+      ))}
+    </section>
   );
 };
 

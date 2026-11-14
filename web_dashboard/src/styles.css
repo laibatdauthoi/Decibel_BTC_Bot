@@ -466,6 +466,67 @@ button {
     Arial,
     sans-serif;
 }
+.strategy-strip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+.strategy-strip > div {
+  padding: 14px 18px;
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+.strategy-strip > div:last-child {
+  border-right: 0;
+}
+.strategy-strip small,
+.strategy-strip strong,
+.strategy-strip span,
+.strategy-strip em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.strategy-strip small,
+.strategy-strip span,
+.strategy-strip em {
+  font:
+    9px ui-monospace,
+    Consolas,
+    monospace;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.strategy-strip em {
+  font-style: normal;
+  margin-top: 4px;
+}
+.strategy-strip strong {
+  margin: 6px 0 4px;
+  font:
+    17px 'Arial Narrow',
+    Arial,
+    sans-serif;
+}
+.strategy-rule.block strong {
+  color: var(--signal);
+}
+.strategy-rule.wait strong {
+  color: var(--muted);
+}
+.strategy-rule.pass strong {
+  color: #007d8f;
+}
+@media (max-width: 1180px) {
+  .strategy-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .strategy-strip > div {
+    border-bottom: 1px solid var(--line);
+  }
+}
 .operational-message {
   grid-column: 1 / -1;
   display: grid;

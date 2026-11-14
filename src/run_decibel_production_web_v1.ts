@@ -1,4 +1,8 @@
 import { readDecibelOverviewLifetimeTotalsV1 } from './decibel_lifetime_totals_v1.js';
+import {
+  projectDecibelStrategyStatusV1,
+  type decibel_strategy_status_v1,
+} from './decibel_strategy_status_v1.js';
 import { deriveDecibelEntryCycleV1 } from './decibel_entry_cycle_v1.js';
 import { runDecibelStartupRetentionV1 } from './decibel_data_retention_v1.js';
 import Database from 'better-sqlite3';
@@ -959,6 +963,7 @@ export async function runDecibelProductionWebV1(
     lastAction: string | null;
     blocker: string | null;
     tradingDecision?: trading_decision_v1 | null;
+    strategy?: decibel_strategy_status_v1 | null;
   } = {
     running: false,
     sessionId: null as string | null,
@@ -2033,6 +2038,10 @@ export async function runDecibelProductionWebV1(
           ),
           blocker: result.blocker,
           tradingDecision: result.tradingDecision,
+          strategy: projectDecibelStrategyStatusV1(
+            RuntimeOrchestrator.getLatestSnapshot(),
+            execution.strategy ?? null,
+          ),
         };
         emitControlLoopTelemetry(result, snapshot);
         await terminalizeCompletedUnwind();
