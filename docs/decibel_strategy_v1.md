@@ -110,3 +110,25 @@ The STRATEGY strip (`decibel_strategy_status_v1`, telemetry `runtime.strategy`) 
 candle source, R, DCA additions used, the catastrophe stop trigger, and for each rule its
 state (PASS / BLOCK / WAIT / IDLE), the reason, and how many cycles of the current session it
 blocked or waited. It is presentation only and never feeds back into decisions.
+
+## 10. Backtest
+
+`npm run decibel:backtest` replays recorded BBO rows (`data/decibel_production_raw_ws_bbo_v1.jsonl`,
+read only) through `src/decibel_strategy_backtest_v1.ts` with the policy above and prints one
+line per variant.
+
+```text
+npm run decibel:backtest -- --from 2026-11-05 --set adverse.candleCloses=2,3 --set dca.triggerBps=25,40
+```
+
+- Options: `--file`, `--from`, `--to`, `--set <policy.path>=v1,v2` (repeatable, all combinations),
+  `--entry`, `--target`, `--max-loss`, `--maker-fee`, `--taker-fee`, `--no-filter`, `--no-dca`,
+  `--no-adverse`, `--json`.
+- Fill model: a resting BUY at P fills once the best bid trades below P, a SELL once the best
+  ask trades above P. Max Loss and data gaps over 5 minutes (a restart) close at the touch
+  with the taker fee. Defaults: maker 1.5 bps, taker 4.5 bps, entry $30, target $200, Max Loss
+  $1.5.
+- `strategy net $` excludes trips cut by a data gap; `gap net $` is those unwinds.
+- It is an approximation: no queue position, no latency, BBO only. Use it to rank variants
+  on the same data, and confirm any change on live sessions before trusting the size of
+  the effect.
