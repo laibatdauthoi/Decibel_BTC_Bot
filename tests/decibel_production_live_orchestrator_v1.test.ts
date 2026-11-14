@@ -7107,6 +7107,39 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     expect(0.0002 * price).toBeLessThan(16.5);
     expect(finalEntry(200 - 1.37, 0.0002)).toMatchObject({ askEligible: true });
     expect(finalEntry(200, 0.0002).actionPlan.SELL.reason).toBe('ENTRY_EXCEEDS_REMAINING_TARGET');
+    // The final pre-submit check sizes that last entry by the same rule (live 2026-11-14
+    // 09:10-10:24: it capped the size at the remainder and rejected every normal entry).
+    const last = nearlyDone(200 - 1.37);
+    const finalSnapshot = {
+      ...last,
+      sessionConfiguration: { ...last.sessionConfiguration, targetVolumeUsd: 200 - 1.37 },
+    };
+    const intent = buildDecibelExecutionIntentV1({
+      sessionId: finalSnapshot.input.sessionId,
+      cycleSequence: 1,
+      action: 'PLACE',
+      market: 'BTC/USD',
+      side: 'SELL',
+      price,
+      quantity: 0.0002,
+      tickSize: finalSnapshot.input.metadata.tickSize,
+      lotSize: finalSnapshot.input.metadata.lotSize,
+      knownVenueOrderId: null,
+      sourceStateHash: finalSnapshot.sourceStateHash,
+      strategyDecisionHash: 'final-entry',
+      createdAt: finalSnapshot.input.now,
+      reduceOnly: false,
+      executionRole: 'STANDARD_MAKER',
+    });
+    if (intent.action !== 'PLACE') throw new Error('EXPECTED_PLACE');
+    const admit = (snapshot: typeof finalSnapshot) =>
+      validateDecibelFinalMakerAdmissionV1(
+        snapshot,
+        intent,
+        { now: snapshot.input.now, sessionId: snapshot.input.sessionId, state: 'RUNNING' },
+        200,
+      );
+    expect(() => admit(finalSnapshot)).not.toThrow();
   });
 
   it('shrinks new ENTRY quantities to the Max Loss risk capacity in live quote construction', () => {

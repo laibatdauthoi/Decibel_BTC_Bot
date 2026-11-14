@@ -53,6 +53,12 @@ export function validateDecibelFinalMakerAdmissionV1(
     openOrders: fresh.input.openOrders,
     remainingTargetUsd:
       target > 0 ? Math.max(0, target - (fresh.sessionConfiguration?.targetVolumeUsd ?? 0)) : null,
+    // The planner sizes the last entry at the preferred size even when it exceeds the
+    // remaining target; the final check must use the same rule. Live 2026-11-14 09:10-10:24:
+    // without it every normal entry was rejected once the remainder fell below $16.50.
+    ...(intent.reduceOnly || fresh.sessionConfiguration?.preferredEntrySizeUsd === undefined
+      ? {}
+      : { preferredEntrySizeUsd: fresh.sessionConfiguration.preferredEntrySizeUsd }),
   });
   if (size.finalSizeBtc + 1e-12 < intent.quantity)
     throw new execution_preflight_rejection_v1(
