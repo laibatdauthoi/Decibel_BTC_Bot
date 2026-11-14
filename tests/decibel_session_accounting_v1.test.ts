@@ -1,5 +1,4 @@
 import { makeDecibelActivityBaselineFixtureV1 } from './fixtures/decibel_activity_baseline_fixture_v1.js';
-import Database from 'better-sqlite3';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -127,7 +126,6 @@ describe('Fixed session maker target', () => {
         f.Journal,
         partial,
         f.session.sessionId,
-        1_000,
         100_000,
       );
       expect(before.makerVolumeUsd).toBe(24);
@@ -140,7 +138,6 @@ describe('Fixed session maker target', () => {
           f.Journal,
           reached,
           f.session.sessionId,
-          1_000,
           100_000,
         );
         expect(metrics.makerVolumeUsd).toBeCloseTo(total, 10);
@@ -160,7 +157,6 @@ describe('Fixed session maker target', () => {
         f.Journal,
         late,
         f.session.sessionId,
-        1_000,
         100_000,
       );
       expect(final.makerVolumeUsd).toBeCloseTo(total + 3, 10);
@@ -172,7 +168,6 @@ describe('Fixed session maker target', () => {
         Restarted,
         f.empty,
         f.session.sessionId,
-        1_000,
         100_000,
       );
       expect(recovered.makerVolumeUsd).toBeCloseTo(total + 3, 10);
@@ -215,7 +210,6 @@ describe('Fixed session maker target', () => {
     [0, 50],
   ])('ends V2 at maker $%s + taker $%s and keeps unwind IOC admissible', async (maker, taker) => {
     const f = await createFixture();
-    expect(f.session.targetSemanticsVersion).toBe(2);
     const ioc = buildDecibelExecutionIntentV1({
       ...f.intent,
       cycleSequence: 2,
@@ -253,7 +247,6 @@ describe('Fixed session maker target', () => {
         f.Journal,
         ledger,
         f.session.sessionId,
-        1_000,
         100_000,
       );
       expect(metrics.makerVolumeUsd).toBe(maker);
@@ -274,7 +267,6 @@ describe('Fixed session maker target', () => {
       f.Journal,
       ledger,
       f.session.sessionId,
-      1_000,
       100_000,
     );
     expect(final.totalExecutedVolumeUsd).toBe(55);
@@ -291,7 +283,6 @@ describe('Fixed session maker target', () => {
       Restarted,
       f.empty,
       f.session.sessionId,
-      1_000,
       100_000,
     );
     expect(recovered.totalExecutedVolumeUsd).toBe(55);
@@ -353,14 +344,7 @@ describe('Fixed session maker target', () => {
       f.Journal.transition(duplicate.intentId, 'ACKNOWLEDGED', 1002, 'venue');
       const ledger = applyDecibelActualFillTruthV1(f.empty, f.fill('ambiguous', 25));
       expect(() =>
-        synchronizeDecibelSessionAccountingV1(
-          f.Journal,
-          ledger,
-          f.session.sessionId,
-          1000,
-          100000,
-          2,
-        ),
+        synchronizeDecibelSessionAccountingV1(f.Journal, ledger, f.session.sessionId, 100000),
       ).toThrow('ATTRIBUTION_AMBIGUOUS');
       expect(f.Journal.getSessionFills(f.session.sessionId)).toHaveLength(0);
       expect(f.Journal.ledger().inventory).toBe(0);
@@ -419,7 +403,6 @@ describe('Fixed session maker target', () => {
       f.Journal,
       ledger,
       f.session.sessionId,
-      1_000,
       100_000,
     );
     expect(metrics.totalExecutedVolumeUsd).toBe(25);
@@ -429,40 +412,6 @@ describe('Fixed session maker target', () => {
     );
     f.Journal.close();
     f.Sessions.close();
-  });
-
-  it('migrates an unversioned ACTIVE session as maker-only and leaves REV 2 config immutable', async () => {
-    const f = await createFixture();
-    const databasePath = join(f.path, '..', 'sessions.sqlite');
-    f.Sessions.close();
-    const Raw = new Database(databasePath);
-    Raw.exec('ALTER TABLE production_sessions_v1 DROP COLUMN target_semantics_version');
-    Raw.close();
-    const Sessions = new decibel_production_session_store_v1(databasePath);
-    expect(Sessions.getActive()).toMatchObject({
-      targetSemanticsVersion: 1,
-      configSnapshot: f.session.configSnapshot,
-    });
-    const Controller = new decibel_production_session_controller_v1(
-      Sessions,
-      f.Settings,
-      f.start,
-      () => 3_000,
-      undefined,
-      undefined,
-      f.Owner,
-    );
-    await Controller.recoverStartup();
-    expect(
-      requestDecibelSessionTargetUnwindV1(Controller, f.session.sessionId, {
-        makerVolumeUsd: 25,
-        totalExecutedVolumeUsd: 50,
-      }),
-    ).toBe(false);
-    expect(Sessions.getActive()?.status).toBe('RUNNING');
-    expect(Sessions.getActive()?.targetSemanticsVersion).toBe(1);
-    Sessions.close();
-    f.Journal.close();
   });
 
   it('counts taker fills toward the V2 target without counting global volume', async () => {
@@ -517,7 +466,6 @@ describe('Fixed session maker target', () => {
       f.Journal,
       ledger,
       f.session.sessionId,
-      1_000,
       100_000,
     );
     expect(metrics.makerVolumeUsd).toBe(0);
@@ -574,7 +522,6 @@ describe('Fixed session maker target', () => {
       f.Journal,
       first.ledger,
       f.session.sessionId,
-      1_000,
       100_000,
     );
     expect(partial.totalExecutedVolumeUsd).toBe(20);
@@ -589,7 +536,6 @@ describe('Fixed session maker target', () => {
         f.Journal,
         fresh.ledger,
         f.session.sessionId,
-        1_000,
         100_000,
       );
       expect(metrics.makerVolumeUsd).toBe(50);
@@ -599,7 +545,6 @@ describe('Fixed session maker target', () => {
       f.Journal,
       first.ledger,
       f.session.sessionId,
-      1_000,
       100_000,
     );
     expect(lagging.totalExecutedVolumeUsd).toBe(50);
@@ -627,7 +572,6 @@ describe('Fixed session maker target', () => {
           f.Journal,
           reached,
           f.session.sessionId,
-          1_000,
           100_000,
         );
         if (requestDecibelSessionTargetUnwindV1(f.Controller, f.session.sessionId, metrics))

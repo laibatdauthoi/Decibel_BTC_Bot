@@ -31,7 +31,6 @@ const Session: ProductionSession = {
   makerVolumeUsd: 5,
   takerVolumeUsd: 2,
   totalExecutedVolumeUsd: 7,
-  targetSemanticsVersion: 2,
   fillCount: 2,
   feesUsd: null,
   gasUsd: null,
@@ -107,10 +106,7 @@ describe('Activity compact session presentation', () => {
     ).toBeNull();
     expect(buildSessionShareV1({ ...Session, endedAt: null }, 900000)).toBeNull();
   });
-  it('uses maker-only progress for legacy targets and preserves unlimited volume mode', () => {
-    expect(
-      buildSessionShareV1({ ...Session, targetSemanticsVersion: 1 }, 900000)!.data.progress,
-    ).toContain('5.0%');
+  it('preserves unlimited volume mode', () => {
     expect(
       buildSessionShareV1(
         { ...Session, configSnapshot: { ...Session.configSnapshot, targetMakerVolumeUsd: -1 } },

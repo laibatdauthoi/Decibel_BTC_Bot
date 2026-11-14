@@ -884,7 +884,6 @@ it('recomputes V2 effective limits at preflight and leaves reduce-only unwind ad
       maximumEffectiveLeverage: 40,
       venueMaximumNotionalUsd: 100,
       maximumAggregateCollateralFraction: 0.5,
-      targetSemanticsVersion: 2,
       totalExecutedVolumeUsd: 0,
       pnlUsd: 0,
       lotSize: 0.01,

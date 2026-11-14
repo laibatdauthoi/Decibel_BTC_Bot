@@ -5,7 +5,6 @@ import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
 
-import { DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED } from './decibel_risk_capacity_v1.js';
 import type { decibel_operator_settings_v1 } from './decibel_operator_settings_v1.js';
 
 export const DECIBEL_PRODUCTION_SESSION_V1 = 'DECIBEL_PRODUCTION_SESSION_V1' as const;
@@ -35,14 +34,12 @@ export type decibel_production_session_record_v1 = Readonly<{
   unwindRequested: boolean;
   unwindReason: string | null;
   configRevision: number;
-  configSnapshot: decibel_operator_settings_v1['values'] &
-    Readonly<{ capacityPolicyVersion?: 1 | undefined; sizingPolicyVersion?: 1 | undefined }>;
+  configSnapshot: decibel_operator_settings_v1['values'];
   sessionPnlUsd: number | null;
   pnlComplete: boolean;
   makerVolumeUsd: number | null;
   takerVolumeUsd: number | null;
   totalExecutedVolumeUsd: number | null;
-  targetSemanticsVersion: 1 | 2;
   fillCount: number | null;
   feesUsd: number | null;
   gasUsd: number | null;
@@ -65,10 +62,18 @@ const ConfigSnapshotSchema = z
       .refine((value) => value !== 0),
     orderNotionalUsd: z.number().finite().positive(),
     maxPositionUsd: z.number().finite().positive(),
+    // Written by sessions created before 2026-11-14 (policy versions, now always current).
     capacityPolicyVersion: z.literal(1).optional(),
     sizingPolicyVersion: z.literal(1).optional(),
   })
-  .strict();
+  .strict()
+  .transform((value) => ({
+    capitalToUseUsd: value.capitalToUseUsd,
+    maxLossUsd: value.maxLossUsd,
+    targetMakerVolumeUsd: value.targetMakerVolumeUsd,
+    orderNotionalUsd: value.orderNotionalUsd,
+    maxPositionUsd: value.maxPositionUsd,
+  }));
 
 const activeStatuses = ['STARTING', 'RUNNING', 'STOPPING'] as const;
 
@@ -106,7 +111,6 @@ function mapRow(row: Record<string, unknown>): decibel_production_session_record
     takerVolumeUsd: row.taker_volume_usd == null ? null : Number(row.taker_volume_usd),
     totalExecutedVolumeUsd:
       row.total_executed_volume_usd == null ? null : Number(row.total_executed_volume_usd),
-    targetSemanticsVersion: row.target_semantics_version === 2 ? 2 : 1,
     fillCount: row.fill_count === null ? null : Number(row.fill_count),
     feesUsd: row.fees_usd === null ? null : Number(row.fees_usd),
     gasUsd: row.gas_usd === null ? null : Number(row.gas_usd),
@@ -230,17 +234,7 @@ export class decibel_production_session_store_v1 {
           session_id,created_at,started_at,ended_at,last_heartbeat_at,status,stop_reason,
           config_revision,config_json,pnl_complete,target_semantics_version
         ) VALUES(?,?,NULL,NULL,?,'STARTING',NULL,?,?,0,2)`,
-      ).run(
-        sessionId,
-        now,
-        now,
-        settings.revision,
-        JSON.stringify({
-          ...settings.values,
-          sizingPolicyVersion: 1,
-          ...(DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED ? { capacityPolicyVersion: 1 } : {}),
-        }),
-      );
+      ).run(sessionId, now, now, settings.revision, JSON.stringify(settings.values));
     } catch (error) {
       if (error instanceof Error && /UNIQUE constraint failed/i.test(error.message))
         throw new Error('SESSION_ALREADY_ACTIVE', { cause: error });

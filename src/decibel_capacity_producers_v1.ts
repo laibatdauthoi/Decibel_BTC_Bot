@@ -581,7 +581,6 @@ export function produceDecibelPostFillMarginV1(
     capitalUsd: number;
     collateralFraction: number;
     maxLossUsd: number;
-    sizingPolicyVersion?: 1;
     transactionReserveUsd?: number;
     midpoint: number;
     positionBase: number;
@@ -595,7 +594,6 @@ export function produceDecibelPostFillMarginV1(
     }>[];
     feeAndExitCostBps: number;
     collateralReserveFraction: number;
-    transactionReserveFraction: number;
   }>,
 ) {
   const r = input.rules;
@@ -623,7 +621,6 @@ export function produceDecibelPostFillMarginV1(
       r.remainingOpenInterestBase,
       r.maximumLeverage,
       input.collateralReserveFraction,
-      input.transactionReserveFraction,
     ].every((v) => Number.isFinite(v) && v >= 0) ||
     !Number.isFinite(input.positionBase) ||
     r.markPrice <= 0 ||
@@ -634,7 +631,6 @@ export function produceDecibelPostFillMarginV1(
     input.collateralFraction <= 0 ||
     input.collateralFraction > 0.5 ||
     input.collateralReserveFraction > 1 ||
-    input.transactionReserveFraction > 1 ||
     input.capitalUsd <= 0 ||
     input.maxLossUsd <= 0 ||
     input.leverage < 1 ||
@@ -658,11 +654,7 @@ export function produceDecibelPostFillMarginV1(
   const quantity = input.candidateHeadroomUsd / input.midpoint;
   const positions = [input.positionBase + buys + quantity, input.positionBase - sells - quantity];
   const allocated = Math.min(input.capitalUsd * input.collateralFraction, input.availableMarginUsd);
-  const fixed =
-    allocated * input.collateralReserveFraction +
-    (input.sizingPolicyVersion === 1
-      ? (input.transactionReserveUsd ?? 0)
-      : input.maxLossUsd * input.transactionReserveFraction);
+  const fixed = allocated * input.collateralReserveFraction + (input.transactionReserveUsd ?? 0);
   const costs =
     ((input.orders.reduce((s, o) => s + o.price * o.quantity, 0) + input.candidateHeadroomUsd) *
       input.feeAndExitCostBps) /

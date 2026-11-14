@@ -304,8 +304,7 @@ export function evaluateTradingDecision(
     if (snapshot.capacityModelRequired && config) {
       if (config.pnlUsd === null || !Number.isFinite(config.pnlUsd))
         absent('SESSION_PNL_EVIDENCE_REQUIRED');
-      const executed =
-        config.targetSemanticsVersion === 2 ? config.totalExecutedVolumeUsd : config.makerVolumeUsd;
+      const executed = config.totalExecutedVolumeUsd;
       if (
         config.targetMakerVolumeUsd > 0 &&
         (executed === undefined || !Number.isFinite(executed) || executed < 0)
@@ -447,7 +446,7 @@ export function evaluateTradingDecision(
         return null;
       }
     }
-    if (!reducing && snapshot.sessionConfiguration?.sizingPolicyVersion === 1) {
+    if (!reducing && snapshot.sessionConfiguration?.preferredEntrySizeUsd !== undefined) {
       const config = snapshot.sessionConfiguration;
       const riskCapacity = config.exposureLimits?.riskCapacityUsd;
       const pending =
@@ -603,8 +602,7 @@ export function evaluateTradingDecision(
     // first finishes the target (live 2026-11-13 21:40: summing the resting BUY into the
     // SELL check left only one side quoted). Resting reductions never count.
     if (!reducing && config && config.targetMakerVolumeUsd > 0) {
-      const executed =
-        config.targetSemanticsVersion === 2 ? config.totalExecutedVolumeUsd : config.makerVolumeUsd;
+      const executed = config.totalExecutedVolumeUsd;
       if (executed === undefined || executed === null) return null;
       // While any volume is missing, one normal entry (the preferred size, at least a
       // venue-minimum order) stays allowed even if it is larger than the remainder: live

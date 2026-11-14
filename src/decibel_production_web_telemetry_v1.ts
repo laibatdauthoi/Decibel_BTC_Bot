@@ -246,7 +246,6 @@ export type decibel_production_web_telemetry_v1 = Readonly<{
     sessionTakerVolumeUsd: nullable_number;
     totalExecutedVolumeUsd: nullable_number;
     remainingToTargetUsd: nullable_number;
-    targetSemanticsVersion: 1 | 2;
   }>;
   risk: Readonly<{
     maximumPositionBase: nullable_number;
@@ -1288,9 +1287,7 @@ export function mapDecibelProductionWebTelemetryV1(
     .filter((fill) => !fill.maker)
     .reduce((sum, fill) => sum + Math.abs(fill.quantity * fill.price), 0);
   const totalExecutedVolumeUsd = sessionMakerVolumeUsd + sessionTakerVolumeUsd;
-  const targetSemanticsVersion = snapshot?.sessionConfiguration?.targetSemanticsVersion ?? 1;
-  const targetVolumeUsd =
-    targetSemanticsVersion === 2 ? totalExecutedVolumeUsd : sessionMakerVolumeUsd;
+  const targetVolumeUsd = totalExecutedVolumeUsd;
   const sessionPnl = calculateDecibelBotScopedPnlV1(
     sessionAccountingFills,
     currentFeesByFillId,
@@ -1652,7 +1649,6 @@ export function mapDecibelProductionWebTelemetryV1(
         stateInput.targetExternalMakerVolumeUsd <= 0
           ? null
           : Math.max(0, stateInput.targetExternalMakerVolumeUsd - targetVolumeUsd),
-      targetSemanticsVersion,
     }),
     overviewHistory: Object.freeze({
       totalSessionsExecuted:

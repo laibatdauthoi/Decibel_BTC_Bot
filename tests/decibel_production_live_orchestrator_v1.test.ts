@@ -4966,7 +4966,6 @@ describe('Decibel production live orchestrator V1', () => {
           marginUsedUsd: 0,
           makerVolumeUsd: volume,
           totalExecutedVolumeUsd: volume,
-          targetSemanticsVersion: 2,
           pnlUsd: 0,
           riskBlocker: null,
         },
@@ -5093,7 +5092,6 @@ describe('Decibel production live orchestrator V1', () => {
         takerVolumeUsd: 0,
         totalExecutedVolumeUsd: 0,
         targetVolumeUsd: 0,
-        targetSemanticsVersion: 2,
         pnlUsd: 0,
         riskBlocker: null,
       },
@@ -5141,7 +5139,6 @@ describe('Decibel production live orchestrator V1', () => {
         takerVolumeUsd: 24.78,
         totalExecutedVolumeUsd: 49.78,
         targetVolumeUsd: 49.78,
-        targetSemanticsVersion: 2,
         pnlUsd: 0,
         riskBlocker: null,
       },
@@ -5185,7 +5182,6 @@ describe('Decibel production live orchestrator V1', () => {
           makerVolumeUsd: 25,
           takerVolumeUsd: 25,
           totalExecutedVolumeUsd: volume,
-          targetSemanticsVersion: 2,
           pnlUsd: 0,
           riskBlocker: blocker,
         },
@@ -6103,7 +6099,6 @@ describe('Decibel production live orchestrator V1', () => {
           marginUsedUsd: 0,
           makerVolumeUsd: ledger.actualExternalMakerVolumeUsd,
           totalExecutedVolumeUsd: ledger.actualExternalMakerVolumeUsd + ledger.actualTakerVolumeUsd,
-          targetSemanticsVersion: 2,
           pnlUsd: ledger.realizedPnlUsd,
           riskBlocker: null,
         },
@@ -6254,19 +6249,10 @@ describe('Decibel production live orchestrator V1', () => {
               journal,
               ledger,
               activeSessionId,
-              10000,
               100.1,
-              2,
             );
             const count = journal.getSessionFills(activeSessionId).length;
-            synchronizeDecibelSessionAccountingV1(
-              journal,
-              ledger,
-              activeSessionId,
-              10000,
-              100.1,
-              2,
-            );
+            synchronizeDecibelSessionAccountingV1(journal, ledger, activeSessionId, 100.1);
             expect(journal.getSessionFills(activeSessionId)).toHaveLength(count);
             return {
               safeToEnd,
@@ -6723,7 +6709,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         marginUsedUsd: 0,
         makerVolumeUsd: 0,
         totalExecutedVolumeUsd: 0,
-        targetSemanticsVersion: 2,
         pnlUsd: 0,
         riskBlocker: null,
         exposureLimits: {
@@ -6781,7 +6766,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ...base,
         sessionConfiguration: {
           ...base.sessionConfiguration!,
-          sizingPolicyVersion: 1,
           preferredEntrySizeUsd: 15,
           maxLossUsd: 0.2,
           exposureLimits: {
@@ -6901,9 +6885,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       minimumNotionalUsd: base.input.metadata.minimumSize * base.input.book.bestBid,
       sessionConfiguration: {
         ...base.sessionConfiguration!,
-        sizingPolicyVersion: 1,
         preferredEntrySizeUsd: 15,
-        targetSemanticsVersion: 2,
         totalExecutedVolumeUsd: 199.26,
         exposureLimits: { ...base.sessionConfiguration!.exposureLimits!, riskCapacityUsd: 100 },
       },
@@ -6972,7 +6954,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       entryCandleBlockers: { BUY: null, SELL: 'ENTRY_REQUIRES_NEW_HIGH' },
       sessionConfiguration: {
         ...base.sessionConfiguration!,
-        targetSemanticsVersion: 2 as const,
         totalExecutedVolumeUsd: 0,
       },
     };
@@ -7053,7 +7034,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           priceRangeBps,
           sessionConfiguration: {
             ...base.sessionConfiguration!,
-            targetSemanticsVersion: 2,
             totalExecutedVolumeUsd: 0,
           },
         },
@@ -7089,7 +7069,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       input: { ...base.input, openOrders: [restingBuy] },
       sessionConfiguration: {
         ...base.sessionConfiguration!,
-        targetSemanticsVersion: 2,
         totalExecutedVolumeUsd: 200 - 21.7,
       },
     };
@@ -7120,6 +7099,10 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ...snapshot.sessionConfiguration!,
         preferredEntrySizeUsd: 16.5,
         totalExecutedVolumeUsd: executed,
+        exposureLimits: {
+          ...snapshot.sessionConfiguration!.exposureLimits!,
+          riskCapacityUsd: 1000,
+        },
       },
     });
     const finalEntry = (executed: number, quantity: number) =>
@@ -7148,7 +7131,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       minimumNotionalUsd: base.input.metadata.minimumSize * base.input.book.bestBid,
       sessionConfiguration: {
         ...base.sessionConfiguration!,
-        sizingPolicyVersion: 1,
         preferredEntrySizeUsd: 15,
         maxLossUsd: 0.2,
         exposureLimits: { ...base.sessionConfiguration!.exposureLimits!, riskCapacityUsd: 11.91 },
@@ -9291,8 +9273,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         venueMaximumNotionalUsd: 100,
         maximumAggregateCollateralFraction: 0.5,
         capacityInputs: practical,
-        capacityPolicyVersion: 1,
-        targetSemanticsVersion: 2,
         pnlUsd: 0,
         lotSize: 0.00001,
         now: base.input.now,
@@ -10137,7 +10117,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ],
         sessionConfiguration: {
           ...fixture.sessionConfiguration!,
-          sizingPolicyVersion: 1 as const,
           preferredEntrySizeUsd: Math.abs(position) * maker,
           exposureLimits: {
             ...fixture.sessionConfiguration!.exposureLimits!,
@@ -17559,7 +17538,6 @@ it.each([
         marginUsedUsd: 0,
         makerVolumeUsd: 0,
         totalExecutedVolumeUsd: 0,
-        targetSemanticsVersion: 2,
         pnlUsd: 0,
         riskBlocker: null,
         exposureLimits: {

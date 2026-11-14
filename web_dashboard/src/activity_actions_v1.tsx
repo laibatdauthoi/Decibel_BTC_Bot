@@ -47,8 +47,7 @@ export function buildSessionShareV1(
   )
     return null;
   const target = session.configSnapshot.targetMakerVolumeUsd;
-  const targetVolume =
-    session.targetSemanticsVersion === 2 ? session.totalExecutedVolumeUsd : session.makerVolumeUsd;
+  const targetVolume = session.totalExecutedVolumeUsd;
   const progress =
     target < 0
       ? 'UNTIL CAPITAL LIMIT'
@@ -83,10 +82,7 @@ export function buildSessionShareV1(
       ['Fills', formatValue(session.fillCount, 0)],
       ['COST / 1M VOL', formatShareCostPerMillionV1(data.costPerMillion ?? null)],
       ['Target Volume', data.target],
-      [
-        session.targetSemanticsVersion === 2 ? 'Target Progress' : 'Legacy Maker Progress',
-        data.progress,
-      ],
+      ['Target Progress', data.progress],
     ],
   };
 }

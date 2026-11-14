@@ -1406,8 +1406,6 @@ describe('Decibel production session V1', () => {
     expect(Fixture.Controller.getHistory()).toHaveLength(1);
     expect(Fixture.Controller.getHistory()[0]?.configSnapshot).toEqual({
       ...values,
-      capacityPolicyVersion: 1,
-      sizingPolicyVersion: 1,
     });
     Fixture.Sessions.close();
   });

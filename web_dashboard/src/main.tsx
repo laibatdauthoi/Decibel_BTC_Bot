@@ -250,13 +250,12 @@ export type ProductionSession = {
   endedAt: number | null;
   status: 'STARTING' | 'RUNNING' | 'STOPPING' | 'ENDED' | 'INTERRUPTED' | 'BLOCKED';
   stopReason: string | null;
-  configSnapshot: OperatorSettings['values'] & { sizingPolicyVersion?: 1 };
+  configSnapshot: OperatorSettings['values'];
   sessionPnlUsd: Value;
   pnlComplete: boolean;
   makerVolumeUsd: Value;
   takerVolumeUsd: Value;
   totalExecutedVolumeUsd: Value;
-  targetSemanticsVersion: 1 | 2;
   fillCount: Value;
   feesUsd: Value;
   gasUsd: Value;
@@ -359,7 +358,6 @@ export const OverviewView = (
   const pnl = matched && accountingFresh ? (e?.sessionPnlUsd ?? null) : null;
   const limit = activeSession ? active.configSnapshot.maxLossUsd : null;
   const volume = matched && accountingFresh ? (e?.totalExecutedVolumeUsd ?? null) : null;
-  const maker = matched && accountingFresh ? (e?.makerVolumeUsd ?? null) : null;
   const pending = frameFresh
     ? t.intents.filter((i) =>
         ['PREPARED', 'SUBMITTING', 'SUBMIT_UNKNOWN', 'UNRESOLVABLE_ACK', 'RECONCILING'].includes(
@@ -444,7 +442,7 @@ export const OverviewView = (
             ? 'STALE'
             : formatNumber(value, 2, '$');
   const target = activeSession ? active.configSnapshot.targetMakerVolumeUsd : null;
-  const targetVolume = active?.targetSemanticsVersion === 1 ? maker : volume;
+  const targetVolume = volume;
   const capital = activeSession
     ? active.configSnapshot.capitalToUseUsd
     : (props.settings?.values.capitalToUseUsd ?? null);
@@ -548,15 +546,7 @@ export const OverviewView = (
             <div className="overview-state-fields">
               <div className="runtime-status-grid overview-session-grid">
                 <span>TARGET VOLUME</span>
-                <b
-                  title={
-                    active?.targetSemanticsVersion === 1
-                      ? 'Legacy maker-only target'
-                      : 'Session total executed volume target'
-                  }
-                >
-                  {targetText}
-                </b>
+                <b title="Session total executed volume target">{targetText}</b>
                 <span>PROGRESS</span>
                 <b className="overview-progress-cell" title={progressText}>
                   {progressText}
@@ -894,7 +884,7 @@ export const SessionInlineDetail = (
         <span>
           EXECUTED VOLUME{' '}
           <b
-            title={`Maker: ${formatNumber(props.session.makerVolumeUsd, 2, '$')} / Taker: ${formatNumber(props.session.takerVolumeUsd, 2, '$')} / Target: ${props.session.targetSemanticsVersion === 2 ? 'Total Executed Volume' : 'Legacy Maker Only'}`}
+            title={`Maker: ${formatNumber(props.session.makerVolumeUsd, 2, '$')} / Taker: ${formatNumber(props.session.takerVolumeUsd, 2, '$')} / Target: Total Executed Volume`}
           >
             {formatNumber(props.session.totalExecutedVolumeUsd, 2, '$')}
           </b>
@@ -926,29 +916,18 @@ export const SessionInlineDetail = (
           </b>
         </span>
         <span>
-          {props.session.configSnapshot.sizingPolicyVersion === 1
-            ? 'ENTRY SIZE POLICY'
-            : 'ORDER SIZE'}{' '}
-          <b>
-            {props.session.configSnapshot.sizingPolicyVersion === 1
-              ? 'DYNAMIC V1'
-              : formatNumber(props.session.configSnapshot.orderNotionalUsd, 2, '$')}
-          </b>
+          ENTRY SIZE POLICY <b>DYNAMIC V1</b>
         </span>
         <span>
-          {props.session.configSnapshot.sizingPolicyVersion === 1
-            ? 'PREFERRED ENTRY'
-            : 'MAX POSITION'}{' '}
+          PREFERRED ENTRY{' '}
           <b>
-            {props.session.configSnapshot.sizingPolicyVersion === 1
-              ? props.session.configSnapshot.targetMakerVolumeUsd > 0
-                ? formatNumber(
-                    Math.max(10, (props.session.configSnapshot.targetMakerVolumeUsd * 3) / 20),
-                    2,
-                    '$',
-                  )
-                : 'ALLOCATED CAPITAL / 4'
-              : formatNumber(props.session.configSnapshot.maxPositionUsd, 2, '$')}
+            {props.session.configSnapshot.targetMakerVolumeUsd > 0
+              ? formatNumber(
+                  Math.max(10, (props.session.configSnapshot.targetMakerVolumeUsd * 3) / 20),
+                  2,
+                  '$',
+                )
+              : 'ALLOCATED CAPITAL / 4'}
           </b>
         </span>
         <SessionHistoryActions session={props.session} observedAt={props.telemetry.generatedAt} />
@@ -1029,15 +1008,7 @@ export const ActivityView = (
                     {formatOperatorPnlV1(getLiveSessionPnl(session))}
                     {!session.pnlComplete && !isLiveSession(session) && <small>PARTIAL</small>}
                   </strong>
-                  <span>
-                    {formatNumber(
-                      session.targetSemanticsVersion === 2
-                        ? session.totalExecutedVolumeUsd
-                        : session.makerVolumeUsd,
-                      2,
-                      '$',
-                    )}
-                  </span>
+                  <span>{formatNumber(session.totalExecutedVolumeUsd, 2, '$')}</span>
                   <span>{formatOperatorValueV1(session.fillCount, 0)}</span>
                   <span title={session.stopReason ?? undefined}>
                     {getOperatorStopReasonV1(session.stopReason)}
@@ -1956,11 +1927,7 @@ const App = () => {
         telemetryGeneratedAt={telemetry.generatedAt}
         sessionTargetVolumeUsd={telemetry.volume.totalExecutedVolumeUsd ?? null}
         volumeSessionId={telemetry.runtime.executionSessionId}
-        etaEvidenceReady={
-          connected &&
-          telemetry.runtime.readiness.accountReady &&
-          telemetry.volume.targetSemanticsVersion === 2
-        }
+        etaEvidenceReady={connected && telemetry.runtime.readiness.accountReady}
         latestSessionStatus={sessions[0]?.status ?? null}
         latestSessionId={sessions[0]?.sessionId ?? null}
         maximumEffectiveLeverage={telemetry.account.effectiveLeverage}

@@ -37,8 +37,6 @@ export type decibel_capacity_inputs_v1 = Readonly<{
 
 // The policy values live in a dependency-free module shared with the dashboard.
 export { DECIBEL_CAPACITY_POLICY_V1 };
-// Operator explicitly approved this policy and production activation on 2026-10-26. No ENV/API override.
-export const DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED: boolean = true;
 
 export type decibel_capacity_evidence_v1 = Readonly<{
   source:
@@ -106,7 +104,6 @@ export function calculateDecibelRiskCapacityV1(
     availableMarginUsd: number;
     leverage: number;
     maxLossUsd: number;
-    sizingPolicyVersion?: 1;
     netSessionPnlAfterFeesUsd: number | null;
     midpoint: number;
     lotSize: number;
@@ -349,10 +346,9 @@ export function calculateDecibelRiskCapacityV1(
     input.capitalUsd * input.collateralFraction,
     input.availableMarginUsd + e.reservedCollateralUsd,
   );
-  const marginTransactionReserve =
-    input.sizingPolicyVersion === 1 && o
-      ? (appliedCosts.find((cost) => cost.kind === 'TRANSACTION_COST')?.value ?? 0)
-      : e.fixedExitCostUsd;
+  const marginTransactionReserve = o
+    ? (appliedCosts.find((cost) => cost.kind === 'TRANSACTION_COST')?.value ?? 0)
+    : e.fixedExitCostUsd;
   const fixed = e.collateralReserveUsd + e.liquidationReserveUsd + marginTransactionReserve;
   const marginCapacityUsd =
     Math.max(0, allocated - fixed) /
@@ -368,7 +364,6 @@ export function calculateDecibelRiskCapacityV1(
   const riskCapacityUsd = lossRemaining / (lossBps / 10000);
   const caps = [
     { name: 'MARGIN', value: marginCapacityUsd },
-    ...(input.sizingPolicyVersion === 1 ? [] : [{ name: 'STRESS_LOSS', value: riskCapacityUsd }]),
     { name: 'EXIT_DEPTH', value: e.maximumExecutableExitNotionalUsd },
     {
       name: o ? 'CONFIGURED_EXECUTION_NOTIONAL_CEILING' : 'EXCHANGE',

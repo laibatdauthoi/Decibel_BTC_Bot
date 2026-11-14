@@ -37,7 +37,6 @@ import {
 import {
   calculateDecibelRiskCapacityV1,
   DECIBEL_CAPACITY_POLICY_V1,
-  DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED,
   type decibel_capacity_inputs_v1,
 } from './decibel_risk_capacity_v1.js';
 import dotenv from 'dotenv';
@@ -74,7 +73,6 @@ import {
 import {
   decibel_operator_settings_store_v1,
   parseDecibelOperatorSettingsValuesV1,
-  deriveDecibelMaximumPositionUsdV1,
   deriveDecibelSessionTradingLimitsV1,
   validateDecibelCapitalAllocationV1,
   type decibel_operator_settings_values_v1,
@@ -338,8 +336,7 @@ export function projectDecibelNextSessionPositionLimitV1(
         : snapshot.capacityProduction.certificate;
     const limits = deriveDecibelSessionTradingLimitsV1({
       settings: input.settings,
-      capacityPolicyVersion: 1,
-      now: DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED ? Date.now() : snapshot.input.now,
+      now: Date.now(),
       ...(capacityEvidence === undefined
         ? {}
         : { capacityEvidence: { ...capacityEvidence, sessionGasPaidUsd: 0 } }),
@@ -353,7 +350,6 @@ export function projectDecibelNextSessionPositionLimitV1(
       maximumEffectiveLeverage: snapshot.maximumEffectiveLeverage,
       venueMaximumNotionalUsd: input.venueMaximumNotionalUsd,
       maximumAggregateCollateralFraction: input.maximumAggregateCollateralFraction,
-      targetSemanticsVersion: 2,
       totalExecutedVolumeUsd: 0,
       pnlUsd: 0,
       lotSize: snapshot.input.metadata.lotSize,
@@ -387,9 +383,7 @@ export function projectDecibelNextSessionEntrySizeUsdV1(
         : snapshot.capacityProduction.certificate;
     const limits = deriveDecibelSessionTradingLimitsV1({
       settings: input.settings,
-      sizingPolicyVersion: 1,
-      capacityPolicyVersion: 1,
-      now: DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED ? Date.now() : snapshot.input.now,
+      now: Date.now(),
       ...(capacityEvidence === undefined
         ? {}
         : { capacityEvidence: { ...capacityEvidence, sessionGasPaidUsd: 0 } }),
@@ -403,7 +397,6 @@ export function projectDecibelNextSessionEntrySizeUsdV1(
       maximumEffectiveLeverage: snapshot.maximumEffectiveLeverage,
       venueMaximumNotionalUsd: input.venueMaximumNotionalUsd,
       maximumAggregateCollateralFraction: input.maximumAggregateCollateralFraction,
-      targetSemanticsVersion: 2,
       totalExecutedVolumeUsd: 0,
       pnlUsd: 0,
       lotSize: snapshot.input.metadata.lotSize,
@@ -1481,25 +1474,13 @@ export async function runDecibelProductionWebV1(
     if (shutdownStarted) throw new Error('SESSION_RUNTIME_SHUTDOWN_IN_PROGRESS');
     snapshotOwnerRevision += 1;
     const runtimeOwnerRevision = snapshotOwnerRevision;
-    const maximumEffectiveLeverage = Number(environment.MAX_EFFECTIVE_LEVERAGE ?? '1');
     const venueMaximumNotionalUsd = Number(
       environment.DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD ?? '100',
     );
-    const derivedMaximumPositionUsd =
-      session.targetSemanticsVersion === 2
-        ? venueMaximumNotionalUsd
-        : deriveDecibelMaximumPositionUsdV1({
-            capitalToUseUsd: session.configSnapshot.capitalToUseUsd,
-            maxLossUsd: session.configSnapshot.maxLossUsd,
-            maximumEffectiveLeverage,
-            venueMaximumNotionalUsd,
-            maxPositionUsd: session.configSnapshot.maxPositionUsd,
-            maximumAggregateCollateralFraction: configuration.maximumAggregateCollateralFraction,
-          });
     const sessionEnvironment = {
       ...environment,
       DECIBEL_PRODUCTION_LIVE_SESSION_ID: session.sessionId,
-      DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD: String(derivedMaximumPositionUsd),
+      DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD: String(venueMaximumNotionalUsd),
       DECIBEL_PASSIVE_RECYCLING_TARGET_VOLUME_USD:
         session.configSnapshot.targetMakerVolumeUsd > 0
           ? String(session.configSnapshot.targetMakerVolumeUsd)
@@ -1544,19 +1525,11 @@ export async function runDecibelProductionWebV1(
         TelemetryJournal,
         candidate.input.actualFillLedger,
         session.sessionId,
-        session.startedAt ?? session.createdAt,
         midpoint,
-        session.targetSemanticsVersion,
       );
       const limits = deriveDecibelSessionTradingLimitsV1({
         settings: session.configSnapshot,
-        ...(session.configSnapshot.sizingPolicyVersion === undefined
-          ? {}
-          : { sizingPolicyVersion: session.configSnapshot.sizingPolicyVersion }),
-        ...(session.configSnapshot.capacityPolicyVersion === undefined
-          ? {}
-          : { capacityPolicyVersion: session.configSnapshot.capacityPolicyVersion }),
-        now: DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED ? Date.now() : candidate.input.now,
+        now: Date.now(),
         ...(candidate.capacityEvidence === undefined
           ? {}
           : { capacityEvidence: candidate.capacityEvidence }),
@@ -1584,7 +1557,6 @@ export async function runDecibelProductionWebV1(
             },
           ];
         }),
-        targetSemanticsVersion: session.targetSemanticsVersion,
         totalExecutedVolumeUsd: metrics.totalExecutedVolumeUsd,
         pnlUsd: metrics.pnlUsd,
         lotSize: candidate.input.metadata.lotSize,
@@ -1607,17 +1579,9 @@ export async function runDecibelProductionWebV1(
         metrics.pnlUsd !== null && metrics.pnlUsd <= -session.configSnapshot.maxLossUsd;
       const riskBlocker = maxLossReached
         ? 'SESSION_MAX_LOSS_REACHED'
-        : (metrics.pnlBlocker ??
-          (DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED &&
-          session.configSnapshot.capacityPolicyVersion === 1
-            ? null
-            : candidate.capacityProduction?.blockers[0]) ??
-          limits.capacityBlocker);
+        : (metrics.pnlBlocker ?? limits.capacityBlocker);
       const globalMakerVolumeUsd = candidate.input.actualFillLedger.actualExternalMakerVolumeUsd;
-      const targetVolumeUsd =
-        session.targetSemanticsVersion === 2
-          ? metrics.totalExecutedVolumeUsd
-          : metrics.makerVolumeUsd;
+      const targetVolumeUsd = metrics.totalExecutedVolumeUsd;
       return Object.freeze({
         ...candidate,
         authenticatedAvailableMarginUsd: candidate.availableMarginUsd,
@@ -1629,48 +1593,30 @@ export async function runDecibelProductionWebV1(
             candidate.practicalCapacityInputs?.venueMaximumOrderNotionalUsd ?? null,
           observedAt: candidate.venueReadWindow?.account.startedAt ?? candidate.input.now,
         }),
-        maximumEffectiveLeverage:
-          DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED &&
-          session.configSnapshot.capacityPolicyVersion === 1 &&
-          candidate.practicalCapacityInputs
-            ? Math.min(
-                candidate.maximumEffectiveLeverage,
-                candidate.practicalCapacityInputs.actualLeverage ?? Number.NaN,
-              )
-            : candidate.maximumEffectiveLeverage,
-        maximumNotionalUsd:
-          DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED &&
-          session.configSnapshot.capacityPolicyVersion === 1
-            ? limits.maximumOrderNotionalUsd
-            : limits.maximumPositionUsd,
+        maximumEffectiveLeverage: candidate.practicalCapacityInputs
+          ? Math.min(
+              candidate.maximumEffectiveLeverage,
+              candidate.practicalCapacityInputs.actualLeverage ?? Number.NaN,
+            )
+          : candidate.maximumEffectiveLeverage,
+        maximumNotionalUsd: limits.maximumOrderNotionalUsd,
         maximumAbsPositionBase: limits.maximumAbsPositionBase,
         availableMarginUsd: limits.availableMarginUsd,
-        ...(session.configSnapshot.sizingPolicyVersion === 1
-          ? {
-              minimumNotionalUsd: Math.max(
-                candidate.input.metadata.minimumSize * candidate.input.book.bestBid,
-                candidate.input.metadata.minimumNotionalUsd ?? 0,
-              ),
-            }
-          : {}),
+        minimumNotionalUsd: Math.max(
+          candidate.input.metadata.minimumSize * candidate.input.book.bestBid,
+          candidate.input.metadata.minimumNotionalUsd ?? 0,
+        ),
         sessionConfiguration: Object.freeze({
-          ...(session.configSnapshot.sizingPolicyVersion === 1
-            ? {
-                sizingPolicyVersion: 1 as const,
-                preferredEntrySizeUsd: calculateDecibelPreferredEntrySizeUsdV1({
-                  targetTradingVolumeUsd: session.configSnapshot.targetMakerVolumeUsd,
-                  capitalToUseUsd: session.configSnapshot.capitalToUseUsd,
-                  collateralFraction: configuration.maximumAggregateCollateralFraction,
-                }),
-                entryCycleBlocker: (() => {
-                  const cycle = deriveDecibelEntryCycleV1(
-                    TelemetryJournal.getSessionEntryCycleFills(session.sessionId),
-                    candidate.input.actualInventoryBase,
-                  );
-                  return cycle.blocker ?? null;
-                })(),
-              }
-            : {}),
+          preferredEntrySizeUsd: calculateDecibelPreferredEntrySizeUsdV1({
+            targetTradingVolumeUsd: session.configSnapshot.targetMakerVolumeUsd,
+            capitalToUseUsd: session.configSnapshot.capitalToUseUsd,
+            collateralFraction: configuration.maximumAggregateCollateralFraction,
+          }),
+          entryCycleBlocker:
+            deriveDecibelEntryCycleV1(
+              TelemetryJournal.getSessionEntryCycleFills(session.sessionId),
+              candidate.input.actualInventoryBase,
+            ).blocker ?? null,
           revision: session.configRevision,
           capitalToUseUsd: session.configSnapshot.capitalToUseUsd,
           maxLossUsd: session.configSnapshot.maxLossUsd,
@@ -1678,16 +1624,13 @@ export async function runDecibelProductionWebV1(
           maxPositionUsd: limits.maximumPositionUsd,
           exposureLimits: {
             ...limits,
-            ...(session.configSnapshot.sizingPolicyVersion === 1 && limits.capacityDiagnostics
-              ? { riskCapacityUsd: limits.capacityDiagnostics.riskCapacityUsd }
-              : {}),
+            riskCapacityUsd: limits.capacityDiagnostics.riskCapacityUsd,
           },
           marginUsedUsd: limits.marginUsedUsd,
           makerVolumeUsd: metrics.makerVolumeUsd,
           takerVolumeUsd: metrics.takerVolumeUsd,
           totalExecutedVolumeUsd: metrics.totalExecutedVolumeUsd,
           targetVolumeUsd,
-          targetSemanticsVersion: session.targetSemanticsVersion,
           pnlUsd: metrics.pnlUsd,
           exitAccounting: metrics.exitAccounting,
           riskBlocker,

@@ -9,7 +9,6 @@ import { describe, expect, it } from 'vitest';
 import {
   decibel_operator_settings_store_v1,
   calculateDecibelSessionExecutionMetricsV1,
-  deriveDecibelMaximumPositionUsdV1,
   deriveDecibelSessionTradingLimitsV1,
   validateDecibelCapitalAllocationV1,
   diffDecibelOperatorSettingsV1,
@@ -48,34 +47,6 @@ describe('Decibel operator settings V1', () => {
     ).not.toThrow();
   });
 
-  it('derives a finite hard position bound from capital, loss, leverage, and venue limits', () => {
-    expect(
-      deriveDecibelMaximumPositionUsdV1({
-        capitalToUseUsd: 8,
-        maxLossUsd: 8,
-        maximumEffectiveLeverage: 40,
-        venueMaximumNotionalUsd: 100,
-      }),
-    ).toBe(100);
-    expect(
-      deriveDecibelMaximumPositionUsdV1({
-        capitalToUseUsd: 8,
-        maxLossUsd: 2,
-        maximumEffectiveLeverage: 40,
-        venueMaximumNotionalUsd: 100,
-        maxPositionUsd: 50,
-      }),
-    ).toBe(50);
-    expect(() =>
-      deriveDecibelMaximumPositionUsdV1({
-        capitalToUseUsd: 8,
-        maxLossUsd: 9,
-        maximumEffectiveLeverage: 40,
-        venueMaximumNotionalUsd: 100,
-      }),
-    ).toThrow('DERIVED_MAXIMUM_POSITION_INPUT_INVALID');
-  });
-
   it('caps session margin and pending exposure from the active config snapshot', () => {
     const limits = deriveDecibelSessionTradingLimitsV1({
       settings: {
@@ -95,7 +66,8 @@ describe('Decibel operator settings V1', () => {
     });
     expect(limits.marginUsedUsd).toBeCloseTo(0.6);
     expect(limits.availableMarginUsd).toBeCloseTo(7.4);
-    expect(limits.maximumPositionUsd).toBe(50);
+    // Without capacity evidence there is no position headroom (fail closed).
+    expect(limits.maximumPositionUsd).toBe(0);
   });
 
   it('counts only filled maker volume and preserves max-loss state across restart time', () => {
@@ -253,39 +225,41 @@ describe('V2 effective exposure budgets', () => {
     maximumEffectiveLeverage: 40,
     venueMaximumNotionalUsd: 100,
     maximumAggregateCollateralFraction: 0.5,
-    targetSemanticsVersion: 2 as const,
     totalExecutedVolumeUsd: 0,
     pnlUsd: 0,
     lotSize: 0.00001,
   };
-  it.each([
-    [50, 100],
-    [200, 100],
-    [1000, 100],
-  ])('recomputes target %s within the same immutable risk ceiling', (target, expected) => {
-    const limits = deriveDecibelSessionTradingLimitsV1({
-      ...base,
-      settings: { ...settings, targetMakerVolumeUsd: target },
-    });
-    expect(limits.effectivePositionLimitUsd).toBeCloseTo(expected);
-    expect(limits.maximumPositionUsd).toBe(100);
-    expect(settings.targetMakerVolumeUsd).toBe(50);
-  });
+  it.each([50, 200, 1000])(
+    'recomputes target %s within the same immutable risk ceiling',
+    (target) => {
+      const reference = deriveDecibelSessionTradingLimitsV1(base);
+      const limits = deriveDecibelSessionTradingLimitsV1({
+        ...base,
+        settings: { ...settings, targetMakerVolumeUsd: target },
+      });
+      expect(reference.effectivePositionLimitUsd).toBeGreaterThan(0);
+      expect(limits.effectivePositionLimitUsd).toBeCloseTo(reference.effectivePositionLimitUsd);
+      expect(limits.maximumPositionUsd).toBe(limits.effectivePositionLimitUsd);
+      expect(settings.targetMakerVolumeUsd).toBe(50);
+    },
+  );
   it('shrinks with margin, loss and remaining volume; never rounds up to an executable minimum', () => {
     expect(
       deriveDecibelSessionTradingLimitsV1({ ...base, venueAvailableMarginUsd: 0.1 })
         .effectivePositionLimitUsd,
     ).toBeCloseTo(0);
+    // A spent loss budget shrinks the risk capacity (checked by the decision layer).
     expect(
-      deriveDecibelSessionTradingLimitsV1({ ...base, pnlUsd: -1.9 }).effectivePositionLimitUsd,
-    ).toBeCloseTo(5.6);
+      deriveDecibelSessionTradingLimitsV1({ ...base, pnlUsd: -1.9 }).capacityDiagnostics
+        .riskCapacityUsd,
+    ).toBeLessThan(deriveDecibelSessionTradingLimitsV1(base).capacityDiagnostics.riskCapacityUsd);
     expect(
       deriveDecibelSessionTradingLimitsV1({ ...base, pnlUsd: null }).effectivePositionLimitUsd,
     ).toBe(0);
     expect(
       deriveDecibelSessionTradingLimitsV1({ ...base, totalExecutedVolumeUsd: 49.78 })
         .effectivePositionLimitUsd,
-    ).toBe(100);
+    ).toBe(deriveDecibelSessionTradingLimitsV1(base).effectivePositionLimitUsd);
     expect(() =>
       deriveDecibelSessionTradingLimitsV1({ ...base, venueAvailableMarginUsd: Number.NaN }),
     ).toThrow('SESSION_MARGIN_EVIDENCE_INVALID');
@@ -303,13 +277,13 @@ describe('V2 effective exposure budgets', () => {
     const limits = deriveDecibelSessionTradingLimitsV1(input);
     expect(limits.currentExposureUsd).toBe(16);
     expect(limits.pendingExposureUsd).toBe(8);
-    expect(limits.availableHeadroomUsd).toBeCloseTo(76);
+    expect(limits.availableHeadroomUsd).toBeCloseTo(limits.effectivePositionLimitUsd - 24);
     expect(
       deriveDecibelSessionTradingLimitsV1(JSON.parse(JSON.stringify(input)) as typeof input),
     ).toEqual(limits);
     expect(
-      deriveDecibelSessionTradingLimitsV1({ ...input, totalExecutedVolumeUsd: 49, pnlUsd: -1.9 })
-        .availableHeadroomUsd,
+      deriveDecibelSessionTradingLimitsV1({ ...input, totalExecutedVolumeUsd: 49, pnlUsd: -2 })
+        .capacityDiagnostics.riskCapacityUsd,
     ).toBe(0);
   });
 });
@@ -347,14 +321,29 @@ describe('Evidence-gated model B capacity', () => {
       maximumEffectiveLeverage: 40,
       venueMaximumNotionalUsd: 100,
       maximumAggregateCollateralFraction: 0.5,
-      targetSemanticsVersion: 2,
       pnlUsd: 0,
       totalExecutedVolumeUsd: target - 0.22,
       now: 10000,
       capacityEvidence: capacityFixture,
     });
-    expect(result.effectivePositionLimitUsd).toBe(100);
-    expect(result.capacityDiagnostics?.bindingConstraint).toBe('NON_STRATEGY_SAFETY_CEILING');
+    expect(result.effectivePositionLimitUsd).toBeGreaterThan(0);
+    expect(result.effectivePositionLimitUsd).toBe(
+      deriveDecibelSessionTradingLimitsV1({
+        settings: { ...baseline, capitalToUseUsd: 8, maxLossUsd: 2, maxPositionUsd: 50 },
+        venueAvailableMarginUsd: 8,
+        positionBase: 0,
+        openOrders: [],
+        midpoint: 80000,
+        lotSize: 0.00001,
+        maximumEffectiveLeverage: 40,
+        venueMaximumNotionalUsd: 100,
+        maximumAggregateCollateralFraction: 0.5,
+        pnlUsd: 0,
+        totalExecutedVolumeUsd: 0,
+        now: 10000,
+        capacityEvidence: capacityFixture,
+      }).effectivePositionLimitUsd,
+    );
   });
   it('fails closed for missing stress, stale evidence, unavailable fees/gas/margin and near liquidation', () => {
     const missing = { ...input };
@@ -394,11 +383,9 @@ describe('Evidence-gated model B capacity', () => {
       ...input,
       evidence: { ...capacityFixture, adverseMoveBps: 500 },
     });
-    expect(high.effectivePositionLimitUsd).toBeLessThan(low.effectivePositionLimitUsd);
-    expect(high.bindingConstraint).toBe('STRESS_LOSS');
+    expect(high.riskCapacityUsd).toBeLessThan(low.riskCapacityUsd);
     expect(
-      calculateDecibelRiskCapacityV1({ ...input, netSessionPnlAfterFeesUsd: -2 })
-        .effectivePositionLimitUsd,
+      calculateDecibelRiskCapacityV1({ ...input, netSessionPnlAfterFeesUsd: -2 }).riskCapacityUsd,
     ).toBe(0);
     expect(
       calculateDecibelRiskCapacityV1({

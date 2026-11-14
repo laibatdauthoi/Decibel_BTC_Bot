@@ -207,7 +207,6 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
   capacityModelRequired?: boolean;
   capacityProduction?: ReturnType<typeof assembleDecibelCapacityCertificateV1>;
   sessionConfiguration?: Readonly<{
-    sizingPolicyVersion?: 1;
     preferredEntrySizeUsd?: number;
     entryCycleBlocker?: string | null;
     revision: number;
@@ -230,7 +229,6 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
     takerVolumeUsd?: number;
     totalExecutedVolumeUsd?: number;
     targetVolumeUsd?: number;
-    targetSemanticsVersion?: 1 | 2;
     pnlUsd: number | null;
     exitAccounting?: Readonly<{
       inventoryBase: number;
@@ -1006,10 +1004,7 @@ export class decibel_production_live_orchestrator_v1 {
     snapshot = this.withExitReservations(snapshot);
     this.QuoteSizing = { BUY: null, SELL: null };
     const target = snapshot.sessionConfiguration?.targetMakerVolumeUsd;
-    const executed =
-      snapshot.sessionConfiguration?.targetSemanticsVersion === 2
-        ? snapshot.sessionConfiguration.totalExecutedVolumeUsd
-        : snapshot.sessionConfiguration?.makerVolumeUsd;
+    const executed = snapshot.sessionConfiguration?.totalExecutedVolumeUsd;
     const assessments = new Map<string, decibel_quote_size_assessment_v1>();
     const reductionNotional = Math.min(
       Math.abs(snapshot.input.actualInventoryBase) *
@@ -1046,7 +1041,7 @@ export class decibel_production_live_orchestrator_v1 {
       snapshot.input.actualInventoryBase !== 0 &&
       !this.sessionUnwindRequested &&
       !this.riskReductionRequested &&
-      snapshot.sessionConfiguration?.sizingPolicyVersion === 1
+      snapshot.sessionConfiguration?.preferredEntrySizeUsd !== undefined
         ? assessDecibelSnapshotDCAV1(snapshot)
         : null;
     const constrainedSizing = {
@@ -1155,7 +1150,10 @@ export class decibel_production_live_orchestrator_v1 {
         const reducing =
           (snapshot.input.actualInventoryBase < 0 && candidate.side === 'BUY') ||
           (snapshot.input.actualInventoryBase > 0 && candidate.side === 'SELL');
-        const dynamicEntry = snapshot.sessionConfiguration.sizingPolicyVersion === 1 && !reducing;
+        // Sessions carry their preferred entry size (decibel_entry_size_v1); snapshots
+        // without one (tests, previews) size from the candidate.
+        const dynamicEntry =
+          !reducing && snapshot.sessionConfiguration.preferredEntrySizeUsd !== undefined;
         const currentEntry = snapshot.input.openOrders.find(
           (order) =>
             order.side === candidate.side &&
@@ -1195,7 +1193,6 @@ export class decibel_production_live_orchestrator_v1 {
           side: candidate.side,
           ...(dynamicEntry
             ? {
-                sizingPolicyVersion: 1 as const,
                 preferredEntrySizeUsd: snapshot.sessionConfiguration.preferredEntrySizeUsd!,
               }
             : {}),
@@ -3380,10 +3377,9 @@ export class decibel_production_live_orchestrator_v1 {
     const baseline = snapshot.input.targetExternalMakerVolumeBaselineUsd ?? 0;
     const configuration = snapshot.sessionConfiguration;
     const authenticatedSessionMakerVolume =
-      configuration?.targetSemanticsVersion === 2
+      configuration !== undefined
         ? configuration.totalExecutedVolumeUsd
-        : (configuration?.makerVolumeUsd ??
-          Math.max(0, snapshot.input.actualFillLedger.actualExternalMakerVolumeUsd - baseline));
+        : Math.max(0, snapshot.input.actualFillLedger.actualExternalMakerVolumeUsd - baseline);
     if (
       authenticatedSessionMakerVolume === undefined ||
       !Number.isFinite(authenticatedSessionMakerVolume)
@@ -3398,14 +3394,12 @@ export class decibel_production_live_orchestrator_v1 {
     intentId: string,
     snapshot: decibel_production_live_snapshot_v1,
   ): void {
-    if (snapshot.sessionConfiguration?.targetSemanticsVersion === 2) {
+    if (snapshot.sessionConfiguration !== undefined) {
       synchronizeDecibelSessionAccountingV1(
         this.Journal,
         snapshot.input.actualFillLedger,
         snapshot.input.sessionId,
-        0,
         (snapshot.input.book.bestBid + snapshot.input.book.bestAsk) / 2,
-        2,
       );
       return;
     }

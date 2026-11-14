@@ -7,7 +7,6 @@ import {
   calculateDecibelRiskCapacityV1,
   type decibel_capacity_evidence_v1,
   type decibel_capacity_inputs_v1,
-  DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED,
   DECIBEL_CAPACITY_POLICY_V1,
 } from './decibel_risk_capacity_v1.js';
 import {
@@ -65,43 +64,6 @@ export type decibel_operator_settings_diff_v1 = Readonly<{
   pending: number;
   classification: decibel_operator_settings_risk_classification_v1;
 }>;
-
-export function deriveDecibelMaximumPositionUsdV1(
-  input: Readonly<{
-    capitalToUseUsd: number;
-    maxLossUsd: number;
-    maximumEffectiveLeverage: number;
-    venueMaximumNotionalUsd: number;
-    maxPositionUsd?: number;
-    maximumAggregateCollateralFraction?: number;
-  }>,
-): number {
-  const fraction = input.maximumAggregateCollateralFraction ?? 0.5;
-  if (
-    !Number.isFinite(input.capitalToUseUsd) ||
-    input.capitalToUseUsd <= 0 ||
-    !Number.isFinite(input.maxLossUsd) ||
-    input.maxLossUsd <= 0 ||
-    input.maxLossUsd > input.capitalToUseUsd ||
-    !Number.isFinite(input.maximumEffectiveLeverage) ||
-    input.maximumEffectiveLeverage < 1 ||
-    input.maximumEffectiveLeverage > 40 ||
-    !Number.isFinite(input.venueMaximumNotionalUsd) ||
-    input.venueMaximumNotionalUsd <= 0 ||
-    (input.maxPositionUsd !== undefined &&
-      (!Number.isFinite(input.maxPositionUsd) || input.maxPositionUsd <= 0)) ||
-    !Number.isFinite(fraction) ||
-    fraction <= 0 ||
-    fraction > 0.5
-  )
-    throw new Error('DERIVED_MAXIMUM_POSITION_INPUT_INVALID');
-  return Math.min(
-    input.venueMaximumNotionalUsd,
-    input.maxPositionUsd ?? Number.POSITIVE_INFINITY,
-    input.capitalToUseUsd * input.maximumEffectiveLeverage * fraction,
-    input.maxLossUsd * input.maximumEffectiveLeverage,
-  );
-}
 
 export type decibel_session_fill_v1 = Readonly<{
   side: 'BUY' | 'SELL';
@@ -222,8 +184,6 @@ export function deriveDecibelSessionTradingLimitsV1(
     maximumAggregateCollateralFraction: number;
     capacityEvidence?: decibel_capacity_evidence_v1;
     capacityInputs?: decibel_capacity_inputs_v1;
-    capacityPolicyVersion?: 1;
-    sizingPolicyVersion?: 1;
     now?: number;
     inflightOrders?: readonly Readonly<{
       side?: 'BUY' | 'SELL';
@@ -231,7 +191,6 @@ export function deriveDecibelSessionTradingLimitsV1(
       quantity: number;
       reduceOnly?: boolean;
     }>[];
-    targetSemanticsVersion?: 1 | 2;
     totalExecutedVolumeUsd?: number;
     pnlUsd?: number | null;
     lotSize?: number;
@@ -239,7 +198,7 @@ export function deriveDecibelSessionTradingLimitsV1(
 ): Readonly<{
   capacityBlocker: string | null;
   postFillDiagnostics: ReturnType<typeof produceDecibelPostFillMarginV1> | null;
-  capacityDiagnostics: ReturnType<typeof calculateDecibelRiskCapacityV1> | null;
+  capacityDiagnostics: ReturnType<typeof calculateDecibelRiskCapacityV1>;
   configuredMaximumPositionUsd: number;
   effectivePositionLimitUsd: number;
   currentExposureUsd: number;
@@ -252,25 +211,13 @@ export function deriveDecibelSessionTradingLimitsV1(
   maximumPositionUsd: number;
   maximumAbsPositionBase: number;
 }> {
-  const practicalPolicy =
-    DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED && input.capacityPolicyVersion === 1;
+  // Position ceiling: capital x collateral fraction x leverage (2026-11-14: the session
+  // policy versions were removed; every session uses the practical capacity policy).
   const aggregateCeilingUsd =
-    practicalPolicy || input.sizingPolicyVersion === 1
-      ? input.settings.capitalToUseUsd *
-        input.maximumAggregateCollateralFraction *
-        input.maximumEffectiveLeverage
-      : input.venueMaximumNotionalUsd;
-  const maximumPositionUsd =
-    input.targetSemanticsVersion === 2 || input.sizingPolicyVersion === 1
-      ? aggregateCeilingUsd
-      : deriveDecibelMaximumPositionUsdV1({
-          capitalToUseUsd: input.settings.capitalToUseUsd,
-          maxLossUsd: input.settings.maxLossUsd,
-          maximumEffectiveLeverage: input.maximumEffectiveLeverage,
-          venueMaximumNotionalUsd: input.venueMaximumNotionalUsd,
-          maxPositionUsd: input.settings.maxPositionUsd,
-          maximumAggregateCollateralFraction: input.maximumAggregateCollateralFraction,
-        });
+    input.settings.capitalToUseUsd *
+    input.maximumAggregateCollateralFraction *
+    input.maximumEffectiveLeverage;
+  const maximumPositionUsd = aggregateCeilingUsd;
   if (
     !Number.isFinite(input.venueAvailableMarginUsd) ||
     input.venueAvailableMarginUsd < 0 ||
@@ -285,10 +232,9 @@ export function deriveDecibelSessionTradingLimitsV1(
     !(input.midpoint > 0)
   )
     throw new Error('SESSION_MARGIN_EVIDENCE_INVALID');
-  const effectiveLeverage =
-    practicalPolicy && input.capacityInputs
-      ? Math.min(input.maximumEffectiveLeverage, input.capacityInputs.actualLeverage ?? Number.NaN)
-      : input.maximumEffectiveLeverage;
+  const effectiveLeverage = input.capacityInputs
+    ? Math.min(input.maximumEffectiveLeverage, input.capacityInputs.actualLeverage ?? Number.NaN)
+    : input.maximumEffectiveLeverage;
   const positionMarginUsd = (Math.abs(input.positionBase) * input.midpoint) / effectiveLeverage;
   const openingReservations = [...input.openOrders, ...(input.inflightOrders ?? [])].filter(
     (order) => !isDecibelPositionReductionV1(input.positionBase, order),
@@ -315,13 +261,10 @@ export function deriveDecibelSessionTradingLimitsV1(
     calculateDecibelRiskCapacityV1({
       now: input.now ?? Number.NaN,
       ...(input.capacityEvidence === undefined ? {} : { evidence: input.capacityEvidence }),
-      ...(practicalPolicy && observations !== undefined ? { observations } : {}),
+      ...(observations !== undefined ? { observations } : {}),
       capitalUsd: input.settings.capitalToUseUsd,
       availableMarginUsd: input.venueAvailableMarginUsd,
       leverage: effectiveLeverage,
-      ...(input.sizingPolicyVersion === undefined
-        ? {}
-        : { sizingPolicyVersion: input.sizingPolicyVersion }),
       maxLossUsd: input.settings.maxLossUsd,
       netSessionPnlAfterFeesUsd: input.pnlUsd ?? null,
       midpoint: input.midpoint,
@@ -332,15 +275,11 @@ export function deriveDecibelSessionTradingLimitsV1(
       orders: input.openOrders,
       inflight: input.inflightOrders ?? [],
     });
-  let capacityDiagnostics = input.targetSemanticsVersion === 2 ? calculateCapacity() : null;
+  let capacityDiagnostics = calculateCapacity();
   let verifiedMargin = input.capacityInputs?.postOrderMargin;
   let postFillBlocker: string | null = null;
   let postFillDiagnostics: ReturnType<typeof produceDecibelPostFillMarginV1> | null = null;
-  if (
-    practicalPolicy &&
-    input.capacityInputs?.venueMarginRules &&
-    capacityDiagnostics?.capacityBlocker === null
-  ) {
+  if (input.capacityInputs?.venueMarginRules && capacityDiagnostics.capacityBlocker === null) {
     const observations = input.capacityInputs;
     const rules = input.capacityInputs.venueMarginRules;
     const assessPostFill = (candidate: ReturnType<typeof calculateCapacity>) =>
@@ -353,9 +292,6 @@ export function deriveDecibelSessionTradingLimitsV1(
         leverage: effectiveLeverage,
         capitalUsd: input.settings.capitalToUseUsd,
         collateralFraction: input.maximumAggregateCollateralFraction,
-        ...(input.sizingPolicyVersion === undefined
-          ? {}
-          : { sizingPolicyVersion: input.sizingPolicyVersion }),
         maxLossUsd: input.settings.maxLossUsd,
         transactionReserveUsd:
           candidate.appliedCostObservations?.find((cost) => cost.kind === 'TRANSACTION_COST')
@@ -371,7 +307,6 @@ export function deriveDecibelSessionTradingLimitsV1(
           (candidate.modeledCosts?.exitSlippageBps ??
             DECIBEL_CAPACITY_POLICY_V1.maximumBookSlippageBps),
         collateralReserveFraction: DECIBEL_CAPACITY_POLICY_V1.collateralReserveFraction,
-        transactionReserveFraction: DECIBEL_CAPACITY_POLICY_V1.transactionLossReserveFraction,
       });
     let post = assessPostFill(capacityDiagnostics);
     // Reuse the same calculator to find a lot-valid smaller capacity when
@@ -411,29 +346,25 @@ export function deriveDecibelSessionTradingLimitsV1(
       );
     }
   }
-  const effectivePositionLimitUsd =
-    capacityDiagnostics?.effectivePositionLimitUsd ?? maximumPositionUsd;
+  const effectivePositionLimitUsd = capacityDiagnostics.effectivePositionLimitUsd;
   const venueOrderLimit = input.capacityInputs?.venueMaximumOrderNotionalUsd;
-  const marginCheck = practicalPolicy
-    ? produceDecibelMarginTierV1(
-        verifiedMargin ?? null,
-        input.now ?? Number.NaN,
-        Math.max(effectivePositionLimitUsd, capacityDiagnostics?.worstCaseExposureUsd ?? 0),
-      )
-    : { blocker: null };
+  const marginCheck = produceDecibelMarginTierV1(
+    verifiedMargin ?? null,
+    input.now ?? Number.NaN,
+    Math.max(effectivePositionLimitUsd, capacityDiagnostics.worstCaseExposureUsd ?? 0),
+  );
   const orderLimitInvalid =
     venueOrderLimit !== undefined && (!Number.isFinite(venueOrderLimit) || venueOrderLimit <= 0);
   const executionBlocker =
-    capacityDiagnostics?.capacityBlocker ??
+    capacityDiagnostics.capacityBlocker ??
     postFillBlocker ??
     marginCheck.blocker ??
     (orderLimitInvalid ? 'SESSION_CAPACITY_VENUE_ORDER_LIMIT_INVALID' : null);
   return Object.freeze({
-    maximumOrderNotionalUsd: practicalPolicy
-      ? executionBlocker === null
+    maximumOrderNotionalUsd:
+      executionBlocker === null
         ? Math.min(effectivePositionLimitUsd, venueOrderLimit ?? effectivePositionLimitUsd)
-        : 0
-      : input.venueMaximumNotionalUsd,
+        : 0,
     capacityDiagnostics,
     postFillDiagnostics,
     capacityBlocker: executionBlocker,
@@ -441,15 +372,12 @@ export function deriveDecibelSessionTradingLimitsV1(
     effectivePositionLimitUsd,
     currentExposureUsd,
     pendingExposureUsd,
-    availableHeadroomUsd:
-      capacityDiagnostics?.availableHeadroomUsd ??
-      Math.max(0, effectivePositionLimitUsd - currentExposureUsd - pendingExposureUsd),
+    availableHeadroomUsd: capacityDiagnostics.availableHeadroomUsd,
     availableMarginUsd,
     marginUsedUsd,
     strategyAllocationRemainingUsd,
-    maximumPositionUsd: practicalPolicy ? effectivePositionLimitUsd : maximumPositionUsd,
-    maximumAbsPositionBase:
-      (practicalPolicy ? effectivePositionLimitUsd : maximumPositionUsd) / input.midpoint,
+    maximumPositionUsd: effectivePositionLimitUsd,
+    maximumAbsPositionBase: effectivePositionLimitUsd / input.midpoint,
   });
 }
 

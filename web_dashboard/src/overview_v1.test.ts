@@ -161,7 +161,6 @@ function activateSession(p: Props, id = 'session-2') {
       makerVolumeUsd: 999,
       takerVolumeUsd: 0,
       totalExecutedVolumeUsd: 999,
-      targetSemanticsVersion: 2,
       fillCount: 1,
       feesUsd: 0,
       gasUsd: null,
@@ -463,7 +462,7 @@ it('renders the requested operational/session fields without duplicate status an
   }
 });
 
-it('updates progress and elapsed from session data, respecting the legacy maker target', () => {
+it('updates progress and elapsed from session data', () => {
   const p = createProps();
   activateSession(p);
   expect(renderOverview(p)).toContain('stroke-dashoffset="70"');
@@ -471,8 +470,6 @@ it('updates progress and elapsed from session data, respecting the legacy maker 
   expect(renderOverview(p)).toContain('00:00:10');
   p.now += 1000;
   expect(renderOverview(p)).toContain('00:00:11');
-  p.session!.activeSession!.targetSemanticsVersion = 1;
-  expect(renderOverview(p)).toContain('stroke-dashoffset="75"');
   p.session!.activeSession!.configSnapshot.targetMakerVolumeUsd = -1;
   expect(renderOverview(p)).toContain('UNTIL LIMIT');
   expect(renderOverview(p)).not.toContain('<progress');

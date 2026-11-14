@@ -76,7 +76,6 @@ describe('Dynamic entry allocation and independent hard risk', () => {
       ...capacity,
       capitalUsd: 5,
       availableMarginUsd: 5.437,
-      sizingPolicyVersion: 1,
     });
     // 1% move + two 0.1% fee legs + 0.25% slippage + 0.08% selection.
     const lossRate = 0.01 + 0.001 + 0.001 + 0.0025 + 0.0008;
@@ -92,12 +91,11 @@ describe('Dynamic entry allocation and independent hard risk', () => {
     expect(result.riskCapacityUsd).toBeLessThan(14.4);
   });
   it('debits net losses once, does not enlarge risk with leverage or credit session gains', () => {
-    const base = calculateDecibelRiskCapacityV1({ ...capacity, sizingPolicyVersion: 1 });
+    const base = calculateDecibelRiskCapacityV1({ ...capacity });
     for (const leverage of [10, 40]) {
       const loss = calculateDecibelRiskCapacityV1({
         ...capacity,
         leverage,
-        sizingPolicyVersion: 1,
         netSessionPnlAfterFeesUsd: -0.05,
       });
       expect(loss.riskCapacityUsd).toBeCloseTo((0.2 - 0.05 - 0.01) / 0.0153);
@@ -184,10 +182,9 @@ describe('Dynamic entry allocation and independent hard risk', () => {
     ).toBe('MARGIN_ADAPTED');
   });
   it('keeps executable sizing independent of Max Loss while retaining a stricter risk assessment', () => {
-    const a = calculateDecibelRiskCapacityV1({ ...capacity, sizingPolicyVersion: 1 });
+    const a = calculateDecibelRiskCapacityV1({ ...capacity });
     const b = calculateDecibelRiskCapacityV1({
       ...capacity,
-      sizingPolicyVersion: 1,
       maxLossUsd: 2,
     });
     expect(a.capacityBlocker).toBeNull();
@@ -200,9 +197,6 @@ describe('Dynamic entry allocation and independent hard risk', () => {
         maximumExecutableNotionalUsd: a.effectivePositionLimitUsd,
       }).quantity,
     ).toBe(0.00018);
-    expect(calculateDecibelRiskCapacityV1(capacity).effectivePositionLimitUsd).toBeLessThan(
-      a.effectivePositionLimitUsd,
-    );
   });
   it('projects the same venue-rounded Entry Size for Settings independently of Max Loss', () => {
     const now = Date.now();

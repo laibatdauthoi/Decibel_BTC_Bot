@@ -1,10 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import { calculateDecibelDynamicQuoteSizeV1 } from '../src/decibel_dynamic_quote_size_v1.js';
-import { decibel_production_session_store_v1 } from '../src/decibel_production_session_v1.js';
 import { deriveDecibelSessionTradingLimitsV1 } from '../src/decibel_operator_settings_v1.js';
 import { projectDecibelNextSessionPositionLimitV1 } from '../src/run_decibel_production_web_v1.js';
 import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_orchestrator_v1.js';
@@ -49,7 +44,6 @@ describe('Approved production capacity wiring', () => {
           maxPositionUsd: 50,
         });
         const limits = deriveDecibelSessionTradingLimitsV1({
-          capacityPolicyVersion: 1,
           settings,
           venueAvailableMarginUsd: 10.22,
           positionBase: 0,
@@ -60,7 +54,6 @@ describe('Approved production capacity wiring', () => {
           maximumAggregateCollateralFraction: 0.5,
           capacityInputs: o,
           now: Date.now(),
-          targetSemanticsVersion: 2,
           pnlUsd: 0,
           lotSize: 0.00001,
         });
@@ -99,58 +92,8 @@ describe('Approved production capacity wiring', () => {
       }
     },
   );
-  it('versions new session configuration without upgrading historical snapshots', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'decibel-capacity-version-'));
-    const path = join(dir, 'sessions.sqlite');
-    const Store = new decibel_production_session_store_v1(path);
-    const values = {
-      capitalToUseUsd: 8,
-      maxLossUsd: 3,
-      targetMakerVolumeUsd: 200,
-      orderNotionalUsd: 10,
-      maxPositionUsd: 50,
-    };
-    try {
-      const session = Store.create({ revision: 1, updatedAt: 1, values }, 1);
-      expect(session.configSnapshot.capacityPolicyVersion).toBe(1);
-      expect(session.configSnapshot.sizingPolicyVersion).toBe(1);
-      expect(values).not.toHaveProperty('capacityPolicyVersion');
-      const Raw = new Database(path);
-      try {
-        Raw.prepare('UPDATE production_sessions_v1 SET config_json=? WHERE session_id=?').run(
-          JSON.stringify(values),
-          session.sessionId,
-        );
-      } finally {
-        Raw.close();
-      }
-      expect(Store.getActive()?.configSnapshot.capacityPolicyVersion).toBeUndefined();
-      expect(Store.getActive()?.configSnapshot.sizingPolicyVersion).toBeUndefined();
-      const legacy = deriveDecibelSessionTradingLimitsV1({
-        settings: values,
-        venueAvailableMarginUsd: 10.22,
-        positionBase: 0,
-        openOrders: [],
-        midpoint: 80000,
-        maximumEffectiveLeverage: 40,
-        venueMaximumNotionalUsd: 50,
-        maximumAggregateCollateralFraction: 0.5,
-        capacityInputs: observation(),
-        now: Date.now(),
-        targetSemanticsVersion: 2,
-        pnlUsd: 0,
-        lotSize: 0.00001,
-      });
-      expect(legacy.maximumPositionUsd).toBe(50);
-      expect(legacy.capacityBlocker).not.toBeNull();
-    } finally {
-      Store.close();
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
   it('uses dynamic capacity and keeps missing post-fill venue margin evidence blocked', () => {
     const base = {
-      capacityPolicyVersion: 1 as const,
       settings: {
         capitalToUseUsd: 8,
         maxLossUsd: 2,
@@ -167,7 +110,6 @@ describe('Approved production capacity wiring', () => {
       maximumAggregateCollateralFraction: 0.5,
       capacityInputs: observation(),
       now: Date.now(),
-      targetSemanticsVersion: 2 as const,
       pnlUsd: 0,
       lotSize: 0.00001,
     };
@@ -195,7 +137,8 @@ describe('Approved production capacity wiring', () => {
     };
     expect(size()).toBeGreaterThan(50);
     expect(size({ settings: { ...base.settings, capitalToUseUsd: 2 } })).toBeLessThan(size());
-    expect(size({ settings: { ...base.settings, maxLossUsd: 0.5 } })).toBeLessThan(size());
+    // Max Loss does not size entries (decibel_entry_size_v1); it bounds DCA and the unwind.
+    expect(size({ settings: { ...base.settings, maxLossUsd: 0.5 } })).toBe(size());
     expect(size({ venueAvailableMarginUsd: 1 })).toBeLessThan(size());
     expect(
       size({
@@ -222,7 +165,6 @@ describe('Approved production capacity wiring', () => {
     const o = observation();
     delete o.venueMaximumOrderNotionalUsd;
     const base = {
-      capacityPolicyVersion: 1 as const,
       settings: {
         capitalToUseUsd: 8,
         maxLossUsd: 2,
@@ -239,7 +181,6 @@ describe('Approved production capacity wiring', () => {
       maximumAggregateCollateralFraction: 0.5,
       capacityInputs: o,
       now: Date.now(),
-      targetSemanticsVersion: 2 as const,
       pnlUsd: 0,
       lotSize: 0.00001,
     };
@@ -312,7 +253,6 @@ describe('Approved production capacity wiring', () => {
       maxPositionUsd: 50,
     };
     const args = {
-      capacityPolicyVersion: 1 as const,
       settings,
       venueAvailableMarginUsd: 10.222805,
       positionBase: 0,
@@ -323,7 +263,6 @@ describe('Approved production capacity wiring', () => {
       maximumAggregateCollateralFraction: 0.5,
       capacityInputs: o,
       now,
-      targetSemanticsVersion: 2 as const,
       pnlUsd: 0,
       lotSize: 0.00001,
     };
@@ -371,7 +310,6 @@ describe('Approved production capacity wiring', () => {
   });
   it('keeps missing authenticated leverage fail-closed in the prepared branch', () => {
     const limits = deriveDecibelSessionTradingLimitsV1({
-      capacityPolicyVersion: 1,
       settings: {
         capitalToUseUsd: 8,
         maxLossUsd: 3,
@@ -388,7 +326,6 @@ describe('Approved production capacity wiring', () => {
       maximumAggregateCollateralFraction: 0.5,
       capacityInputs: { ...observation(), actualLeverage: null },
       now: Date.now(),
-      targetSemanticsVersion: 2,
       pnlUsd: 0,
       lotSize: 0.00001,
     });

@@ -5,7 +5,6 @@ import {
 } from '../src/decibel_risk_capacity_v1.js';
 import { calculateDecibelDynamicQuoteSizeV1 } from '../src/decibel_dynamic_quote_size_v1.js';
 import { deriveDecibelSessionTradingLimitsV1 } from '../src/decibel_operator_settings_v1.js';
-import { DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED } from '../src/decibel_risk_capacity_v1.js';
 
 const observations: decibel_capacity_inputs_v1 = {
   accountObservedAt: 10000,
@@ -62,8 +61,6 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
           bids: [{ price: midpoint - 0.05, size: 1 }],
           asks: [{ price: midpoint + 0.05, size: 1 }],
         },
-        targetSemanticsVersion: 2 as const,
-        capacityPolicyVersion: 1 as const,
         pnlUsd: 0,
       };
       const TP = {
@@ -122,38 +119,14 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
     expect(result.effectivePositionLimitUsd).toBeLessThanOrEqual(50);
     expect(result.bindingConstraint).toBe('CONFIGURED_EXECUTION_NOTIONAL_CEILING');
   });
-  it('does not upgrade an unversioned historical snapshot with preview inputs', () => {
-    expect(DECIBEL_PRACTICAL_CAPACITY_LIVE_POLICY_ENABLED).toBe(true);
-    const result = deriveDecibelSessionTradingLimitsV1({
-      settings: {
-        capitalToUseUsd: 8,
-        maxLossUsd: 3,
-        targetMakerVolumeUsd: 1000,
-        orderNotionalUsd: 10,
-        maxPositionUsd: 50,
-      },
-      venueAvailableMarginUsd: 10.22,
-      positionBase: 0,
-      openOrders: [],
-      midpoint: 80000,
-      maximumEffectiveLeverage: 40,
-      venueMaximumNotionalUsd: 1000,
-      maximumAggregateCollateralFraction: 0.5,
-      capacityInputs: observations,
-      now: 10000,
-      targetSemanticsVersion: 2,
-      pnlUsd: 0,
-      lotSize: 0.00001,
-    });
-    expect(result.capacityBlocker).toBe('SESSION_CAPACITY_EVIDENCE_REQUIRED');
-    expect(result.effectivePositionLimitUsd).toBe(0);
-  });
   it.each([50, 100, 200, 1000, 5000])('keeps capacity independent of target %s', (target) => {
     const result = calculateDecibelRiskCapacityV1(input);
     expect(result.capacityBlocker).toBeNull();
-    expect(result.effectivePositionLimitUsd).toBeCloseTo(118.4);
+    // Margin-bound (the observed transaction cost is the margin reserve); Max Loss is a
+    // separate risk capacity, not a position cap.
+    expect(result.effectivePositionLimitUsd).toBeCloseTo(121.6);
     expect(result.riskCapacityUsd).toBeCloseTo(1.9 / 0.0153);
-    expect(result.availableHeadroomUsd).toBeCloseTo(118.4);
+    expect(result.availableHeadroomUsd).toBeCloseTo(121.6);
     expect(result).toEqual(
       calculateDecibelRiskCapacityV1(JSON.parse(JSON.stringify(input)) as typeof input),
     );
@@ -175,19 +148,20 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
     expect(quote.finalNotionalUsd).toBeLessThanOrEqual(target);
     expect(quote.finalNotionalUsd).toBeLessThanOrEqual(result.effectivePositionLimitUsd);
   });
-  it('reacts to capital, loss budget, margin and high volatility', () => {
+  it('reacts to capital and margin in the position limit, to loss and volatility in risk', () => {
     const base = calculateDecibelRiskCapacityV1(input);
-    for (const change of [
-      { capitalUsd: 4 },
-      { maxLossUsd: 0.5 },
-      { availableMarginUsd: 1 },
-      { netSessionPnlAfterFeesUsd: -1.8 },
-      { observations: { ...observations, recentMidpoints: [76000, 84000] } },
-    ]) {
+    for (const change of [{ capitalUsd: 4 }, { availableMarginUsd: 1 }])
       expect(
         calculateDecibelRiskCapacityV1({ ...input, ...change }).effectivePositionLimitUsd,
       ).toBeLessThan(base.effectivePositionLimitUsd);
-    }
+    for (const change of [
+      { maxLossUsd: 0.5 },
+      { netSessionPnlAfterFeesUsd: -1.8 },
+      { observations: { ...observations, recentMidpoints: [76000, 84000] } },
+    ])
+      expect(calculateDecibelRiskCapacityV1({ ...input, ...change }).riskCapacityUsd).toBeLessThan(
+        base.riskCapacityUsd,
+      );
   });
   it.each([1, 2, 3, 5])('uses configured Max Loss %s without a $2 fallback', (maxLossUsd) => {
     const result = calculateDecibelRiskCapacityV1({ ...input, maxLossUsd });
@@ -198,7 +172,7 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
         ...input,
         maxLossUsd,
         netSessionPnlAfterFeesUsd: -maxLossUsd,
-      }).effectivePositionLimitUsd,
+      }).riskCapacityUsd,
     ).toBe(0);
   });
   it('uses fresh authenticated fees and applicable observed costs as conservative lower bounds', () => {
@@ -330,8 +304,7 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
       ).toBe('SESSION_CAPACITY_LIQUIDATION_BUFFER_INSUFFICIENT');
     }
     expect(
-      calculateDecibelRiskCapacityV1({ ...input, netSessionPnlAfterFeesUsd: -2 })
-        .effectivePositionLimitUsd,
+      calculateDecibelRiskCapacityV1({ ...input, netSessionPnlAfterFeesUsd: -2 }).riskCapacityUsd,
     ).toBe(0);
   });
   it('respects thin depth and finishes residual targets with one minimum trade', () => {

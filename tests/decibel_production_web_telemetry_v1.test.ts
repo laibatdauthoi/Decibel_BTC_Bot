@@ -87,9 +87,8 @@ const setEconomicReady = (Supervisor: decibel_runtime_supervisor_v1): void =>
   });
 
 describe('Decibel runtime supervisor V1', () => {
-  it.each([1, 2] as const)(
-    'projects owned-session total/maker/taker progress with semantics V%s',
-    (version) => {
+  it('projects owned-session total/maker/taker progress against the total volume target', () => {
+    {
       const Base = makeSnapshot();
       const history = readDecibelProductionWebHistoryV1(
         'missing-volume-journal.sqlite',
@@ -111,7 +110,6 @@ describe('Decibel runtime supervisor V1', () => {
             makerVolumeUsd: 25,
             takerVolumeUsd: 25,
             totalExecutedVolumeUsd: 50,
-            targetSemanticsVersion: version,
             pnlUsd: 0,
             riskBlocker: null,
           },
@@ -176,11 +174,10 @@ describe('Decibel runtime supervisor V1', () => {
         sessionMakerVolumeUsd: 25,
         sessionTakerVolumeUsd: 25,
         totalExecutedVolumeUsd: 50,
-        remainingToTargetUsd: version === 2 ? 0 : 25,
-        targetSemanticsVersion: version,
+        remainingToTargetUsd: 0,
       });
-    },
-  );
+    }
+  });
 
   it('projects process, account, market, economic, and execution readiness independently', () => {
     const Supervisor = new decibel_runtime_supervisor_v1();
@@ -2333,7 +2330,7 @@ describe('Read-only estimated NEXT SESSION capacity', () => {
       });
       expect(estimate).toMatchObject({
         classification: 'ESTIMATED',
-        estimatedPositionLimitUsd: 118.4,
+        estimatedPositionLimitUsd: expect.closeTo(121.6, 6) as number,
         blocker: null,
       });
       expect(estimate.assumptions.modeledExitHorizonMs).toBe(30000);
@@ -2350,12 +2347,13 @@ describe('Read-only estimated NEXT SESSION capacity', () => {
       expect(JSON.stringify(base)).toBe(before);
     },
   );
+  // Max Loss bounds the risk capacity (DCA, unwind), not the position limit.
   it.each([
-    [1, 61.6],
-    [2, 118.4],
-    [3, 116.8],
-    [5, 112.8],
-  ])('projects Settings Max Loss %s across all target sizes', (maxLossUsd, expected) => {
+    [1, 121.6],
+    [2, 121.6],
+    [3, 121.6],
+    [5, 121.6],
+  ])('keeps the position limit independent of Max Loss %s and target', (maxLossUsd, expected) => {
     for (const targetMakerVolumeUsd of [50, 100, 200, 1000, 5000]) {
       const result = estimateDecibelNextSessionPositionLimitV1({
         ...base,
@@ -2367,14 +2365,11 @@ describe('Read-only estimated NEXT SESSION capacity', () => {
     }
   });
   it('reacts to draft capital/loss without mutating saved or active snapshots', () => {
-    for (const draft of [
-      { ...settings, capitalToUseUsd: 4 },
-      { ...settings, maxLossUsd: 0.5 },
-    ]) {
+    for (const draft of [{ ...settings, capitalToUseUsd: 4 }]) {
       expect(
         estimateDecibelNextSessionPositionLimitV1({ ...base, settings: draft })
           .estimatedPositionLimitUsd,
-      ).toBeLessThan(118.4);
+      ).toBeLessThan(121.6);
     }
     expect(settings.capitalToUseUsd).toBe(8);
     expect(settings.maxLossUsd).toBe(2);
@@ -2463,15 +2458,16 @@ describe('Next session projection uses the execution cap calculator without chan
     });
   };
   it.each([
-    [50, 118.4],
-    [200, 118.4],
-    [1000, 118.4],
+    [50, 121.6],
+    [200, 121.6],
+    [1000, 121.6],
   ])('projects target %s from fresh evidence', (target, expected) => {
     expect(project(target)).toBeCloseTo(expected);
   });
   it('reacts to draft capital/loss and fails closed on unavailable evidence', () => {
-    expect(project(200, 1, 1)).toBeCloseTo(12.8);
-    expect(project(200, 8, 0.1)).toBeCloseTo(5.6);
+    expect(project(200, 1, 1)).toBeCloseTo(15.2);
+    // Max Loss does not change the position limit.
+    expect(project(200, 8, 0.1)).toBeCloseTo(project(200)!);
     expect(project(50, 8, 2, false)).toBe(null);
     expect(project(50, 8, 2, true, Number.NaN)).toBe(null);
     const snapshot = practicalSnapshot();
@@ -2501,7 +2497,6 @@ describe('Next session projection uses the execution cap calculator without chan
         marginUsedUsd: 0,
         makerVolumeUsd: 49.78,
         totalExecutedVolumeUsd: 49.78,
-        targetSemanticsVersion: 2 as const,
         pnlUsd: 0,
         riskBlocker: null,
         exposureLimits: {
@@ -2522,7 +2517,7 @@ describe('Next session projection uses the execution cap calculator without chan
         venueMaximumNotionalUsd: 100,
         maximumAggregateCollateralFraction: 0.5,
       }),
-    ).toBeCloseTo(118.4);
+    ).toBeCloseTo(121.6);
     expect(snapshot.sessionConfiguration.exposureLimits.effectivePositionLimitUsd).toBe(0);
   });
 });
@@ -2806,7 +2801,7 @@ describe('Automatic late ACK session finalization', () => {
         });
         expect(limits.marginUsedUsd).toBe(0);
         expect(limits.availableMarginUsd).toBe(6);
-        expect(limits.availableHeadroomUsd).toBeGreaterThan(0);
+        expect(limits.strategyAllocationRemainingUsd).toBeGreaterThan(0);
         expect(Journal.get(intent.intentId)?.status).toBe(
           state === 'FILLED' ? 'APPLIED' : 'CANCELLED_EXTERNALLY',
         );

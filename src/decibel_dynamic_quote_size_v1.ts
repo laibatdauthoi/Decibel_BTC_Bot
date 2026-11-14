@@ -11,7 +11,6 @@ export type decibel_quote_size_input_v1 = Readonly<{
   price: number;
   proposedSizeBtc: number;
   preferredEntrySizeUsd?: number;
-  sizingPolicyVersion?: 1;
   inventoryBase: number;
   maximumAbsPositionBase: number;
   availableMarginUsd: number;
@@ -178,9 +177,6 @@ export function calculateDecibelDynamicQuoteSizeV1(input: decibel_quote_size_inp
   const belowMinimum = roundedSizeBtc + 1e-12 < minimumExecutableSizeBtc;
   const finalSizeBtc = belowMinimum || dustResidual ? 0 : roundedSizeBtc;
   return Object.freeze({
-    ...(input.sizingPolicyVersion === undefined
-      ? {}
-      : { sizingPolicyVersion: input.sizingPolicyVersion }),
     ...(input.preferredEntrySizeUsd === undefined
       ? {}
       : { preferredEntrySizeUsd: input.preferredEntrySizeUsd }),

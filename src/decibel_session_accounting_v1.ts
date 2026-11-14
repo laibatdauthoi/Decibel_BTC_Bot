@@ -19,9 +19,7 @@ export function synchronizeDecibelSessionAccountingV1(
   Journal: decibel_execution_lifecycle_journal_v1,
   ledger: decibel_actual_fill_ledger_v1,
   sessionId: string,
-  startedAt: number,
   markPrice: number,
-  targetSemanticsVersion: 1 | 2 = 2,
 ) {
   const batch: Parameters<decibel_execution_lifecycle_journal_v1['applyFill']>[0][] = [];
   for (const fill of ledger.fills) {
@@ -43,7 +41,7 @@ export function synchronizeDecibelSessionAccountingV1(
       .reduce((sum, candidate) => sum + candidate.executedBaseQuantity, 0);
     if (orderQuantity > intent.quantity + 1e-12) throw new Error('SESSION_FILL_QUANTITY_CONFLICT');
     const fragments =
-      targetSemanticsVersion === 2 && fill.executionFragments !== undefined
+      fill.executionFragments !== undefined
         ? fill.executionFragments
         : [
             {
@@ -58,12 +56,10 @@ export function synchronizeDecibelSessionAccountingV1(
           ];
     const keys = new Set(
       fragments.map((fragment) =>
-        targetSemanticsVersion === 2
-          ? getDecibelExecutionFillKeyV1(fill.venueOrderId, fill.venueFillId, fragment.fragmentId)
-          : fill.venueFillId,
+        getDecibelExecutionFillKeyV1(fill.venueOrderId, fill.venueFillId, fragment.fragmentId),
       ),
     );
-    if (targetSemanticsVersion === 2) {
+    {
       const eventPrefix = JSON.stringify([fill.venueOrderId, fill.venueFillId]).slice(0, -1) + ',';
       const prior = Journal.getSessionFills(sessionId).filter((stored) =>
         stored.fillId.startsWith(eventPrefix),
@@ -76,10 +72,11 @@ export function synchronizeDecibelSessionAccountingV1(
     }
     for (const fragment of fragments) {
       batch.push({
-        fillId:
-          targetSemanticsVersion === 2
-            ? getDecibelExecutionFillKeyV1(fill.venueOrderId, fill.venueFillId, fragment.fragmentId)
-            : fill.venueFillId,
+        fillId: getDecibelExecutionFillKeyV1(
+          fill.venueOrderId,
+          fill.venueFillId,
+          fragment.fragmentId,
+        ),
         intentId: intent.intentId,
         side: fill.side,
         quantity: fragment.quantity,
@@ -95,7 +92,7 @@ export function synchronizeDecibelSessionAccountingV1(
   Journal.applyAuthenticatedFillBatch(batch);
   const fees = new Map<string, number | null>();
   for (const fill of ledger.fills) {
-    if (targetSemanticsVersion === 2 && fill.executionFragments !== undefined)
+    if (fill.executionFragments !== undefined)
       for (const fragment of fill.executionFragments)
         fees.set(
           getDecibelExecutionFillKeyV1(fill.venueOrderId, fill.venueFillId, fragment.fragmentId),
@@ -103,9 +100,7 @@ export function synchronizeDecibelSessionAccountingV1(
         );
     else
       fees.set(
-        targetSemanticsVersion === 2
-          ? getDecibelExecutionFillKeyV1(fill.venueOrderId, fill.venueFillId)
-          : fill.venueFillId,
+        getDecibelExecutionFillKeyV1(fill.venueOrderId, fill.venueFillId),
         fill.fee.availability === 'AVAILABLE' && fill.fee.currency === 'USD'
           ? fill.fee.amount
           : null,
@@ -118,7 +113,7 @@ export function synchronizeDecibelSessionAccountingV1(
       maker: Boolean(fill.maker),
       feeUsd: fees.get(fill.fillId) ?? null,
     })),
-    targetSemanticsVersion === 2 ? 0 : startedAt,
+    0,
     markPrice,
   );
   return Object.freeze({ ...metrics, fillCount: fills.length });
@@ -150,8 +145,7 @@ export function requestDecibelSessionTargetUnwindV1(
   volume: Readonly<{ makerVolumeUsd: number; totalExecutedVolumeUsd: number }>,
 ): boolean {
   const active = Controller.getState().activeSession;
-  const targetVolumeUsd =
-    active?.targetSemanticsVersion === 2 ? volume.totalExecutedVolumeUsd : volume.makerVolumeUsd;
+  const targetVolumeUsd = volume.totalExecutedVolumeUsd;
   const reason = getDecibelSessionTargetTerminalReasonV1(
     active?.configSnapshot.targetMakerVolumeUsd ?? 0,
     targetVolumeUsd,
