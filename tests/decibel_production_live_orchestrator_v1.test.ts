@@ -6205,6 +6205,8 @@ describe('Decibel production live orchestrator V1', () => {
       DECIBEL_EXECUTOR_DRY_RUN: 'false',
       DECIBEL_PRODUCTION_MIN_ACTIVE_ORDER_LIFETIME_MS: '5000',
       DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: 'false',
+      // The soak checks two-sided cycling; the entry candle filter has its own tests.
+      DECIBEL_ENTRY_CANDLE_FILTER_ENABLED: 'false',
     });
     const orchestrator = new decibel_production_live_orchestrator_v1(
       journal,
@@ -6962,6 +6964,36 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     }
   });
 
+  it('opens from flat only on the side that fades the last closed candle', () => {
+    const base = twoSidedSnapshot(0, 200);
+    const filtered = {
+      ...base,
+      minimumNotionalUsd: 10,
+      entryCandleBlockers: { BUY: null, SELL: 'ENTRY_REQUIRES_NEW_HIGH' },
+      sessionConfiguration: {
+        ...base.sessionConfiguration!,
+        targetSemanticsVersion: 2 as const,
+        totalExecutedVolumeUsd: 0,
+      },
+    };
+    const decide = (side: 'BUY' | 'SELL') =>
+      evaluateTradingDecision(filtered, {
+        now: base.input.now,
+        sessionId: base.input.sessionId,
+        state: 'RUNNING',
+        candidate: {
+          side,
+          price: side === 'BUY' ? base.input.book.bestBid - 1 : base.input.book.bestAsk + 1,
+          quantity: 0.00018,
+          reduceOnly: false,
+          postOnly: true,
+          timeInForce: 'PostOnly',
+        },
+      });
+    expect(decide('SELL').actionPlan.SELL.reason).toBe('ENTRY_REQUIRES_NEW_HIGH');
+    expect(decide('BUY')).toMatchObject({ bidEligible: true });
+  });
+
   it('refuses opening orders while the 5-minute range is above 40 bps', () => {
     const base = twoSidedSnapshot(0, 200);
     const candidate = {
@@ -7095,6 +7127,34 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     } finally {
       instance.journal.close();
     }
+  });
+
+  it('drops the flat entry side that does not fade the last closed candle', () => {
+    const base = makeDecisionSnapshot();
+    const sizing = {
+      minimumNotionalUsd: 10,
+      maximumNotionalUsd: 118.4,
+      entryHeadroomUsd: 118.4,
+      availableMarginUsd: 8,
+      maximumEffectiveLeverage: 40,
+      maximumAbsPositionBase: 118.4 / 80000,
+      candidateSearchDepthPerSide: 2,
+      candidateDistanceBps: [5, 12],
+      flatPairSharedBaseQuantity: 0.00043,
+      makerFeeBps: 1.5,
+      estimatedGasCostUsd: 0.0004662997,
+      safetyMarginBps: 1,
+    };
+    const both = evaluateDecibelAuthenticatedPassiveRecyclingV1(base.input, sizing);
+    expect(both.desiredBid).not.toBeNull();
+    expect(both.desiredAsk).not.toBeNull();
+    const filtered = evaluateDecibelAuthenticatedPassiveRecyclingV1(base.input, {
+      ...sizing,
+      entryCandleBlockers: { BUY: 'ENTRY_REQUIRES_NEW_LOW', SELL: null },
+    });
+    expect(filtered.desiredBid).toBeNull();
+    expect(filtered.bidEligibilityReason).toBe('ENTRY_REQUIRES_NEW_LOW');
+    expect(filtered.desiredAsk).not.toBeNull();
   });
 
   it('selects the closest admitted maker price instead of diluting gas with a farther ASK', () => {
@@ -15806,6 +15866,19 @@ describe('Authenticated inventory coverage and TP preservation', () => {
     expect(desiredEntry(near)).toBeNull();
     expect(reason(near)).toBe('DCA_ADVERSE_DISTANCE_REQUIRED');
   });
+  it.each([1, -1])('keeps the exit and ignores the entry filter with a position (%s)', (sign) => {
+    const covered = fixture(sign * 0.005, 0.005);
+    const exitSide = sign > 0 ? 'SELL' : 'BUY';
+    const evaluation = evaluateDecibelAuthenticatedPassiveRecyclingV1(covered, {
+      ...sizing,
+      entryCandleBlockers: { BUY: 'ENTRY_REQUIRES_NEW_LOW', SELL: 'ENTRY_REQUIRES_NEW_HIGH' },
+    });
+    expect(evaluation.actions.find((a) => a.side === exitSide)?.action).not.toBe('WOULD_CANCEL');
+    expect(
+      exitSide === 'SELL' ? evaluation.askEligibilityReason : evaluation.bidEligibilityReason,
+    ).not.toMatch(/^ENTRY_REQUIRES/);
+  });
+
   it.each([1, -1])(
     'pauses opening orders in extreme volatility and shows the DCA blocker (%s)',
     (sign) => {

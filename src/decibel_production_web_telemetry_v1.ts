@@ -318,6 +318,12 @@ const blockerMeanings: Readonly<Record<string, string>> = Object.freeze({
     'Acknowledged order is awaiting authoritative venue evidence. Automatic reconciliation will retry; missing evidence keeps the order unresolved.',
   ENTRY_GAS_BALANCE_LOW:
     'The APT gas wallet is below the protection reserve (0.1 APT). New entries are paused; top up APT on the signing account.',
+  ENTRY_REQUIRES_NEW_LOW:
+    'Entry filter: a long opens only after the last closed 5-minute candle made a lower low.',
+  ENTRY_REQUIRES_NEW_HIGH:
+    'Entry filter: a short opens only after the last closed 5-minute candle made a higher high.',
+  ENTRY_CANDLE_EVIDENCE_REQUIRED:
+    'Entry filter: waiting for two closed 5-minute candles of price history.',
   ENTRY_VOLATILITY_PAUSE:
     'The 5-minute price range is above 40 bps. New entries and DCA are paused until it calms down; exits continue.',
 });

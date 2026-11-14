@@ -169,7 +169,7 @@ export function evaluateTradingDecision(
     );
   const entryCapacityOnly = (reason: string | null | undefined) =>
     reason != null &&
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|ENTRY_REQUIRES_NEW_LOW|ENTRY_REQUIRES_NEW_HIGH|ENTRY_CANDLE_EVIDENCE_REQUIRED|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
       reason,
     );
   if (candidate && snapshot && !positionReduction) {
@@ -415,6 +415,13 @@ export function evaluateTradingDecision(
     const volatilityPause = getDecibelEntryVolatilityPauseReasonV1(snapshot.priceRangeBps);
     if (!reducing && volatilityPause !== null) {
       tpReasons[side] = volatilityPause;
+      return null;
+    }
+    // Entry candle filter (from flat only; additions have their own DCA rule).
+    const candleBlocker =
+      source && source.actualInventoryBase === 0 ? snapshot.entryCandleBlockers?.[side] : null;
+    if (!reducing && candleBlocker) {
+      tpReasons[side] = candleBlocker;
       return null;
     }
     // A low gas wallet keeps its reserve for protecting the open position.
@@ -671,7 +678,7 @@ export function evaluateTradingDecision(
     ((source.actualInventoryBase < 0 && side === 'BUY') ||
       (source.actualInventoryBase > 0 && side === 'SELL'));
   const entryOnly = (reason: string) =>
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
+    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|ENTRY_REQUIRES_NEW_LOW|ENTRY_REQUIRES_NEW_HIGH|ENTRY_CANDLE_EVIDENCE_REQUIRED|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
       reason,
     );
   const executableReduction =

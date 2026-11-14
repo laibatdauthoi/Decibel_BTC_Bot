@@ -502,6 +502,8 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     positionGrowthBlocker?: string | null;
     /** Set while the 5-minute range is too wide: no new opening order on either side. */
     entryPauseReason?: string | null;
+    /** While flat: per-side reason a new entry may not open now (entry candle filter). */
+    entryCandleBlockers?: Readonly<{ BUY: string | null; SELL: string | null }> | null;
     availableMarginUsd: number;
     maximumEffectiveLeverage: number;
     halfSpreadBps?: number;
@@ -1704,6 +1706,21 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
       desiredAsk = null;
       desiredAskLadder = [];
       askEligibilityReason = entryPause;
+    }
+  }
+  // Entry candle filter: from flat, a side opens only after the last closed candle moved
+  // the way it fades (a long after a new low, a short after a new high).
+  const candleBlockers = sizing?.entryCandleBlockers ?? null;
+  if (candleBlockers !== null && input.actualInventoryBase === 0 && !sessionUnwind) {
+    if (candleBlockers.BUY !== null && desiredBid !== null) {
+      desiredBid = null;
+      desiredBidLadder = [];
+      bidEligibilityReason = candleBlockers.BUY;
+    }
+    if (candleBlockers.SELL !== null && desiredAsk !== null) {
+      desiredAsk = null;
+      desiredAskLadder = [];
+      askEligibilityReason = candleBlockers.SELL;
     }
   }
   if (sizing?.entryHeadroomUsd !== undefined && coverage.entryPaused && !sessionUnwind) {

@@ -13,6 +13,7 @@ import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_wor
 import {
   calculateDecibelMidpointRangeBpsV1,
   getDecibelEntryReplacementBandBpsV1,
+  getDecibelEntryCandleBlockerV1,
   getDecibelEntryVolatilityPauseReasonV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
@@ -173,6 +174,8 @@ const ProductionLiveEnvironmentSchema = z.object({
   DECIBEL_CATASTROPHE_STOP_ENABLED: z.enum(['true', 'false']).default('true'),
   /** Adverse TP steps follow the two-closed-5-minute-candle rule (decibel_exit_economics_v1). */
   DECIBEL_TP_CANDLE_RULE_ENABLED: z.enum(['true', 'false']).default('true'),
+  /** New entries must fade the last closed 5-minute candle (decibel_volatility_targets_v1). */
+  DECIBEL_ENTRY_CANDLE_FILTER_ENABLED: z.enum(['true', 'false']).default('true'),
 });
 
 export type decibel_production_live_configuration_v1 = Readonly<{
@@ -206,12 +209,15 @@ export type decibel_production_live_configuration_v1 = Readonly<{
   regimeEdgeGateEnabled: boolean;
   catastropheStopEnabled: boolean;
   tpCandleRuleEnabled: boolean;
+  entryCandleFilterEnabled: boolean;
 }>;
 
 export type decibel_production_live_snapshot_v1 = Readonly<{
   tpAdverseProgress?: import('./decibel_execution_intent_v1.js').tp_adverse_progress_v1 | null;
   /** Midpoint range over the last 5 minutes (bps); null without enough history. */
   priceRangeBps?: number | null;
+  /** While flat: why each side may not open now (entry candle filter), or null. */
+  entryCandleBlockers?: Readonly<{ BUY: string | null; SELL: string | null }> | null;
   /** Set while the gas wallet is below the entry reserve (decibel_gas_reserve_v1). */
   executionGasBlocker?: string | null;
   /** Recent midpoints (volatility lookback) for the adverse-TP candle rule. */
@@ -606,6 +612,7 @@ export function parseDecibelProductionLiveConfigurationV1(
     regimeEdgeGateEnabled: parsed.DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED === 'true',
     catastropheStopEnabled: parsed.DECIBEL_CATASTROPHE_STOP_ENABLED === 'true',
     tpCandleRuleEnabled: parsed.DECIBEL_TP_CANDLE_RULE_ENABLED === 'true',
+    entryCandleFilterEnabled: parsed.DECIBEL_ENTRY_CANDLE_FILTER_ENABLED === 'true',
   });
 }
 
@@ -2351,6 +2358,7 @@ export class decibel_production_live_orchestrator_v1 {
           ? { side: dca.side, priceLimit: dca.priceLimit }
           : null,
       positionGrowthBlocker: dca !== null && !dca.allowed ? dca.reason : null,
+      entryCandleBlockers: snapshot.entryCandleBlockers ?? null,
       entryPauseReason:
         getDecibelEntryVolatilityPauseReasonV1(snapshot.priceRangeBps) ??
         snapshot.executionGasBlocker ??
@@ -4766,6 +4774,19 @@ export class decibel_production_live_orchestrator_v1 {
       ...snapshot,
       priceRangeBps: calculateDecibelMidpointRangeBpsV1(this.MidpointHistory, snapshot.input.now),
       executionGasBlocker: getDecibelGasEntryBlockerV1(this.GasBalanceApt),
+      entryCandleBlockers:
+        this.Config.entryCandleFilterEnabled &&
+        this.Config.tpCandleRuleEnabled &&
+        snapshot.input.actualInventoryBase === 0
+          ? Object.freeze({
+              BUY: getDecibelEntryCandleBlockerV1('BUY', this.MidpointHistory, snapshot.input.now),
+              SELL: getDecibelEntryCandleBlockerV1(
+                'SELL',
+                this.MidpointHistory,
+                snapshot.input.now,
+              ),
+            })
+          : null,
       ...(this.Config.tpCandleRuleEnabled
         ? {
             recentMidpoints: this.MidpointHistory.map((sample) => ({

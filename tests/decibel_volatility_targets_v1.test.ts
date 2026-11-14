@@ -8,6 +8,7 @@ import {
   DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1,
   calculateDecibelMidpointRangeBpsV1,
   countDecibelAdverseCandleClosesV1,
+  getDecibelEntryCandleBlockerV1,
   getDecibelEntryReplacementBandBpsV1,
   getDecibelTPSafeBandBpsV1,
   getDecibelReentryDistanceBpsV1,
@@ -115,5 +116,30 @@ describe('volatility targets', () => {
     expect(countDecibelAdverseCandleClosesV1(series(12), now, isOutside, now - 3 * minute)).toBe(1);
     // Inside now: nothing to count.
     expect(countDecibelAdverseCandleClosesV1(series(12, 0), now, isOutside, null)).toBe(0);
+  });
+
+  it('lets an entry open only when it fades the last closed 5-minute candle', () => {
+    const minute = 60_000;
+    const now = 1_800_000_000_000 + 2 * minute;
+    // Closed candles 12-7 and 7-2 minutes ago; one extreme sample in each.
+    const samples = (previous: number, last: number) =>
+      Array.from({ length: 15 }, (_, i) => {
+        const minutesAgo = 14 - i;
+        return {
+          at: now - minutesAgo * minute,
+          midpoint: minutesAgo === 9 ? previous : minutesAgo === 4 ? last : 100,
+        };
+      });
+    // New low: a long may open, a short may not (no new high).
+    expect(getDecibelEntryCandleBlockerV1('BUY', samples(95, 94), now)).toBeNull();
+    expect(getDecibelEntryCandleBlockerV1('SELL', samples(95, 94), now)).toBe(
+      'ENTRY_REQUIRES_NEW_HIGH',
+    );
+    // New high: the reverse.
+    expect(getDecibelEntryCandleBlockerV1('SELL', samples(105, 106), now)).toBeNull();
+    expect(getDecibelEntryCandleBlockerV1('BUY', samples(105, 106), now)).toBe(
+      'ENTRY_REQUIRES_NEW_LOW',
+    );
+    expect(getDecibelEntryCandleBlockerV1('BUY', [], now)).toBe('ENTRY_CANDLE_EVIDENCE_REQUIRED');
   });
 });

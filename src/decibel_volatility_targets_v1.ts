@@ -248,3 +248,22 @@ export function getDecibelClosedCandlesV1(
   }
   return Object.freeze(candles);
 }
+
+/**
+ * Entry candle filter (2026-11-14, from 55 live trips: entries that faded the last closed
+ * 5-minute candle averaged +0.2 bps, the others -8.2 bps with the three worst losses).
+ * A new entry from flat must fade the last closed candle: a long only after it made a lower
+ * low than the candle before, a short only after it made a higher high. Returns the reason
+ * the side is refused, or null when it may enter.
+ */
+export function getDecibelEntryCandleBlockerV1(
+  side: 'BUY' | 'SELL',
+  samples: readonly Readonly<{ at: number; midpoint: number }>[],
+  now: number,
+): string | null {
+  const candles = getDecibelClosedCandlesV1(samples, now, 2);
+  if (candles === null || candles.length < 2) return 'ENTRY_CANDLE_EVIDENCE_REQUIRED';
+  const [previous, last] = [candles[0]!, candles[1]!];
+  if (side === 'BUY') return last.low < previous.low ? null : 'ENTRY_REQUIRES_NEW_LOW';
+  return last.high > previous.high ? null : 'ENTRY_REQUIRES_NEW_HIGH';
+}
