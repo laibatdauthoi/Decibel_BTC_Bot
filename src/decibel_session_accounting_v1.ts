@@ -139,6 +139,22 @@ export function isDecibelTargetUnwindReasonV1(reason: string | null | undefined)
   return reason === 'TARGET_VOLUME_REACHED' || reason === 'TARGET_UNREACHABLE_MINIMUM_ORDER';
 }
 
+/**
+ * Session state for the final submission check. A target drain stops new exposure but keeps
+ * the reduce-only TP working until flat; deciding that TP with the STOPPING state made the
+ * decision layer refuse it (live 2026-11-14 16:22: the session reached its target with a
+ * short open and sat in STOPPING with no TP). Opening orders are refused separately.
+ */
+export function selectDecibelSubmissionSessionStateV1(
+  active: Readonly<{ status: string; unwindReason: string | null }> | null,
+  reduceOnly: boolean,
+): 'RUNNING' | 'STOPPING' | 'ENDED' | 'IDLE' {
+  const status = (active?.status ?? 'RUNNING') as 'RUNNING' | 'STOPPING' | 'ENDED' | 'IDLE';
+  return status === 'STOPPING' && reduceOnly && isDecibelTargetUnwindReasonV1(active?.unwindReason)
+    ? 'RUNNING'
+    : status;
+}
+
 export function requestDecibelSessionTargetUnwindV1(
   Controller: decibel_production_session_controller_v1,
   sessionId: string,

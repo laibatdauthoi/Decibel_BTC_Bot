@@ -87,6 +87,7 @@ import {
   synchronizeDecibelSessionAccountingV1,
   requestDecibelSessionTargetUnwindV1,
   isDecibelTargetUnwindReasonV1,
+  selectDecibelSubmissionSessionStateV1,
 } from './decibel_session_accounting_v1.js';
 import { loadDecibelProductionExecutorV1 } from './decibel_production_execution_v1.js';
 import { decibel_production_session_controller_v1 } from './decibel_production_session_controller_v1.js';
@@ -1715,7 +1716,7 @@ export async function runDecibelProductionWebV1(
             now: Date.now(),
             sessionId: session.sessionId,
             settingsRevision: session.configRevision,
-            state: active?.status ?? 'RUNNING',
+            state: selectDecibelSubmissionSessionStateV1(active, intent.reduceOnly),
             evaluation: RuntimeOrchestrator.evaluateAuthenticatedSnapshot(fresh),
             coveragePriceAuthorization: TelemetryJournal.getCommittedCoveragePrice(
               session.sessionId,

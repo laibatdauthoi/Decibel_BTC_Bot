@@ -17,6 +17,7 @@ import {
   applyDecibelActualFillTruthV1,
 } from '../src/decibel_actual_fill_truth_v1.js';
 import {
+  selectDecibelSubmissionSessionStateV1,
   synchronizeDecibelSessionAccountingV1,
   requestDecibelSessionTargetUnwindV1,
   getDecibelSessionTargetTerminalReasonV1,
@@ -653,5 +654,28 @@ describe('target unwind reasons', () => {
     expect(isDecibelTargetUnwindReasonV1('TARGET_UNREACHABLE_MINIMUM_ORDER')).toBe(true);
     for (const reason of ['SESSION_END', 'MAX_LOSS_REACHED', 'OPERATOR_END', null, undefined])
       expect(isDecibelTargetUnwindReasonV1(reason)).toBe(false);
+  });
+});
+
+describe('submission session state during a target drain', () => {
+  it('decides a reduce-only TP as RUNNING while a target drains, nothing else', () => {
+    const draining = { status: 'STOPPING', unwindReason: 'TARGET_VOLUME_REACHED' };
+    expect(selectDecibelSubmissionSessionStateV1(draining, true)).toBe('RUNNING');
+    expect(
+      selectDecibelSubmissionSessionStateV1(
+        { status: 'STOPPING', unwindReason: 'TARGET_UNREACHABLE_MINIMUM_ORDER' },
+        true,
+      ),
+    ).toBe('RUNNING');
+    // Opening orders, operator END and Max Loss unwinds keep STOPPING.
+    expect(selectDecibelSubmissionSessionStateV1(draining, false)).toBe('STOPPING');
+    for (const unwindReason of ['SESSION_END', 'MAX_LOSS_REACHED', null])
+      expect(
+        selectDecibelSubmissionSessionStateV1({ status: 'STOPPING', unwindReason }, true),
+      ).toBe('STOPPING');
+    expect(
+      selectDecibelSubmissionSessionStateV1({ status: 'RUNNING', unwindReason: null }, false),
+    ).toBe('RUNNING');
+    expect(selectDecibelSubmissionSessionStateV1(null, true)).toBe('RUNNING');
   });
 });
