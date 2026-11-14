@@ -230,6 +230,26 @@ function writeJson(response: ServerResponse, status: number, value: unknown): vo
   response.end(JSON.stringify(value));
 }
 
+/**
+ * For a stack overflow, the top frames of the innermost one (the message alone never said
+ * which code recursed: 9 occurrences 2026-11-05..14, all during network outages). URLs are
+ * redacted; other errors return an empty string.
+ */
+export function describeDecibelStackOverflowFramesV1(error: unknown): string {
+  let current: unknown = error;
+  let overflow: Error | null = null;
+  for (let depth = 0; current instanceof Error && depth < 8; depth += 1) {
+    if (current instanceof RangeError && /call stack/i.test(current.message)) overflow = current;
+    current = current.cause;
+  }
+  if (overflow?.stack === undefined) return '';
+  const frames = overflow.stack
+    .split('\n')
+    .slice(1, 9)
+    .map((line) => line.trim().replace(/https?:\/\/\S+/gi, '[URL]'));
+  return ` STACK=${JSON.stringify(frames)}`;
+}
+
 function describeAuthenticatedReadFailure(error: unknown): string {
   const messages: string[] = [];
   let current: unknown = error;
@@ -913,7 +933,7 @@ export async function runDecibelProductionWebV1(
         .map((component) => `${component}:${economicRetryCounts.get(component) ?? 0}`)
         .join(',');
       console.error(
-        `DECIBEL_PRODUCTION_ECONOMIC_REFRESH=FAIL RETRY_COUNTS=${retrySummary || 'NONE'} BLOCKER=${error instanceof Error ? error.message : 'UNKNOWN'}`,
+        `DECIBEL_PRODUCTION_ECONOMIC_REFRESH=FAIL RETRY_COUNTS=${retrySummary || 'NONE'} BLOCKER=${error instanceof Error ? error.message : 'UNKNOWN'}${describeDecibelStackOverflowFramesV1(error)}`,
       );
       const maximumRetryCount = Math.max(1, ...economicRetryCounts.values());
       const retryDelayMs = Math.min(60_000, 5_000 * 2 ** Math.min(4, maximumRetryCount - 1));
@@ -1240,7 +1260,7 @@ export async function runDecibelProductionWebV1(
         signal.throwIfAborted();
         if (retry.shouldLog)
           console.error(
-            `DECIBEL_PRODUCTION_AUTH_REFRESH=FAILED DETAIL=${describeAuthenticatedReadFailure(error)} DIAGNOSTICS=${JSON.stringify(transportDiagnostics ?? { stage: 'UNAVAILABLE' })}`,
+            `DECIBEL_PRODUCTION_AUTH_REFRESH=FAILED DETAIL=${describeAuthenticatedReadFailure(error)} DIAGNOSTICS=${JSON.stringify(transportDiagnostics ?? { stage: 'UNAVAILABLE' })}${describeDecibelStackOverflowFramesV1(error)}`,
           );
         connectionError = lastAuthenticatedReadError;
         RuntimeSupervisor.setAuthenticatedReadBlocked();
