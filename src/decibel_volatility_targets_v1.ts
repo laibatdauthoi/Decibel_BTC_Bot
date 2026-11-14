@@ -1,3 +1,4 @@
+import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 /**
  * Volatility-scaled distances for take-profit and re-entry.
  *
@@ -12,14 +13,18 @@
  *   -1.2 to -4.8 bps net, re-entries 5+ bps away averaged +2.7 to +8 bps.
  * Without enough history the floors apply. Pure; no timers.
  */
-export const DECIBEL_PRICE_RANGE_WINDOW_MS_V1 = 300_000;
-export const DECIBEL_PRICE_RANGE_MIN_COVERAGE_V1 = 0.8;
-export const DECIBEL_TP_TARGET_NET_FACTOR_V1 = 0.25;
-export const DECIBEL_TP_TARGET_NET_MIN_BPS_V1 = 1.5;
-export const DECIBEL_TP_TARGET_NET_MAX_BPS_V1 = 10;
-export const DECIBEL_REENTRY_DISTANCE_FACTOR_V1 = 0.5;
-export const DECIBEL_REENTRY_DISTANCE_MIN_BPS_V1 = 5;
-export const DECIBEL_REENTRY_DISTANCE_MAX_BPS_V1 = 25;
+export const DECIBEL_PRICE_RANGE_WINDOW_MS_V1 = DECIBEL_STRATEGY_POLICY_V1.market.rangeWindowMs;
+export const DECIBEL_PRICE_RANGE_MIN_COVERAGE_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.market.rangeMinimumCoverage;
+export const DECIBEL_TP_TARGET_NET_FACTOR_V1 = DECIBEL_STRATEGY_POLICY_V1.tp.targetNet.factor;
+export const DECIBEL_TP_TARGET_NET_MIN_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.tp.targetNet.minBps;
+export const DECIBEL_TP_TARGET_NET_MAX_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.tp.targetNet.maxBps;
+export const DECIBEL_REENTRY_DISTANCE_FACTOR_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.reentryDistance.factor;
+export const DECIBEL_REENTRY_DISTANCE_MIN_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.reentryDistance.minBps;
+export const DECIBEL_REENTRY_DISTANCE_MAX_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.reentryDistance.maxBps;
 
 const clamp = (value: number, minimum: number, maximum: number) =>
   Math.min(maximum, Math.max(minimum, value));
@@ -89,9 +94,12 @@ export function getDecibelReentryPriceLimitV1(
  * price has moved more than this (bps), so entries stop chasing every small tick.
  * clamp(0.3 x 5-minute range, 3, 15) bps: about 3 bps in a typical market, ~9 bps when fast.
  */
-export const DECIBEL_ENTRY_REPLACEMENT_BAND_FACTOR_V1 = 0.3;
-export const DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1 = 3;
-export const DECIBEL_ENTRY_REPLACEMENT_BAND_MAX_BPS_V1 = 15;
+export const DECIBEL_ENTRY_REPLACEMENT_BAND_FACTOR_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.replacementBand.factor;
+export const DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.replacementBand.minBps;
+export const DECIBEL_ENTRY_REPLACEMENT_BAND_MAX_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.replacementBand.maxBps;
 
 export function getDecibelEntryReplacementBandBpsV1(rangeBps: number | null | undefined): number {
   if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
@@ -114,18 +122,27 @@ export function getDecibelEntryReplacementBandBpsV1(rangeBps: number | null | un
  * cooldown): in a fast 35 bps drop the TP followed the maker 3 times in 30 s and sold at the
  * low for -33 bps. The wider trigger/offset and the cooldown leave room for a bounce.
  */
-export const DECIBEL_TP_RESCUE_TRIGGER_FACTOR_V1 = 1.5;
-export const DECIBEL_TP_RESCUE_TRIGGER_MIN_BPS_V1 = 15;
-export const DECIBEL_TP_RESCUE_TRIGGER_MAX_BPS_V1 = 50;
-export const DECIBEL_TP_RESCUE_OFFSET_FACTOR_V1 = 0.5;
-export const DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1 = 5;
-export const DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1 = 20;
-export const DECIBEL_TP_RESCUE_COOLDOWN_MS_V1 = 60_000;
+export const DECIBEL_TP_RESCUE_TRIGGER_FACTOR_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueTrigger.factor;
+export const DECIBEL_TP_RESCUE_TRIGGER_MIN_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueTrigger.minBps;
+export const DECIBEL_TP_RESCUE_TRIGGER_MAX_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueTrigger.maxBps;
+export const DECIBEL_TP_RESCUE_OFFSET_FACTOR_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.rescueOffset.factor;
+export const DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.rescueOffset.minBps;
+export const DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.rescueOffset.maxBps;
+export const DECIBEL_TP_RESCUE_COOLDOWN_MS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueCooldownMs;
 /** Until a position (from its opening fill) is this old, an adverse TP step never moves
  * past the break-even price; the rescue offset applies only afterwards. */
-export const DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 = 15 * 60_000;
+export const DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyBreakEvenHoldMs;
 /** A position younger than this keeps its original TP: no adverse step at all. */
-export const DECIBEL_TP_ADVERSE_DELAY_MS_V1 = 5 * 60_000;
+export const DECIBEL_TP_ADVERSE_DELAY_MS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyAdverseDelayMs;
 
 export function getDecibelTPRescueTriggerBpsV1(rangeBps: number | null | undefined): number {
   if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
@@ -155,9 +172,10 @@ export function getDecibelTPRescueOffsetBpsV1(rangeBps: number | null | undefine
  * the price never back inside the band since it left (or since the previous step). Any return
  * inside the band restarts the count.
  */
-export const DECIBEL_TP_SAFE_BAND_FACTOR_V1 = 1.2;
+export const DECIBEL_TP_SAFE_BAND_FACTOR_V1 = DECIBEL_STRATEGY_POLICY_V1.adverse.safeBand.factor;
 /** No new entry or DCA while the 5-minute midpoint range is wider than this (bps). */
-export const DECIBEL_ENTRY_VOLATILITY_PAUSE_BPS_V1 = 40;
+export const DECIBEL_ENTRY_VOLATILITY_PAUSE_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.volatilityPauseBps;
 
 export function getDecibelEntryVolatilityPauseReasonV1(
   rangeBps: number | null | undefined,
@@ -168,19 +186,21 @@ export function getDecibelEntryVolatilityPauseReasonV1(
     ? 'ENTRY_VOLATILITY_PAUSE'
     : null;
 }
-export const DECIBEL_TP_SAFE_BAND_MIN_BPS_V1 = 10;
+export const DECIBEL_TP_SAFE_BAND_MIN_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.adverse.safeBand.minBps;
 // 40 -> 25 (2026-11-14): with a 35 bps range the band hit 40 bps and a break-even TP sat
 // for over an hour while the price chopped 20-40 bps against the entry.
-export const DECIBEL_TP_SAFE_BAND_MAX_BPS_V1 = 25;
-export const DECIBEL_TP_ADVERSE_CANDLE_MS_V1 = 300_000;
-export const DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 = 2;
+export const DECIBEL_TP_SAFE_BAND_MAX_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.adverse.safeBand.maxBps;
+export const DECIBEL_TP_ADVERSE_CANDLE_MS_V1 = DECIBEL_STRATEGY_POLICY_V1.market.candleMs;
+export const DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 = DECIBEL_STRATEGY_POLICY_V1.adverse.candleCloses;
 /** A TP already at (or past) break-even may take the rescue step after this many closes
  * since the previous step, even if the price came back inside the band in between. */
 // 6 -> 3 closes (about 15 minutes), operator decision 2026-11-14.
-export const DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1 = 3;
+export const DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.breakEvenStaleCloses;
 /** "Break-even" accepts a net loss up to this many bps of the position notional, so a
  * near-miss recovery still fills (live 2026-11-14 00:20 missed by about 1 bps). */
-export const DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1 = 1;
+export const DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.adverse.breakEvenToleranceBps;
 
 export function getDecibelTPSafeBandBpsV1(rangeBps: number | null | undefined): number {
   if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)

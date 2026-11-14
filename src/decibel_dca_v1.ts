@@ -1,3 +1,4 @@
+import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 import { getDecibelClosedCandlesV1 } from './decibel_volatility_targets_v1.js';
 
@@ -13,10 +14,11 @@ import { getDecibelClosedCandlesV1 } from './decibel_volatility_targets_v1.js';
  * projected position. An addition smaller than a third of the position is refused, so after
  * a fill the existing TP covers at most 75% and is replaced at full size.
  */
-export const DECIBEL_DCA_TRIGGER_BPS_V1 = 25;
-export const DECIBEL_DCA_MAXIMUM_ADDITIONS_V1 = 2;
+export const DECIBEL_DCA_TRIGGER_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.dca.triggerBps;
+export const DECIBEL_DCA_MAXIMUM_ADDITIONS_V1 = DECIBEL_STRATEGY_POLICY_V1.dca.maximumAdditions;
 /** Smallest addition, as a fraction of the current position notional. */
-export const DECIBEL_DCA_MINIMUM_ADDITION_FRACTION_V1 = 1 / 3;
+export const DECIBEL_DCA_MINIMUM_ADDITION_FRACTION_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.dca.minimumAdditionFraction;
 
 export type decibel_dca_assessment_v1 = Readonly<{
   allowed: boolean;

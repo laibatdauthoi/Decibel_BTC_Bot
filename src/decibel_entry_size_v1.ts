@@ -1,9 +1,12 @@
+import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 import { floorDecibelQuantityToLotV1 } from './decibel_chain_units_v1.js';
 
 export const DECIBEL_DYNAMIC_ENTRY_SIZE_V1 = 'DYNAMIC_ENTRY_SIZE_V1' as const;
 /** Preferred entry = target x 3/20 (operator raised it from 1/20 on 2026-11-13). */
-export const DECIBEL_ENTRY_SIZE_TARGET_NUMERATOR_V1 = 3;
-export const DECIBEL_ENTRY_SIZE_TARGET_DENOMINATOR_V1 = 20;
+export const DECIBEL_ENTRY_SIZE_TARGET_NUMERATOR_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.sizeTargetNumerator;
+export const DECIBEL_ENTRY_SIZE_TARGET_DENOMINATOR_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.entry.sizeTargetDenominator;
 
 /** Until-limit allocates the configured collateral budget across initial + 3 additions.
  * Leverage is an execution ceiling only; it never enlarges the preferred allocation.

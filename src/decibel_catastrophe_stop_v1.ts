@@ -1,3 +1,4 @@
+import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 /**
  * Wide venue-side catastrophe stop (approved in AGENTS.md; venue behaviour verified by the
  * Stage D probe on 2026-11-13, docs/decibel_venue_capability_probe_plan_v1.md).
@@ -13,18 +14,25 @@
  * cannot duplicate it. It executes as a "Stop Limit"; the limit sits well beyond the trigger
  * so a gap through the trigger can still fill.
  */
-export const DECIBEL_CATASTROPHE_STOP_MINIMUM_DISTANCE_V1 = 0.02;
-export const DECIBEL_CATASTROPHE_STOP_MAXIMUM_DISTANCE_V1 = 0.1;
+export const DECIBEL_CATASTROPHE_STOP_MINIMUM_DISTANCE_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.catastropheStop.minimumDistance;
+export const DECIBEL_CATASTROPHE_STOP_MAXIMUM_DISTANCE_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.catastropheStop.maximumDistance;
 /** The trigger loss is this multiple of the session Max Loss. */
-export const DECIBEL_CATASTROPHE_STOP_MAX_LOSS_FACTOR_V1 = 1.2;
+export const DECIBEL_CATASTROPHE_STOP_MAX_LOSS_FACTOR_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.catastropheStop.maxLossFactor;
 /** Limit price beyond the trigger, as a fraction of the trigger. */
-export const DECIBEL_CATASTROPHE_STOP_LIMIT_SLIPPAGE_V1 = 0.03;
+export const DECIBEL_CATASTROPHE_STOP_LIMIT_SLIPPAGE_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.catastropheStop.limitSlippage;
 /** The trigger must stay at least this far from the market on the adverse side. */
-export const DECIBEL_CATASTROPHE_STOP_MARKET_BUFFER_V1 = 0.01;
+export const DECIBEL_CATASTROPHE_STOP_MARKET_BUFFER_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.catastropheStop.marketBuffer;
 /** A stop closer than this to the entry is not the bot's (no tight stop-losses). */
-export const DECIBEL_CATASTROPHE_STOP_OWNED_MINIMUM_DISTANCE_V1 = 0.01;
+export const DECIBEL_CATASTROPHE_STOP_OWNED_MINIMUM_DISTANCE_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.catastropheStop.ownedMinimumDistance;
 /** Minimum time between two stop submissions; state is re-read from the venue in between. */
-export const DECIBEL_CATASTROPHE_STOP_RETRY_INTERVAL_MS_V1 = 30_000;
+export const DECIBEL_CATASTROPHE_STOP_RETRY_INTERVAL_MS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.catastropheStop.retryIntervalMs;
 
 export type decibel_catastrophe_stop_state_v1 = Readonly<{
   /** The position's full-size SL, from the authenticated position row. */

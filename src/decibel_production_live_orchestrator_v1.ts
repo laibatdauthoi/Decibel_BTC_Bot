@@ -1,3 +1,4 @@
+import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { assessDecibelSnapshotDCAV1 } from './decibel_dca_v1.js';
 import {
@@ -1503,7 +1504,8 @@ export function evaluateDecibelReplacementDecisionV1(
 
 /** Below this fraction of the desired quantity, an unchanged-price TP is replaced.
  * 1: any undersized TP (2026-11-14; earlier 0.5, then 0.75). */
-export const DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 = 1;
+export const DECIBEL_TP_COVERAGE_REPLACE_FRACTION_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.tp.coverageReplaceFraction;
 
 export function isDecibelTPCoverageSeverelyUndersizedV1(
   currentQuantity: number,

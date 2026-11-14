@@ -1,3 +1,4 @@
+import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 /**
  * Exchange candles for the candle-based rules (2026-11-14, operator decision): the entry
  * filter, the DCA momentum gate, the adverse-TP candle rule and the 5-minute range read
@@ -7,13 +8,16 @@
  * Fallback: when the venue candles are missing or stale, the rules use the bot's own
  * BBO midpoint history as before.
  */
-export const DECIBEL_EXCHANGE_CANDLE_MS_V1 = 60_000;
+export const DECIBEL_EXCHANGE_CANDLE_MS_V1 = DECIBEL_STRATEGY_POLICY_V1.market.venueCandleMs;
 /** History requested on each refresh. */
-export const DECIBEL_EXCHANGE_CANDLE_LOOKBACK_MS_V1 = 30 * 60_000;
+export const DECIBEL_EXCHANGE_CANDLE_LOOKBACK_MS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.market.venueCandleLookbackMs;
 /** Minimum time between two candle reads. */
-export const DECIBEL_EXCHANGE_CANDLE_REFRESH_MS_V1 = 30_000;
+export const DECIBEL_EXCHANGE_CANDLE_REFRESH_MS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.market.venueCandleRefreshMs;
 /** Candles are stale when the last closed one ended longer ago than this. */
-export const DECIBEL_EXCHANGE_CANDLE_MAX_AGE_MS_V1 = 150_000;
+export const DECIBEL_EXCHANGE_CANDLE_MAX_AGE_MS_V1 =
+  DECIBEL_STRATEGY_POLICY_V1.market.venueCandleMaxAgeMs;
 
 export type decibel_exchange_candle_v1 = Readonly<{
   start: number;
