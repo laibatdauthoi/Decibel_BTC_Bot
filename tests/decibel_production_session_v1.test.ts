@@ -44,8 +44,6 @@ const values = Object.freeze({
   capitalToUseUsd: 500,
   maxLossUsd: 50,
   targetMakerVolumeUsd: -1,
-  orderNotionalUsd: 20,
-  maxPositionUsd: 100,
 });
 
 describe('production web authenticated bootstrap ordering', () => {

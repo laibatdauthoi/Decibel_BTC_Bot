@@ -60,9 +60,9 @@ const ConfigSnapshotSchema = z
       .number()
       .finite()
       .refine((value) => value !== 0),
-    orderNotionalUsd: z.number().finite().positive(),
-    maxPositionUsd: z.number().finite().positive(),
-    // Written by sessions created before 2026-11-14 (policy versions, now always current).
+    // Written by sessions created before 2026-11-14: retired settings and policy versions.
+    orderNotionalUsd: z.number().finite().positive().optional(),
+    maxPositionUsd: z.number().finite().positive().optional(),
     capacityPolicyVersion: z.literal(1).optional(),
     sizingPolicyVersion: z.literal(1).optional(),
   })
@@ -71,8 +71,6 @@ const ConfigSnapshotSchema = z
     capitalToUseUsd: value.capitalToUseUsd,
     maxLossUsd: value.maxLossUsd,
     targetMakerVolumeUsd: value.targetMakerVolumeUsd,
-    orderNotionalUsd: value.orderNotionalUsd,
-    maxPositionUsd: value.maxPositionUsd,
   }));
 
 const activeStatuses = ['STARTING', 'RUNNING', 'STOPPING'] as const;

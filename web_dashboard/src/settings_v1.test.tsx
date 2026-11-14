@@ -62,8 +62,6 @@ function createProps(): MutableProps {
         capitalToUseUsd: 5,
         maxLossUsd: 1,
         targetMakerVolumeUsd: 100,
-        orderNotionalUsd: 10,
-        maxPositionUsd: 20,
       },
     },
     session: null,

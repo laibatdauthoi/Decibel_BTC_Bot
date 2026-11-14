@@ -31,8 +31,10 @@ const ValuesSchema = z
       .number()
       .finite()
       .refine((value) => value !== 0, 'TARGET_VOLUME_ZERO'),
-    orderNotionalUsd: z.number().finite().positive(),
-    maxPositionUsd: z.number().finite().positive(),
+    // Retired 2026-11-14 (never used for trading): still accepted from settings saved
+    // earlier, dropped on read and never written again.
+    orderNotionalUsd: z.number().finite().positive().optional(),
+    maxPositionUsd: z.number().finite().positive().optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -42,7 +44,12 @@ const ValuesSchema = z
         path: ['maxLossUsd'],
         message: 'MAX_LOSS_EXCEEDS_CAPITAL',
       });
-  });
+  })
+  .transform((value) => ({
+    capitalToUseUsd: value.capitalToUseUsd,
+    maxLossUsd: value.maxLossUsd,
+    targetMakerVolumeUsd: value.targetMakerVolumeUsd,
+  }));
 
 const StoreSchema = z
   .object({

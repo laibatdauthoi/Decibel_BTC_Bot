@@ -238,8 +238,6 @@ type OperatorSettings = {
     capitalToUseUsd: number;
     maxLossUsd: number;
     targetMakerVolumeUsd: number;
-    orderNotionalUsd: number;
-    maxPositionUsd: number;
   };
 };
 
@@ -1063,15 +1061,11 @@ export const SettingsView = (
     capital: props.settings?.values.capitalToUseUsd ?? null,
     maxLoss: props.settings?.values.maxLossUsd ?? null,
     targetVolume: props.settings?.values.targetMakerVolumeUsd ?? null,
-    orderNotional: props.settings?.values.orderNotionalUsd ?? null,
-    maxPosition: props.settings?.values.maxPositionUsd ?? null,
   };
   const [pending, setPending] = useState<Record<keyof typeof current, string>>({
     capital: current.capital?.toString() ?? '',
     maxLoss: current.maxLoss?.toString() ?? '',
     targetVolume: current.targetVolume?.toString() ?? '',
-    orderNotional: current.orderNotional?.toString() ?? '',
-    maxPosition: current.maxPosition?.toString() ?? '',
   });
   const [volumeMode, setVolumeMode] = useState<'FIXED' | 'UNTIL_LIMIT'>(
     current.targetVolume === null || (current.targetVolume ?? -1) < 0 ? 'UNTIL_LIMIT' : 'FIXED',
@@ -1143,8 +1137,6 @@ export const SettingsView = (
       capital: current.capital?.toString() ?? '',
       maxLoss: current.maxLoss?.toString() ?? '',
       targetVolume: current.targetVolume?.toString() ?? '',
-      orderNotional: current.orderNotional?.toString() ?? '',
-      maxPosition: current.maxPosition?.toString() ?? '',
     });
     setVolumeMode(
       current.targetVolume === null || (current.targetVolume ?? -1) < 0 ? 'UNTIL_LIMIT' : 'FIXED',
@@ -1215,9 +1207,7 @@ export const SettingsView = (
     if (summary !== undefined) {
       if (key === 'capital') return summary.capitalToUseUsd;
       if (key === 'maxLoss') return summary.maxLossUsd;
-      if (key === 'targetVolume') return summary.targetMakerVolumeUsd;
-      if (key === 'orderNotional') return summary.orderNotionalUsd;
-      return summary.maxPositionUsd;
+      return summary.targetMakerVolumeUsd;
     }
     return current[key];
   };
@@ -1534,8 +1524,6 @@ export const SettingsView = (
                   capital: current.capital?.toString() ?? '',
                   maxLoss: current.maxLoss?.toString() ?? '',
                   targetVolume: current.targetVolume?.toString() ?? '',
-                  orderNotional: current.orderNotional?.toString() ?? '',
-                  maxPosition: current.maxPosition?.toString() ?? '',
                 });
                 setVolumeMode(
                   current.targetVolume === null || current.targetVolume < 0
@@ -1558,8 +1546,6 @@ export const SettingsView = (
                   maxLossUsd: Number(pending.maxLoss),
                   targetMakerVolumeUsd:
                     volumeMode === 'UNTIL_LIMIT' ? -1 : Number(pending.targetVolume),
-                  orderNotionalUsd: Number(pending.orderNotional),
-                  maxPositionUsd: Number(pending.maxPosition),
                 };
                 void fetch('/api/operator-settings', {
                   method: 'POST',

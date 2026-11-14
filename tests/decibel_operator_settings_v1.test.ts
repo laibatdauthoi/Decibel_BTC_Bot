@@ -20,8 +20,6 @@ const baseline = Object.freeze({
   capitalToUseUsd: 500,
   maxLossUsd: 50,
   targetMakerVolumeUsd: 10_000,
-  orderNotionalUsd: 20,
-  maxPositionUsd: 100,
 });
 
 describe('Decibel operator settings V1', () => {
@@ -128,12 +126,21 @@ describe('Decibel operator settings V1', () => {
       { ...baseline, maxLossUsd: 501 },
       { ...baseline, orderNotionalUsd: 0 },
       { ...baseline, maxPositionUsd: 0 },
+      { ...baseline, unknownSetting: 1 },
       { ...baseline, targetMakerVolumeUsd: 0 },
     ])
       expect(() => parseDecibelOperatorSettingsValuesV1(values)).toThrow();
     expect(
       parseDecibelOperatorSettingsValuesV1({ ...baseline, targetMakerVolumeUsd: -1 }).maxLossUsd,
     ).toBe(50);
+    // Settings saved before 2026-11-14 still load; the retired fields are dropped.
+    expect(
+      parseDecibelOperatorSettingsValuesV1({
+        ...baseline,
+        orderNotionalUsd: 20,
+        maxPositionUsd: 100,
+      }),
+    ).toEqual(baseline);
   });
 
   it('classifies deterministic risk changes', () => {
@@ -141,7 +148,7 @@ describe('Decibel operator settings V1', () => {
       diffDecibelOperatorSettingsV1(baseline, { ...baseline, maxLossUsd: 20 })[0]?.classification,
     ).toBe('RISK_DECREASING');
     expect(
-      diffDecibelOperatorSettingsV1(baseline, { ...baseline, orderNotionalUsd: 40 })[0]
+      diffDecibelOperatorSettingsV1(baseline, { ...baseline, capitalToUseUsd: 600 })[0]
         ?.classification,
     ).toBe('RISK_INCREASING');
     expect(

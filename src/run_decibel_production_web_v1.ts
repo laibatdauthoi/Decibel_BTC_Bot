@@ -928,8 +928,6 @@ export async function runDecibelProductionWebV1(
     capitalToUseUsd: configuredCapital,
     maxLossUsd: Number(environment.DECIBEL_PRODUCTION_MAX_DRAWDOWN_USD ?? configuredCapital),
     targetMakerVolumeUsd: Number(environment.DECIBEL_PASSIVE_RECYCLING_TARGET_VOLUME_USD ?? '-1'),
-    orderNotionalUsd: Number(environment.DECIBEL_PRODUCTION_LIVE_MIN_NOTIONAL_USD ?? '10'),
-    maxPositionUsd: Number(environment.DECIBEL_PRODUCTION_MAX_POSITION_USD ?? configuredCapital),
   });
   const SettingsStore = new decibel_operator_settings_store_v1(
     web.DECIBEL_OPERATOR_SETTINGS_PATH,

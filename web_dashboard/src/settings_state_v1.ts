@@ -10,8 +10,6 @@ const SavedSettingsSchema = z.object({
         .number()
         .finite()
         .refine((value) => value !== 0),
-      orderNotionalUsd: z.number().finite().positive(),
-      maxPositionUsd: z.number().finite().positive(),
     })
     .refine((values) => values.maxLossUsd <= values.capitalToUseUsd),
 });
