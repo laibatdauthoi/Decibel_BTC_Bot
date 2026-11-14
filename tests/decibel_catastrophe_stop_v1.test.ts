@@ -9,7 +9,7 @@ import {
   deriveDecibelPositionStopStateV1,
   normalizeDecibelAuthenticatedOpenOrdersV1,
 } from '../src/decibel_production_live_state_source_v1.js';
-import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 } from '../src/decibel_minimal_live_canary_v1.js';
+import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from '../src/decibel_btc_market_v1.js';
 
 const long = {
   positionBase: 0.00043,
@@ -90,7 +90,7 @@ describe('catastrophe stop plan', () => {
 });
 
 describe('catastrophe stop venue state (Stage D shapes)', () => {
-  const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+  const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
   const position = (overrides: Record<string, unknown> = {}) => ({
     market,
     user: 'subaccount',

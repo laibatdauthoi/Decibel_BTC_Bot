@@ -56,7 +56,7 @@ import {
 import type { BTC_market_metadata } from './decibel_client.js';
 import type { execution_intent_v1 } from './decibel_execution_intent_v1.js';
 import { loadConfig } from './config.js';
-import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 } from './decibel_minimal_live_canary_v1.js';
+import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from './decibel_btc_market_v1.js';
 import type {
   DecibelProductionLiveStateSourceV1,
   decibel_production_live_snapshot_v1,
@@ -681,7 +681,7 @@ export function readDecibelEntryPriorityDepthV1(
     !Number.isFinite(observedAt) ||
     observedAt < 0 ||
     normalizeDecibelMarketAddressV1(parsed.data.market) !==
-      normalizeDecibelMarketAddressV1(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1)
+      normalizeDecibelMarketAddressV1(DECIBEL_BTC_USD_MARKET_ADDRESS_V1)
   )
     return undefined;
   return Object.freeze({ observedAt, bids: parsed.data.bids, asks: parsed.data.asks });
@@ -879,17 +879,17 @@ export function makeSDKReader(
           options,
         }),
         ChainClient.getAccountResource<Record<string, unknown>>({
-          accountAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+          accountAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
           resourceType: `${pkg}::perp_market_config::PerpMarketConfiguration`,
           options,
         }),
         ChainClient.getAccountResource<Record<string, unknown>>({
-          accountAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+          accountAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
           resourceType: `${pkg}::open_interest_tracker::OpenInterestTracker`,
           options,
         }),
         ChainClient.getAccountResource<Record<string, unknown>>({
-          accountAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+          accountAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
           resourceType: `${pkg}::price_management::PriceDetails`,
           options,
         }),
@@ -914,7 +914,7 @@ export function makeSDKReader(
       const Http = (await authenticatedInitialized).AuthenticatedHttp;
       const deadline = signal ?? AbortSignal.timeout(9000);
       const [leverage, fees] = await Promise.all([
-        Http.readSelectedLeverage(subaccount, DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1, deadline),
+        Http.readSelectedLeverage(subaccount, DECIBEL_BTC_USD_MARKET_ADDRESS_V1, deadline),
         Http.readFeeRates(subaccount, deadline),
       ]);
       return { leverage, fees };
@@ -1799,7 +1799,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     const report = assembleDecibelCapacityCertificateV1({
       now: this.getNow(),
       maximumBookAgeMs: config.DECIBEL_PRODUCTION_LIVE_MAX_BBO_AGE_MS,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       quantity,
       books: this.CapacityBooks,
       exits: [],
@@ -1913,7 +1913,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     const receivedAt = this.getNow();
     if (
       normalizeDecibelMarketAddressV1(values.metadata.marketAddress) !==
-        normalizeDecibelMarketAddressV1(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1) ||
+        normalizeDecibelMarketAddressV1(DECIBEL_BTC_USD_MARKET_ADDRESS_V1) ||
       values.metadata.symbol !== 'BTC/USD'
     )
       throw new Error('PRODUCTION_LIVE_SOURCE_MARKET_MISMATCH');
@@ -1922,7 +1922,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     const book = CurrentBookSchema.parse(values.book);
     if (
       normalizeDecibelMarketAddressV1(book.market) !==
-        normalizeDecibelMarketAddressV1(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1) ||
+        normalizeDecibelMarketAddressV1(DECIBEL_BTC_USD_MARKET_ADDRESS_V1) ||
       book.best_ask <= book.best_bid
     )
       throw new Error('PRODUCTION_LIVE_SOURCE_BOOK_INVALID');
@@ -1999,20 +1999,20 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     );
     const openOrders = normalizeDecibelAuthenticatedOpenOrdersV1(
       values.openOrders,
-      DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       configuration.DECIBEL_PRODUCTION_LIVE_STRATEGY_CONFIG_ID,
       values.orderHistory,
     );
     const bulk = resolveDecibelBulkOrderActivityV1({
       configuredSubaccount: configuration.DECIBEL_SUBACCOUNT_ADDRESS,
-      configuredMarket: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      configuredMarket: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       records: values.bulkOrders,
       readSuccessful: true,
     });
     const ledger = buildStrategyFillLedger(
       values.orderHistory,
       values.tradeHistory,
-      DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       receivedAt,
       baseline,
     );
@@ -2114,7 +2114,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       configuredNetwork: 'mainnet',
       observedNetwork: 'mainnet',
       now: receivedAt,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       metadata: {
         marketAddress: values.metadata.marketAddress,
         symbol: values.metadata.symbol,
@@ -2275,7 +2275,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
           (signal) =>
             this.Reader.readPositions(
               configuration.DECIBEL_SUBACCOUNT_ADDRESS,
-              DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+              DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
               signal,
             ),
           signal,
@@ -2364,7 +2364,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
         actualInventoryBase: BTCPositions[0]?.size ?? 0,
         openOrders: normalizeDecibelAuthenticatedOpenOrdersV1(
           rawOpenOrders,
-          DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+          DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
           configuration.DECIBEL_PRODUCTION_LIVE_STRATEGY_CONFIG_ID,
         ),
         ...(() => {
@@ -2446,7 +2446,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     const ledger = buildStrategyFillLedger(
       orders,
       trades,
-      DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       observedAt,
       baseline,
     );
@@ -2483,7 +2483,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       await this.readAuthenticatedStage('POSITION_REVALIDATION', (signal) =>
         this.Reader.readPositions(
           configuration.DECIBEL_SUBACCOUNT_ADDRESS,
-          DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+          DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
           signal,
         ),
       ),
@@ -2752,7 +2752,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     if (directlyVerifiedOpenOrder !== undefined) {
       const normalized = normalizeDecibelAuthenticatedOpenOrdersV1(
         [directlyVerifiedOpenOrder],
-        DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         configuration.DECIBEL_PRODUCTION_LIVE_STRATEGY_CONFIG_ID,
         orderHistory,
       )[0];
@@ -3174,7 +3174,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       this.readAuthenticatedStage(
         'BULK_ORDERS',
         (signal) =>
-          this.Reader.readBulkOrders(subaccount, DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1, signal),
+          this.Reader.readBulkOrders(subaccount, DECIBEL_BTC_USD_MARKET_ADDRESS_V1, signal),
         parentSignal,
       ),
       this.readAuthenticatedStage(
@@ -3185,7 +3185,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     ]);
     const book = await this.readAuthenticatedStage(
       'CURRENT_BOOK',
-      () => this.Reader.readCurrentBook(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1),
+      () => this.Reader.readCurrentBook(DECIBEL_BTC_USD_MARKET_ADDRESS_V1),
       parentSignal,
     );
     return {

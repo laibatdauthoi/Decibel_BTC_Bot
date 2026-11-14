@@ -1,4 +1,4 @@
-import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 } from './decibel_minimal_live_canary_v1.js';
+import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from './decibel_btc_market_v1.js';
 
 export type decibel_market_identity_fields_v1 = Readonly<{
   market?: unknown;
@@ -29,7 +29,7 @@ export function getDecibelMarketAddressV1(row: decibel_market_identity_fields_v1
 }
 
 export function isDecibelBTCMarketActivityV1(row: decibel_market_identity_fields_v1): boolean {
-  const expected = normalizeDecibelMarketAddressV1(DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1);
+  const expected = normalizeDecibelMarketAddressV1(DECIBEL_BTC_USD_MARKET_ADDRESS_V1);
   return [row.market, row.market_address, row.market_id].some(
     (value) => normalizeDecibelMarketAddressV1(value) === expected,
   );

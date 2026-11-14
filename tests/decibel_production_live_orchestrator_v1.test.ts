@@ -90,7 +90,7 @@ import {
   getDecibelHTTPReadBackoffUntilV1,
   resetDecibelHTTPReadBackoffForTestV1,
 } from '../src/decibel_http_read_backoff_v1.js';
-import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 } from '../src/decibel_minimal_live_canary_v1.js';
+import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from '../src/decibel_btc_market_v1.js';
 import {
   decibel_production_live_orchestrator_v1,
   assertDecibelProductionControlLivenessV1,
@@ -194,9 +194,9 @@ const makeSnapshot = (overrides: Partial<decibel_production_live_snapshot_v1> = 
     configuredNetwork: 'mainnet' as const,
     observedNetwork: 'mainnet',
     now,
-    market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+    market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
     metadata: {
-      marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       symbol: 'BTC/USD',
       tickSize: 0.1,
       lotSize: 0.001,
@@ -362,7 +362,7 @@ function make(input?: {
                       venueOrderId: 'verified-open',
                       clientOrderId: `d1b${'a'.repeat(29)}`,
                       strategyConfigId: makeSnapshot().input.strategyConfigId,
-                      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+                      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
                       side: 'BUY' as const,
                       price: 100,
                       quantity: 0.001,
@@ -474,7 +474,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: 'cross-flat-buy',
             clientOrderId: 'd1bcrossflat',
             strategyConfigId: base.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'BUY',
             price: 82_960.6,
             quantity: 0.0003,
@@ -500,7 +500,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: 'safe-buy',
             clientOrderId: 'd1bsafebuy',
             strategyConfigId: base.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'BUY',
             price: 82_960.6,
             quantity: 0.00024,
@@ -520,7 +520,7 @@ describe('Decibel production live orchestrator V1', () => {
       venueOrderId: 'partial-residual',
       clientOrderId: 'd1spartialresidual',
       strategyConfigId: base.input.strategyConfigId,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side: 'SELL' as const,
       price: 100.2,
       quantity: 0.00027,
@@ -674,7 +674,7 @@ describe('Decibel production live orchestrator V1', () => {
         venueOrderId: 'resting-bid',
         clientOrderId: `d1b${'a'.repeat(29)}`,
         strategyConfigId: snapshot.input.strategyConfigId,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         side: 'BUY' as const,
         price: 90,
         quantity: 0.001,
@@ -684,7 +684,7 @@ describe('Decibel production live orchestrator V1', () => {
       },
       desired: {
         side: 'BUY' as const,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         price: 95,
         quantity: 0.001,
         orderType: 'LIMIT' as const,
@@ -744,7 +744,7 @@ describe('Decibel production live orchestrator V1', () => {
         venueOrderId: 'owned-bid',
         clientOrderId: `d1b${'a'.repeat(29)}`,
         strategyConfigId: snapshot.input.strategyConfigId,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         side: 'BUY' as const,
         price: 90,
         quantity: 0.001,
@@ -754,7 +754,7 @@ describe('Decibel production live orchestrator V1', () => {
       },
       desired: {
         side: 'BUY' as const,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         price: 95,
         quantity: 0.001,
         orderType: 'LIMIT' as const,
@@ -812,7 +812,7 @@ describe('Decibel production live orchestrator V1', () => {
         venueOrderId: 'resting-ask',
         clientOrderId: `d1s${'a'.repeat(29)}`,
         strategyConfigId: snapshot.input.strategyConfigId,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         side: 'SELL' as const,
         price: 101,
         quantity: 0.00100000000001,
@@ -823,7 +823,7 @@ describe('Decibel production live orchestrator V1', () => {
       },
       desired: {
         side: 'SELL' as const,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         price: 101,
         quantity: 0.001,
         orderType: 'LIMIT' as const,
@@ -847,7 +847,7 @@ describe('Decibel production live orchestrator V1', () => {
         venueOrderId: 'crossing-bid',
         clientOrderId: `d1b${'a'.repeat(29)}`,
         strategyConfigId: snapshot.input.strategyConfigId,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         side: 'BUY' as const,
         price: 100.2,
         quantity: 0.001,
@@ -858,7 +858,7 @@ describe('Decibel production live orchestrator V1', () => {
       },
       desired: {
         side: 'BUY' as const,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         price: 100.2,
         quantity: 0.001,
         orderType: 'LIMIT' as const,
@@ -2495,7 +2495,7 @@ describe('Decibel production live orchestrator V1', () => {
     ).rejects.toThrow('PRODUCTION_RECONCILIATION_TRANSACTION_LOOKUP_FAILED');
   });
   it('uses the latest terminal order event and authenticated fill for recovery', () => {
-    const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+    const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
     expect(
       resolveDecibelRecentOrderEvidenceV1(
         [
@@ -2540,7 +2540,7 @@ describe('Decibel production live orchestrator V1', () => {
     ).toBe('FULL_FILL');
   });
   it('does not treat a per-fill FILLED history row with residual quantity as terminal', () => {
-    const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+    const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
     expect(
       resolveDecibelRecentOrderEvidenceV1(
         [
@@ -2576,7 +2576,7 @@ describe('Decibel production live orchestrator V1', () => {
     ).toBe('PARTIAL_FILL');
   });
   it('aggregates Decibel fill fragments sharing one trade id before canonical reconciliation', () => {
-    const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+    const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
     const fragment = {
       account: 'subaccount',
       market,
@@ -2618,7 +2618,7 @@ describe('Decibel production live orchestrator V1', () => {
     ).toBe('FULL_FILL');
   });
   it('rejects fragment rows that reuse a trade id with contradictory immutable identity', () => {
-    const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+    const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
     const fragment = {
       account: 'subaccount',
       market,
@@ -2677,7 +2677,7 @@ describe('Decibel production live orchestrator V1', () => {
     ).rejects.toThrow('HISTORY_TOTAL_CHANGED');
   });
   it('uses exact fill identity even when the corresponding order-history row is unavailable', () => {
-    const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+    const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
     const trade = {
       account: 'subaccount',
       market,
@@ -2767,7 +2767,7 @@ describe('Decibel production live orchestrator V1', () => {
   it('discovers delayed terminal indexing on a later bounded reconciliation read', async () => {
     const starts: number[] = [];
     let indexed = false;
-    const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+    const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
     const Reader = {
       readOrderHistory: (_subaccount: string, startTimestamp: number) => {
         starts.push(startTimestamp);
@@ -2811,7 +2811,7 @@ describe('Decibel production live orchestrator V1', () => {
     expect(starts).toEqual([10_000, 10_000]);
   });
   it('rejects contradictory terminal observations that match only one identity field', async () => {
-    const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+    const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
     const Reader = {
       readOrderHistory: () =>
         Promise.resolve([
@@ -3025,7 +3025,7 @@ describe('Decibel production live orchestrator V1', () => {
       venueOrderId: 'v1',
       clientOrderId: `d1b${'a'.repeat(29)}`,
       strategyConfigId: empty.input.strategyConfigId,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side: 'BUY' as const,
       price: 100,
       quantity: 0.001,
@@ -3115,7 +3115,7 @@ describe('Decibel production live orchestrator V1', () => {
       venueOrderId: 'terminal-before-cancel',
       clientOrderId: `d1b${'b'.repeat(29)}`,
       strategyConfigId: base.input.strategyConfigId,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side: 'BUY' as const,
       price: 100,
       quantity: 0.001,
@@ -3265,7 +3265,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId,
             clientOrderId,
             strategyConfigId: base.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'SELL',
             price: 101,
             quantity: 0.001,
@@ -3380,7 +3380,7 @@ describe('Decibel production live orchestrator V1', () => {
       venueOrderId: 'existing',
       clientOrderId: `dpvr1-b-0-${'a'.repeat(32)}`,
       strategyConfigId: base.input.strategyConfigId,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side: 'BUY' as const,
       price: 100,
       quantity: 0.001,
@@ -3428,7 +3428,7 @@ describe('Decibel production live orchestrator V1', () => {
       venueOrderId,
       clientOrderId,
       strategyConfigId: base.input.strategyConfigId,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side: 'SELL' as const,
       price: 100.2,
       quantity: 0.001,
@@ -3527,7 +3527,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId,
             clientOrderId,
             strategyConfigId: base.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'BUY' as const,
             price: 100,
             quantity: 0.001,
@@ -3579,7 +3579,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: 'contradictory-venue-order',
             clientOrderId,
             strategyConfigId: base.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'BUY' as const,
             price: 100,
             quantity: 0.001,
@@ -3694,7 +3694,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: 'v1',
             clientOrderId: `d1b${'a'.repeat(29)}`,
             strategyConfigId: reconciledSnapshot.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'BUY' as const,
             price: 100,
             quantity: 0.001,
@@ -3745,7 +3745,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: 'venue-buy',
             clientOrderId: `d1b${'a'.repeat(29)}`,
             strategyConfigId: snapshot.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'BUY',
             price: 100,
             quantity: 1,
@@ -4308,7 +4308,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId,
             clientOrderId,
             strategyConfigId: visibilityLag.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'SELL',
             price: 81_425.5,
             quantity: 0.0003,
@@ -4345,7 +4345,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId,
             clientOrderId,
             strategyConfigId: base.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'SELL',
             price: 100.2,
             quantity: 0.001,
@@ -4385,7 +4385,7 @@ describe('Decibel production live orchestrator V1', () => {
         fail = false;
       let releaseRules: (() => void) | undefined;
       let deferRules = false;
-      const market = DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1;
+      const market = DECIBEL_BTC_USD_MARKET_ADDRESS_V1;
       const Reader = {
         readAccountOverview: () =>
           Promise.resolve({
@@ -4931,7 +4931,7 @@ describe('Decibel production live orchestrator V1', () => {
         venueOrderId: 'partial-order',
         clientOrderId: `d1s${'f'.repeat(29)}`,
         strategyConfigId: Flat.input.strategyConfigId,
-        market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         side: 'SELL' as const,
         price: 101,
         quantity: 0.0005,
@@ -5362,7 +5362,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: 'recycle-sell',
             clientOrderId: `d1s${'a'.repeat(29)}`,
             strategyConfigId: snapshot.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'SELL',
             price: 101,
             quantity: 0.001,
@@ -5409,7 +5409,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: 'resting-sell',
             clientOrderId: `d1s${'b'.repeat(29)}`,
             strategyConfigId: snapshot.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'SELL',
             price: 101,
             quantity: 0.023,
@@ -5975,7 +5975,7 @@ describe('Decibel production live orchestrator V1', () => {
       venueFillId: id,
       venueOrderId: id,
       localExecutionRequestId: id,
-      marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side,
       executedPrice: price,
       executedBaseQuantity: 1,
@@ -6034,7 +6034,7 @@ describe('Decibel production live orchestrator V1', () => {
             venueOrderId: order.venueOrderId,
             localIntentId: order.clientOrderId,
             localExecutionRequestId: order.clientOrderId,
-            marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: order.side,
             requestedQuantity: order.quantity,
           },
@@ -6044,7 +6044,7 @@ describe('Decibel production live orchestrator V1', () => {
         venueFillId: `soak-fill-${order.venueOrderId}`,
         venueOrderId: order.venueOrderId,
         localExecutionRequestId: order.clientOrderId,
-        marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         side: order.side,
         executedPrice: order.price,
         executedBaseQuantity: order.quantity,
@@ -6135,7 +6135,7 @@ describe('Decibel production live orchestrator V1', () => {
           clientOrderId: intent.clientOrderId,
           reduceOnly: intent.reduceOnly,
           strategyConfigId: makeSnapshot().input.strategyConfigId,
-          market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+          market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
           side: intent.side,
           price: intent.price,
           quantity: intent.quantity,
@@ -6389,7 +6389,7 @@ describe('PID 29964 STOPPING acknowledgement recovery', () => {
       clientOrderId:
         side === 'BUY' ? 'd1b775da7b009fab826cc105367888d9' : 'd1s939629f0f04d4933e95edaa725ad7',
       strategyConfigId: Base.input.strategyConfigId,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side,
       price: side === 'BUY' ? 80394.1 : 80531.90000000001,
       quantity: 0.00031,
@@ -14887,7 +14887,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
             venueOrderId: order.venueOrderId,
             localIntentId: order.clientOrderId,
             localExecutionRequestId: order.clientOrderId,
-            marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: order.side,
             requestedQuantity: order.quantity,
           },
@@ -14897,7 +14897,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         venueFillId: `fragment-${order.venueOrderId}`,
         venueOrderId: order.venueOrderId,
         localExecutionRequestId: order.clientOrderId,
-        marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         side: order.side,
         executedPrice: order.price,
         executedBaseQuantity: order.quantity,
@@ -14937,7 +14937,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           ...intent,
           venueOrderId: id,
           strategyConfigId: makeSnapshot().input.strategyConfigId,
-          market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+          market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
           orderType: 'LIMIT',
         });
         return Promise.resolve({ outcome: 'PLACE_ACKNOWLEDGED', venueOrderId: id });
@@ -15581,7 +15581,7 @@ describe('Authenticated inventory coverage and TP preservation', () => {
 
 describe('Authenticated exit reduce-only provenance normalization', () => {
   const row = {
-    market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+    market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
     order_id: 'exact-order',
     client_order_id: 'd1s' + 'a'.repeat(29),
     orig_size: 0.0007,
@@ -18397,7 +18397,7 @@ describe('re-entry after a TP fill', () => {
       venueFillId: `fill-${venueOrderId}`,
       venueOrderId,
       localExecutionRequestId: clientOrderId,
-      marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       side: 'SELL' as const,
       executedPrice: price,
       executedBaseQuantity: 1,

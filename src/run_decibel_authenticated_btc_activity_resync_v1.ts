@@ -21,7 +21,7 @@ import { resolveDecibelBulkOrderActivityV1 } from './decibel_bulk_order_activity
 import {
   decodeDecibelMoveAddressV1,
   decodeDecibelMoveOptionalStringV1,
-} from './decibel_operator_ui_canary_order_capture_v1.js';
+} from './decibel_btc_market_v1.js';
 
 for (const name of [
   'LIVE_EXECUTION_ENABLED',

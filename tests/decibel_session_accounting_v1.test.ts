@@ -27,7 +27,7 @@ import {
   decibel_production_live_state_source_v1,
   type DecibelProductionLiveAuthenticatedReaderV1,
 } from '../src/decibel_production_live_state_source_v1.js';
-import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 as market } from '../src/decibel_minimal_live_canary_v1.js';
+import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 as market } from '../src/decibel_btc_market_v1.js';
 
 async function createFixture(target = 50) {
   const root = mkdtempSync(join(tmpdir(), 'session-target-'));

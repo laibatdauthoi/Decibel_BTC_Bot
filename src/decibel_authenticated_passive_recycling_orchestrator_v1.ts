@@ -13,7 +13,7 @@ import {
 import { calculateDecibelFairPriceV1 } from './decibel_fair_price_engine_v1.js';
 import { calculateDecibelInventoryConstraintsV1 } from './decibel_inventory_controller_v1.js';
 import { buildDecibelMarketStateV1 } from './decibel_market_state_v1.js';
-import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 } from './decibel_minimal_live_canary_v1.js';
+import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from './decibel_btc_market_v1.js';
 import type { decibel_actual_fill_ledger_v1 } from './decibel_actual_fill_truth_v1.js';
 import {
   buildDecibelSmartLadderV1,
@@ -358,14 +358,14 @@ function desiredOrder(input: {
     input.strategyConfigId,
     input.side,
     input.generation,
-    DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+    DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
     input.price,
     input.quantity,
     input.levelId ?? null,
   ]).slice(0, 29);
   return Object.freeze({
     side: input.side,
-    market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+    market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
     price: input.price,
     quantity: input.quantity,
     orderType: 'LIMIT',
@@ -583,8 +583,8 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
   if (input.configuredNetwork !== 'mainnet' || input.observedNetwork !== 'mainnet')
     blockers.push('NETWORK_MISMATCH');
   if (
-    input.market !== DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 ||
-    input.metadata.marketAddress !== DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1
+    input.market !== DECIBEL_BTC_USD_MARKET_ADDRESS_V1 ||
+    input.metadata.marketAddress !== DECIBEL_BTC_USD_MARKET_ADDRESS_V1
   )
     blockers.push('MARKET_MISMATCH');
   if (

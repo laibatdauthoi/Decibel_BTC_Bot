@@ -49,7 +49,7 @@ import {
   parseDecibelProductionLiveConfigurationV1,
   type decibel_production_live_snapshot_v1,
 } from '../src/decibel_production_live_orchestrator_v1.js';
-import { DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1 } from '../src/decibel_minimal_live_canary_v1.js';
+import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from '../src/decibel_btc_market_v1.js';
 import {
   decibel_runtime_supervisor_v1,
   ensureDecibelAuthenticatedStateReadyForStartV1,
@@ -503,9 +503,9 @@ function makeSnapshot(): decibel_production_live_snapshot_v1 {
       configuredNetwork: 'mainnet',
       observedNetwork: 'mainnet',
       now: 10_000,
-      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
       metadata: {
-        marketAddress: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+        marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
         symbol: 'BTC/USD',
         tickSize: 0.1,
         lotSize: 0.00001,
@@ -1946,7 +1946,7 @@ describe('Decibel production web telemetry V1', () => {
               venueOrderId: 'order-open',
               clientOrderId: 'client-open',
               strategyConfigId: snapshot.input.strategyConfigId,
-              market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+              market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
               side: 'SELL',
               price: 80_010,
               quantity: 0.00014,
@@ -2031,7 +2031,7 @@ describe('Decibel production web telemetry V1', () => {
             venueOrderId,
             clientOrderId,
             strategyConfigId: base.input.strategyConfigId,
-            market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+            market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
             side: 'BUY',
             price: 77_211.3,
             quantity: 0.00014,
@@ -3524,7 +3524,7 @@ describe('startup authenticated input boundaries', () => {
           ...(activeBTC
             ? [
                 {
-                  market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+                  market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
                   user: 'test-subaccount',
                   size: 0.00128,
                   entry_price: 80493.810938,
@@ -3548,7 +3548,7 @@ describe('startup authenticated input boundaries', () => {
               ...(activeBTC
                 ? [
                     {
-                      market: DECIBEL_MINIMAL_LIVE_CANARY_MARKET_V1,
+                      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
                       order_id: 'covered-btc',
                       client_order_id: `d1s${'a'.repeat(29)}`,
                       orig_size: 0.00128,
