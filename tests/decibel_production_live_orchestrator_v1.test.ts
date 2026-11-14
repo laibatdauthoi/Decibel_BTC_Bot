@@ -4,6 +4,7 @@ import {
   assertDecibelRecoveryIntentV1,
   getDecibelVerifiedCurrentPlaceOwnerV1,
 } from '../src/decibel_protective_recovery_admission_v1.js';
+import { createDecibelMarketStructureV1 } from '../src/decibel_market_structure_v1.js';
 import { makeDecibelActivityBaselineFixtureV1 } from './fixtures/decibel_activity_baseline_fixture_v1.js';
 import {
   assessDecibelEntryPhaseEconomicsV1,
@@ -7022,7 +7023,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       try {
         await test.orchestrator.evaluateOnce();
         const latest = test.orchestrator.getLatestSnapshot()!;
-        expect(latest.candleSource, label).toBe(source);
+        expect(latest.marketStructure?.source, label).toBe(source);
         if (source === 'EXCHANGE') {
           // No warm-up: the BBO history is empty, yet the filter already has its candles.
           expect(latest.entryCandleBlockers?.BUY).toBeNull();
@@ -10124,7 +10125,11 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         });
       const snapshot = (basisOffsetBps: number, extremeUsd = 0) => ({
         ...fixture,
-        recentMidpoints: midpoints(extremeUsd),
+        marketStructure: createDecibelMarketStructureV1(
+          'BBO_FALLBACK',
+          midpoints(extremeUsd),
+          fixture.input.now,
+        ),
         input: { ...fixture.input, actualFillLedger: ledger },
         authenticatedPositions: [
           {
@@ -10168,7 +10173,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       );
       // No candle history: no addition.
       expect(
-        decide({ ...snapshot(40), recentMidpoints: undefined } as unknown as ReturnType<
+        decide({ ...snapshot(40), marketStructure: undefined } as unknown as ReturnType<
           typeof snapshot
         >).actionPlan[side].reason,
       ).toBe('DCA_CANDLE_EVIDENCE_REQUIRED');
@@ -10827,13 +10832,17 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         return {
           ...moved,
           priceRangeBps: 6,
-          recentMidpoints: Array.from({ length: 15 }, (_, i) => {
-            const minutesAgo = 14 - i;
-            return {
-              at: moved.input.now - minutesAgo * minute,
-              midpoint: minutesAgo <= outsideMinutes ? mirror(75850) : mirror(75720),
-            };
-          }),
+          marketStructure: createDecibelMarketStructureV1(
+            'BBO_FALLBACK',
+            Array.from({ length: 15 }, (_, i) => {
+              const minutesAgo = 14 - i;
+              return {
+                at: moved.input.now - minutesAgo * minute,
+                midpoint: minutesAgo <= outsideMinutes ? mirror(75850) : mirror(75720),
+              };
+            }),
+            moved.input.now,
+          ),
         };
       };
       // Outside for 4 minutes: only one candle has closed.
@@ -10868,10 +10877,17 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       expect(rescue.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
       expect(direction * (rescue.targetPrice! - breakEven)).toBeGreaterThan(0);
       // Back inside the band: no step.
-      const inside = { ...far(9), recentMidpoints: [] };
+      const inside = {
+        ...far(9),
+        marketStructure: createDecibelMarketStructureV1('BBO_FALLBACK', [], now),
+      };
       expect(
         planDecibelPatientTPV1(
-          { ...movePatientMarket(base, mirror(75760)), priceRangeBps: 6, recentMidpoints: [] },
+          {
+            ...movePatientMarket(base, mirror(75760)),
+            priceRangeBps: 6,
+            marketStructure: createDecibelMarketStructureV1('BBO_FALLBACK', [], now),
+          },
           side,
         ).reason,
       ).toBe('TP_ADVERSE_INSIDE_SAFE_BAND');
@@ -10882,10 +10898,14 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         const moved = far(14, snapshot);
         return {
           ...moved,
-          recentMidpoints: moved.recentMidpoints.map((sample) =>
-            sample.at === moved.input.now - 2 * minute
-              ? { ...sample, midpoint: mirror(75720) }
-              : sample,
+          marketStructure: createDecibelMarketStructureV1(
+            'BBO_FALLBACK',
+            moved.marketStructure.samples.map((sample) =>
+              sample.at === moved.input.now - 2 * minute
+                ? { ...sample, midpoint: mirror(75720) }
+                : sample,
+            ),
+            moved.input.now,
           ),
         };
       };

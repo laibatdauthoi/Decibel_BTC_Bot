@@ -1,6 +1,5 @@
 import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
-import { getDecibelClosedCandlesV1 } from './decibel_volatility_targets_v1.js';
 
 /**
  * DCA additions (re-added 2026-11-13 at the user's request).
@@ -158,9 +157,7 @@ export function assessDecibelSnapshotDCAV1(
   if (!base.allowed || base.side === null) return base;
   const settled = isDecibelDCAMomentumSettledV1(
     base.side,
-    snapshot.recentMidpoints === undefined
-      ? null
-      : getDecibelClosedCandlesV1(snapshot.recentMidpoints, snapshot.input.now, 2),
+    snapshot.marketStructure?.closedCandles ?? null,
   );
   if (settled === true) return base;
   return Object.freeze({

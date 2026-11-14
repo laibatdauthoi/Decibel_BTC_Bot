@@ -1,11 +1,10 @@
 import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { assessDecibelSnapshotDCAV1 } from './decibel_dca_v1.js';
+import { buildDecibelMarketStructureV1 } from './decibel_market_structure_v1.js';
 import {
   DECIBEL_EXCHANGE_CANDLE_LOOKBACK_MS_V1,
   DECIBEL_EXCHANGE_CANDLE_REFRESH_MS_V1,
-  isDecibelExchangeCandleSetFreshV1,
-  mergeDecibelExchangeCandleSamplesV1,
   type decibel_exchange_candle_v1,
 } from './decibel_exchange_candles_v1.js';
 import {
@@ -228,10 +227,8 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
   entryCandleBlockers?: Readonly<{ BUY: string | null; SELL: string | null }> | null;
   /** Set while the gas wallet is below the entry reserve (decibel_gas_reserve_v1). */
   executionGasBlocker?: string | null;
-  /** Where the candle rules read prices from this cycle. */
-  candleSource?: 'EXCHANGE' | 'BBO_FALLBACK';
-  /** Recent midpoints (volatility lookback) for the adverse-TP candle rule. */
-  recentMidpoints?: readonly Readonly<{ at: number; midpoint: number }>[];
+  /** Candle rules' market structure (decibel_market_structure_v1); set while they are on. */
+  marketStructure?: import('./decibel_market_structure_v1.js').decibel_market_structure_v1;
   venueReadWindow?: Readonly<{
     account: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
     history?: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
@@ -1982,18 +1979,6 @@ export class decibel_production_live_orchestrator_v1 {
     }
   }
 
-  /** Candle-rule samples: venue candles when fresh, else the BBO midpoint history. */
-  private getCandleSamples(now: number): Readonly<{
-    source: 'EXCHANGE' | 'BBO_FALLBACK';
-    samples: readonly Readonly<{ at: number; midpoint: number }>[];
-  }> {
-    return isDecibelExchangeCandleSetFreshV1(this.ExchangeCandles, now)
-      ? {
-          source: 'EXCHANGE',
-          samples: mergeDecibelExchangeCandleSamplesV1(this.ExchangeCandles, this.MidpointHistory),
-        }
-      : { source: 'BBO_FALLBACK', samples: this.MidpointHistory };
-  }
   private GasBalanceCheckedAt = Number.NEGATIVE_INFINITY;
 
   /** Re-read the gas wallet at most once per refresh interval; failures keep the last value. */
@@ -4818,29 +4803,25 @@ export class decibel_production_live_orchestrator_v1 {
     snapshot: decibel_production_live_snapshot_v1,
   ): decibel_production_live_snapshot_v1 {
     const now = snapshot.input.now;
-    const candles = this.getCandleSamples(now);
+    const structure = buildDecibelMarketStructureV1({
+      exchangeCandles: this.ExchangeCandles,
+      bboSamples: this.MidpointHistory,
+      now,
+    });
     return {
       ...snapshot,
-      candleSource: candles.source,
-      priceRangeBps: calculateDecibelMidpointRangeBpsV1(candles.samples, now),
+      priceRangeBps: calculateDecibelMidpointRangeBpsV1(structure.samples, now),
       executionGasBlocker: getDecibelGasEntryBlockerV1(this.GasBalanceApt),
       entryCandleBlockers:
         this.Config.entryCandleFilterEnabled &&
         this.Config.tpCandleRuleEnabled &&
         snapshot.input.actualInventoryBase === 0
           ? Object.freeze({
-              BUY: getDecibelEntryCandleBlockerV1('BUY', candles.samples, now),
-              SELL: getDecibelEntryCandleBlockerV1('SELL', candles.samples, now),
+              BUY: getDecibelEntryCandleBlockerV1('BUY', structure.closedCandles),
+              SELL: getDecibelEntryCandleBlockerV1('SELL', structure.closedCandles),
             })
           : null,
-      ...(this.Config.tpCandleRuleEnabled
-        ? {
-            recentMidpoints: candles.samples.map((sample) => ({
-              at: sample.at,
-              midpoint: sample.midpoint,
-            })),
-          }
-        : {}),
+      ...(this.Config.tpCandleRuleEnabled ? { marketStructure: structure } : {}),
     };
   }
 

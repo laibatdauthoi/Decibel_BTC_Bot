@@ -8,6 +8,7 @@ import {
   DECIBEL_ENTRY_REPLACEMENT_BAND_MIN_BPS_V1,
   calculateDecibelMidpointRangeBpsV1,
   countDecibelAdverseCandleClosesV1,
+  getDecibelClosedCandlesV1,
   getDecibelEntryCandleBlockerV1,
   getDecibelEntryReplacementBandBpsV1,
   getDecibelTPSafeBandBpsV1,
@@ -131,15 +132,21 @@ describe('volatility targets', () => {
         };
       });
     // New low: a long may open, a short may not (no new high).
-    expect(getDecibelEntryCandleBlockerV1('BUY', samples(95, 94), now)).toBeNull();
-    expect(getDecibelEntryCandleBlockerV1('SELL', samples(95, 94), now)).toBe(
-      'ENTRY_REQUIRES_NEW_HIGH',
-    );
+    expect(
+      getDecibelEntryCandleBlockerV1('BUY', getDecibelClosedCandlesV1(samples(95, 94), now, 2)),
+    ).toBeNull();
+    expect(
+      getDecibelEntryCandleBlockerV1('SELL', getDecibelClosedCandlesV1(samples(95, 94), now, 2)),
+    ).toBe('ENTRY_REQUIRES_NEW_HIGH');
     // New high: the reverse.
-    expect(getDecibelEntryCandleBlockerV1('SELL', samples(105, 106), now)).toBeNull();
-    expect(getDecibelEntryCandleBlockerV1('BUY', samples(105, 106), now)).toBe(
-      'ENTRY_REQUIRES_NEW_LOW',
+    expect(
+      getDecibelEntryCandleBlockerV1('SELL', getDecibelClosedCandlesV1(samples(105, 106), now, 2)),
+    ).toBeNull();
+    expect(
+      getDecibelEntryCandleBlockerV1('BUY', getDecibelClosedCandlesV1(samples(105, 106), now, 2)),
+    ).toBe('ENTRY_REQUIRES_NEW_LOW');
+    expect(getDecibelEntryCandleBlockerV1('BUY', getDecibelClosedCandlesV1([], now, 2))).toBe(
+      'ENTRY_CANDLE_EVIDENCE_REQUIRED',
     );
-    expect(getDecibelEntryCandleBlockerV1('BUY', [], now)).toBe('ENTRY_CANDLE_EVIDENCE_REQUIRED');
   });
 });

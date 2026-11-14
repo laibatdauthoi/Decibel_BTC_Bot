@@ -304,7 +304,7 @@ export function planDecibelPatientTPV1(
   // counted from when it left the band, the opening fill or the previous step (whichever is
   // latest). The first step moves the TP to break-even; later steps rest it the rescue
   // offset from the maker. Max Loss stays the hard stop.
-  if (snapshot.recentMidpoints !== undefined) {
+  if (snapshot.marketStructure !== undefined) {
     const safeBandBps = getDecibelTPSafeBandBpsV1(snapshot.priceRangeBps);
     const outside = (price: number) =>
       direction * (price - entryBasis) * 10_000 >= entryBasis * safeBandBps;
@@ -325,7 +325,7 @@ export function planDecibelPatientTPV1(
       Number.isFinite(epoch?.openedAt) ? epoch!.openedAt : Number.NEGATIVE_INFINITY,
     );
     const closes = countDecibelAdverseCandleClosesV1(
-      snapshot.recentMidpoints,
+      snapshot.marketStructure.samples,
       input.now,
       outside,
       Number.isFinite(since) ? since : null,

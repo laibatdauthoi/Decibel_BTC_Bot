@@ -278,10 +278,8 @@ export function getDecibelClosedCandlesV1(
  */
 export function getDecibelEntryCandleBlockerV1(
   side: 'BUY' | 'SELL',
-  samples: readonly Readonly<{ at: number; midpoint: number }>[],
-  now: number,
+  candles: readonly Readonly<{ low: number; high: number }>[] | null,
 ): string | null {
-  const candles = getDecibelClosedCandlesV1(samples, now, 2);
   if (candles === null || candles.length < 2) return 'ENTRY_CANDLE_EVIDENCE_REQUIRED';
   const [previous, last] = [candles[0]!, candles[1]!];
   if (side === 'BUY') return last.low < previous.low ? null : 'ENTRY_REQUIRES_NEW_LOW';
