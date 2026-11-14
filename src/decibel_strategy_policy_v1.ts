@@ -48,11 +48,6 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     breakEvenToleranceBps: 1,
     /** The rescue TP rests this far from the maker price. */
     rescueOffset: Object.freeze({ factor: 0.5, minBps: 5, maxBps: 20 }),
-    /** Legacy time rule (snapshots without candles): trigger, cooldown and holds. */
-    legacyRescueTrigger: Object.freeze({ factor: 1.5, minBps: 15, maxBps: 50 }),
-    legacyRescueCooldownMs: 60_000,
-    legacyBreakEvenHoldMs: 15 * 60_000,
-    legacyAdverseDelayMs: 5 * 60_000,
   }),
   dca: Object.freeze({
     /** Each addition needs the price this far against the current average entry (bps). */

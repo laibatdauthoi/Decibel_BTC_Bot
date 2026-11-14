@@ -112,47 +112,16 @@ export function getDecibelEntryReplacementBandBpsV1(rangeBps: number | null | un
 }
 
 /**
- * Rescue TP: once the maker price is at least the trigger (bps) adverse to the entry basis,
- * an adverse-exit TP rests only the offset (bps) away from the maker price instead of a whole
- * recovery corridor away, trading some PnL for a reachable exit. The Max Loss budget check
- * still applies. Trigger clamp(1.5 x range, 15, 50); offset clamp(0.5 x range, 5, 20).
- * After a rescue step the TP waits at least the cooldown before following again.
- *
- * Live 2026-11-13 (first version: trigger 1.0 x range >= 10, offset 0.25 x range >= 2, no
- * cooldown): in a fast 35 bps drop the TP followed the maker 3 times in 30 s and sold at the
- * low for -33 bps. The wider trigger/offset and the cooldown leave room for a bounce.
+ * Rescue TP: after the break-even step, a later adverse step rests the TP only this offset
+ * (bps) from the maker price, trading some PnL for a reachable exit: clamp(0.5 x range, 5, 20).
+ * The Max Loss budget check still applies.
  */
-export const DECIBEL_TP_RESCUE_TRIGGER_FACTOR_V1 =
-  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueTrigger.factor;
-export const DECIBEL_TP_RESCUE_TRIGGER_MIN_BPS_V1 =
-  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueTrigger.minBps;
-export const DECIBEL_TP_RESCUE_TRIGGER_MAX_BPS_V1 =
-  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueTrigger.maxBps;
 export const DECIBEL_TP_RESCUE_OFFSET_FACTOR_V1 =
   DECIBEL_STRATEGY_POLICY_V1.adverse.rescueOffset.factor;
 export const DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1 =
   DECIBEL_STRATEGY_POLICY_V1.adverse.rescueOffset.minBps;
 export const DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1 =
   DECIBEL_STRATEGY_POLICY_V1.adverse.rescueOffset.maxBps;
-export const DECIBEL_TP_RESCUE_COOLDOWN_MS_V1 =
-  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyRescueCooldownMs;
-/** Until a position (from its opening fill) is this old, an adverse TP step never moves
- * past the break-even price; the rescue offset applies only afterwards. */
-export const DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 =
-  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyBreakEvenHoldMs;
-/** A position younger than this keeps its original TP: no adverse step at all. */
-export const DECIBEL_TP_ADVERSE_DELAY_MS_V1 =
-  DECIBEL_STRATEGY_POLICY_V1.adverse.legacyAdverseDelayMs;
-
-export function getDecibelTPRescueTriggerBpsV1(rangeBps: number | null | undefined): number {
-  if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
-    return DECIBEL_TP_RESCUE_TRIGGER_MIN_BPS_V1;
-  return clamp(
-    DECIBEL_TP_RESCUE_TRIGGER_FACTOR_V1 * rangeBps,
-    DECIBEL_TP_RESCUE_TRIGGER_MIN_BPS_V1,
-    DECIBEL_TP_RESCUE_TRIGGER_MAX_BPS_V1,
-  );
-}
 
 export function getDecibelTPRescueOffsetBpsV1(rangeBps: number | null | undefined): number {
   if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)

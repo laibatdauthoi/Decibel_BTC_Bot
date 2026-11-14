@@ -55,8 +55,8 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
 - Later steps: TP rests `clamp(0.5 x R, 5, 20)` bps from the maker price (rescue).
 - A TP already at break-even for 3 closes since the previous step may take the rescue step
   even if the price came back inside the band.
-- With `DECIBEL_TP_CANDLE_RULE_ENABLED=false`, the legacy time rule applies (5 minutes
-  untouched, break-even until 15 minutes, then rescue with a 60 s cooldown).
+- Without a market structure the TP holds (`TP_ADVERSE_CANDLE_EVIDENCE_REQUIRED`). The
+  earlier time rule and recovery corridor were removed on 2026-11-14.
 
 ## 4. DCA
 
@@ -97,8 +97,9 @@ a position unwinds it at market.
 
 ## 8. Flags (all default on)
 
+The adverse-TP candle rule is always on (its flag was removed with the legacy rule).
+
 | Flag                                  | Effect when off                            |
 | ------------------------------------- | ------------------------------------------ |
-| `DECIBEL_TP_CANDLE_RULE_ENABLED`      | Legacy TP time rule; no candle structure   |
 | `DECIBEL_ENTRY_CANDLE_FILTER_ENABLED` | Entries from flat skip the candle filter   |
 | `DECIBEL_CATASTROPHE_STOP_ENABLED`    | No venue catastrophe stop                  |

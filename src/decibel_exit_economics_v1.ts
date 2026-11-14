@@ -6,13 +6,9 @@ import {
   DECIBEL_TP_ADVERSE_CANDLE_MS_V1,
   DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1,
   DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1,
-  DECIBEL_TP_ADVERSE_DELAY_MS_V1,
   countDecibelAdverseCandleClosesV1,
   getDecibelTPSafeBandBpsV1,
-  DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
-  DECIBEL_TP_RESCUE_COOLDOWN_MS_V1,
   getDecibelTPRescueOffsetBpsV1,
-  getDecibelTPRescueTriggerBpsV1,
   getDecibelTPTargetNetBpsV1,
 } from './decibel_volatility_targets_v1.js';
 import { createHash } from 'node:crypto';
@@ -242,41 +238,7 @@ export function planDecibelPatientTPV1(
     Math.ceil(range / tick) + spreadTicks + Math.round(recoveryDistancePrice / tick),
   );
   const band = bandTicks * tick;
-  const adverseTicks = Math.floor((direction * (maker - entryBasis)) / tick + 1e-7);
-  const newAdverseTicks = Math.floor(
-    (direction * (maker - (progress?.anchorPrice ?? entryBasis))) / tick + 1e-7,
-  );
   const distanceTicks = Math.round((direction * (maker - resting.price)) / tick);
-  // Rescue: far enough adverse (5-minute volatility scaled), rest the TP only a small
-  // offset from the maker price so it can fill on a modest bounce. Hysteresis: it moves
-  // again only after the maker drifts at least one more offset away.
-  const rescueTicks =
-    snapshot.priceRangeBps === undefined
-      ? null
-      : Math.max(
-          1,
-          Math.ceil(
-            (maker * getDecibelTPRescueOffsetBpsV1(snapshot.priceRangeBps)) / 10_000 / tick,
-          ),
-        );
-  const rescue =
-    rescueTicks !== null &&
-    rescueTicks < bandTicks &&
-    adverseTicks * tick * 10_000 >=
-      entryBasis * getDecibelTPRescueTriggerBpsV1(snapshot.priceRangeBps);
-  // Move only the NEW adverse excess outside the normal excursion and retain a whole
-  // normal excursion between TP and maker for a recovery fill.
-  const corridorStepTicks = Math.min(newAdverseTicks - bandTicks, distanceTicks - bandTicks);
-  // A change smaller than both the observed normal excursion and the original
-  // recovery corridor cannot justify surrendering the existing queue priority.
-  const corridorMinimumTicks = Math.ceil(
-    (recoveryDistancePrice > 0 ? Math.min(range, recoveryDistancePrice) : range) / tick,
-  );
-  const corridorReady =
-    range > 0 &&
-    adverseTicks > bandTicks &&
-    corridorStepTicks > Math.max(1, spreadTicks) &&
-    corridorStepTicks >= corridorMinimumTicks;
   const authorize = (stepTicks: number, minimumStepTicks: number) => {
     const targetPrice = Number(
       ((Math.round(resting.price / tick) + direction * stepTicks) * tick).toPrecision(15),
@@ -299,87 +261,49 @@ export function planDecibelPatientTPV1(
       minimumStepTicks,
     );
   };
-  // Candle rule (production snapshots carry the recent midpoints): an adverse step needs the
+  // Candle rule (the only adverse rule since 2026-11-14): an adverse step needs the
   // price outside the safe band and two closed 5-minute candles without a return inside it,
   // counted from when it left the band, the opening fill or the previous step (whichever is
   // latest). The first step moves the TP to break-even; later steps rest it the rescue
   // offset from the maker. Max Loss stays the hard stop.
-  if (snapshot.marketStructure !== undefined) {
-    const safeBandBps = getDecibelTPSafeBandBpsV1(snapshot.priceRangeBps);
-    const outside = (price: number) =>
-      direction * (price - entryBasis) * 10_000 >= entryBasis * safeBandBps;
-    const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
-    if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);
-    const roomTicks = direction * (Math.round(breakEven / tick) - Math.round(resting.price / tick));
-    // Fallback: a TP already at break-even for six closes since the previous step may take
-    // the rescue step even though the price came back inside the band in between.
-    const candle = DECIBEL_TP_ADVERSE_CANDLE_MS_V1;
-    const stale =
-      roomTicks < 1 &&
-      progress !== null &&
-      Math.floor(input.now / candle) - Math.floor(progress.observedAt / candle) >=
-        DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1;
-    if (!outside(maker) && !stale) return result(null, 'TP_ADVERSE_INSIDE_SAFE_BAND', band);
-    const since = Math.max(
-      progress?.observedAt ?? Number.NEGATIVE_INFINITY,
-      Number.isFinite(epoch?.openedAt) ? epoch!.openedAt : Number.NEGATIVE_INFINITY,
-    );
-    const closes = countDecibelAdverseCandleClosesV1(
-      snapshot.marketStructure.samples,
-      input.now,
-      outside,
-      Number.isFinite(since) ? since : null,
-    );
-    if (closes < DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 && !stale)
-      return result(null, 'TP_ADVERSE_AWAITING_CANDLE_CLOSES', band);
-    if (roomTicks >= 1) return authorize(roomTicks, roomTicks);
-    const offsetTicks = Math.max(
-      1,
-      Math.ceil((maker * getDecibelTPRescueOffsetBpsV1(snapshot.priceRangeBps)) / 10_000 / tick),
-    );
-    const stepTicks = distanceTicks - offsetTicks;
-    if (stepTicks <= Math.max(1, spreadTicks) || stepTicks < offsetTicks)
-      return result(null, 'TP_ADVERSE_NEW_SIGNIFICANT_PROGRESS_REQUIRED', band);
-    return authorize(stepTicks, Math.max(offsetTicks, Math.max(1, spreadTicks) + 1));
-  }
-  // Legacy time rule (snapshots without midpoint history).
-  // Break-even hold: many adverse excursions come back to the entry within minutes.
-  // Until the position (from its opening fill) is older than the hold, an adverse step
-  // moves the TP at most to the net >= 0 price, never past it. Max Loss stays the hard stop.
-  // An unknown opening time counts as an old position: the age gates only ever delay a
-  // step, so a missing timestamp must never freeze the TP.
-  const openedAt = epoch?.openedAt ?? Number.NaN;
-  const positionAgeMs = Number.isFinite(openedAt) ? input.now - openedAt : Infinity;
-  // A young position keeps its original TP; noise in the first minutes is not a trend.
-  if (!(positionAgeMs >= DECIBEL_TP_ADVERSE_DELAY_MS_V1))
-    return result(null, 'TP_ADVERSE_POSITION_TOO_YOUNG', band);
-  if (!(positionAgeMs >= DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1)) {
-    const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
-    if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);
-    const roomTicks = direction * (Math.round(breakEven / tick) - Math.round(resting.price / tick));
-    const stepTicks = rescue ? roomTicks : Math.min(corridorStepTicks, roomTicks);
-    if (!(rescue || corridorReady) || stepTicks < 1)
-      return result(null, 'TP_ADVERSE_BREAK_EVEN_HOLD', band);
-    return authorize(stepTicks, stepTicks);
-  }
-  // After the hold: a rescue step waits out the cooldown after the previous adverse step,
-  // so a fast move is not chased tick by tick into its low.
-  if (
-    rescue &&
+  const structure = snapshot.marketStructure;
+  if (structure === undefined) return result(null, 'TP_ADVERSE_CANDLE_EVIDENCE_REQUIRED', band);
+  const safeBandBps = getDecibelTPSafeBandBpsV1(snapshot.priceRangeBps);
+  const outside = (price: number) =>
+    direction * (price - entryBasis) * 10_000 >= entryBasis * safeBandBps;
+  const breakEven = getDecibelBreakEvenTPPriceV1(snapshot, side);
+  if (breakEven === null) return result(null, 'TP_ADVERSE_BREAK_EVEN_EVIDENCE_REQUIRED', band);
+  const roomTicks = direction * (Math.round(breakEven / tick) - Math.round(resting.price / tick));
+  // Fallback: a TP already at break-even for six closes since the previous step may take
+  // the rescue step even though the price came back inside the band in between.
+  const candle = DECIBEL_TP_ADVERSE_CANDLE_MS_V1;
+  const stale =
+    roomTicks < 1 &&
     progress !== null &&
-    input.now - progress.observedAt < DECIBEL_TP_RESCUE_COOLDOWN_MS_V1
-  )
-    return result(null, 'TP_ADVERSE_RESCUE_COOLDOWN', band);
-  const stepTicks = rescue ? distanceTicks - rescueTicks : corridorStepTicks;
-  const minimumStepTicks = rescue ? rescueTicks : corridorMinimumTicks;
-  if (
-    range <= 0 ||
-    (!rescue && !corridorReady) ||
-    stepTicks <= Math.max(1, spreadTicks) ||
-    stepTicks < minimumStepTicks
-  )
+    Math.floor(input.now / candle) - Math.floor(progress.observedAt / candle) >=
+      DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1;
+  if (!outside(maker) && !stale) return result(null, 'TP_ADVERSE_INSIDE_SAFE_BAND', band);
+  const since = Math.max(
+    progress?.observedAt ?? Number.NEGATIVE_INFINITY,
+    Number.isFinite(epoch?.openedAt) ? epoch!.openedAt : Number.NEGATIVE_INFINITY,
+  );
+  const closes = countDecibelAdverseCandleClosesV1(
+    structure.samples,
+    input.now,
+    outside,
+    Number.isFinite(since) ? since : null,
+  );
+  if (closes < DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 && !stale)
+    return result(null, 'TP_ADVERSE_AWAITING_CANDLE_CLOSES', band);
+  if (roomTicks >= 1) return authorize(roomTicks, roomTicks);
+  const offsetTicks = Math.max(
+    1,
+    Math.ceil((maker * getDecibelTPRescueOffsetBpsV1(snapshot.priceRangeBps)) / 10_000 / tick),
+  );
+  const stepTicks = distanceTicks - offsetTicks;
+  if (stepTicks <= Math.max(1, spreadTicks) || stepTicks < offsetTicks)
     return result(null, 'TP_ADVERSE_NEW_SIGNIFICANT_PROGRESS_REQUIRED', band);
-  return authorize(stepTicks, Math.max(minimumStepTicks, Math.max(1, spreadTicks) + 1));
+  return authorize(stepTicks, Math.max(offsetTicks, Math.max(1, spreadTicks) + 1));
 }
 
 /** A market-sized adverse displacement starts maker repricing independently of

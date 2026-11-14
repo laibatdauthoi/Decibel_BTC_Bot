@@ -64,9 +64,6 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { calculateDecibelEntrySizeV1 } from '../src/decibel_entry_size_v1.js';
 import {
-  DECIBEL_TP_ADVERSE_DELAY_MS_V1,
-  DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1,
-  DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1,
   getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryPriceLimitV1,
   getDecibelTPTargetNetBpsV1,
@@ -417,9 +414,8 @@ function make(input?: {
     DECIBEL_EXECUTION_RELEASE_STAGE: 'CANARY',
     DECIBEL_EXECUTOR_ENABLED: 'true',
     DECIBEL_EXECUTOR_DRY_RUN: 'true',
-    DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: 'false',
-    // Lifecycle tests use the legacy time rule; the candle rule has its own tests.
-    DECIBEL_TP_CANDLE_RULE_ENABLED: 'false',
+    // Lifecycle tests run without the entry candle filter; it has its own tests.
+    DECIBEL_ENTRY_CANDLE_FILTER_ENABLED: 'false',
     ...input?.environment,
   });
   const orchestrator = new decibel_production_live_orchestrator_v1(
@@ -6209,7 +6205,6 @@ describe('Decibel production live orchestrator V1', () => {
       DECIBEL_EXECUTOR_ENABLED: 'true',
       DECIBEL_EXECUTOR_DRY_RUN: 'false',
       DECIBEL_PRODUCTION_MIN_ACTIVE_ORDER_LIFETIME_MS: '5000',
-      DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: 'false',
       // The soak checks two-sided cycling; the entry candle filter has its own tests.
       DECIBEL_ENTRY_CANDLE_FILTER_ENABLED: 'false',
     });
@@ -7018,7 +7013,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const test = make({
         snapshots: [snapshot, snapshot],
         exchangeCandles: () => candles(end),
-        environment: { DECIBEL_TP_CANDLE_RULE_ENABLED: 'true' },
+        environment: { DECIBEL_ENTRY_CANDLE_FILTER_ENABLED: 'true' },
       });
       try {
         await test.orchestrator.evaluateOnce();
@@ -10572,18 +10567,20 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     };
   };
 
-  // Positions default to past the break-even hold, so these fixtures exercise the
-  // post-hold adverse mechanics; the hold itself has its own tests.
+  // A position opened about 16 minutes ago, 10.7 bps adverse (basis 75700), with candle
+  // evidence that satisfies the adverse candle rule. `basis` overrides the entry basis.
+  const ADAPTIVE_TP_OPENED_AGO_MS = 16 * 60_000;
   const adaptiveTPFixture = (
     sign = -1,
     now = 60000,
-    openedAgoMs = DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 + 40000,
+    openedAgoMs = ADAPTIVE_TP_OPENED_AGO_MS,
+    basisOverride?: number,
   ): decibel_production_live_snapshot_v1 => {
     const base = pid18876Snapshot(sign, false, 0.00047);
     const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
     const bid = sign < 0 ? 75781 : mirror(75781.1);
     const ask = sign < 0 ? 75781.1 : mirror(75781);
-    const basis = 75713.4;
+    const basis = basisOverride ?? (sign < 0 ? 75700 : mirror(75700));
     // Explicit synthetic opening fill and 35s continuous regime. The incident
     // journal frame did not contain this history; do not label it observed.
     const entry = {
@@ -10615,8 +10612,19 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       quantity: 0.00047,
       price: mirror(75681.4),
     };
+    // Candle rule evidence: the price has stayed at the maker, outside the 10 bps safe band
+    // (basis 75700), for the last 15 minutes.
+    const marketStructure = createDecibelMarketStructureV1(
+      'BBO_FALLBACK',
+      Array.from({ length: 16 }, (_, i) => ({
+        at: now - (15 - i) * 60_000,
+        midpoint: (bid + ask) / 2,
+      })),
+      now,
+    );
     return {
       ...base,
+      marketStructure,
       sourceStateHash: `adaptive-${sign}-${now}`,
       reductionCapacity: { ...base.reductionCapacity, observedAt: now },
       input: {
@@ -10667,6 +10675,21 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     };
   };
 
+  // Venue candles that keep the price at the snapshot midpoint for the last 15 minutes, so
+  // the orchestrator's own market structure satisfies the adverse candle rule.
+  const adverseCandles = (snapshot: decibel_production_live_snapshot_v1) => () => {
+    const midpoint = (snapshot.input.book.bestBid + snapshot.input.book.bestAsk) / 2;
+    const minute = 60_000;
+    const last = Math.floor(snapshot.input.now / minute) * minute - minute;
+    return Array.from({ length: 15 }, (_, i) => ({
+      start: last - (14 - i) * minute,
+      open: midpoint,
+      high: midpoint,
+      low: midpoint,
+      close: midpoint,
+    }));
+  };
+
   it.each([1, -1])(
     'PID36848 patient TP authorizes a partial recovery step, not best maker (%s)',
     async (sign) => {
@@ -10686,6 +10709,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const test = make({
         readSnapshot: () => snapshot,
         reconciliationState: 'ORDER_OPEN',
+        exchangeCandles: adverseCandles(snapshot),
         environment: { DECIBEL_EXECUTOR_DRY_RUN: 'false' },
       });
       ownIncidentTP(test, snapshot);
@@ -10740,74 +10764,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       },
     } satisfies decibel_production_live_snapshot_v1;
   };
-
-  it.each([1, -1])(
-    'Rescue TP rests an offset from maker once far adverse, with hysteresis and cooldown (%s)',
-    (sign) => {
-      const side = sign < 0 ? 'BUY' : 'SELL';
-      const direction = sign < 0 ? 1 : -1;
-      const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
-      const fixture = adaptiveTPFixture(sign);
-      // A wider normal excursion (40 USD) so the recovery corridor exceeds the rescue offset.
-      const base = {
-        ...fixture,
-        practicalCapacityInputs: {
-          ...fixture.practicalCapacityInputs!,
-          tpRegimePrices: fixture.practicalCapacityInputs!.tpRegimePrices!.map((p, i) => ({
-            ...p,
-            midpoint: mirror(75740 + (i % 2) * 40),
-          })),
-        },
-      };
-      const at = (snapshot: decibel_production_live_snapshot_v1, maker: number) => ({
-        ...movePatientMarket(snapshot, mirror(maker)),
-        priceRangeBps: 6,
-      });
-      const offset = (maker: number) => Math.ceil((mirror(maker) * 5) / 10_000 / 0.1) * 0.1;
-      // 11.4 bps adverse: below the 15 bps rescue trigger, the corridor logic is unchanged.
-      expect(planDecibelPatientTPV1(at(base, 75800), side)).toEqual(
-        planDecibelPatientTPV1({ ...at(base, 75800), priceRangeBps: undefined }, side),
-      );
-      // 18 bps adverse (maker 75850 vs basis 75713.4) with a 6 bps 5-minute range:
-      // offset clamp(0.5 x 6, 5, 20) = 5 bps from maker.
-      const far = at(base, 75850);
-      const rescue = planDecibelPatientTPV1(far, side);
-      expect(rescue.targetPrice).toBeCloseTo(mirror(75850) - direction * offset(75850), 8);
-      expect(offset(75850)).toBeLessThan(rescue.movementBandUsd!);
-      const policy = assessDecibelAdaptiveTPV1(far, side, rescue.targetPrice!);
-      expect(policy).toMatchObject({ mode: 'ADVERSE_EXIT_REPRICE', allowed: true });
-      expect(policy.projectedSessionPnlUsd).toBeLessThan(0);
-      expect(policy.projectedSessionPnlUsd).toBeGreaterThan(-2);
-      const rested = {
-        ...far,
-        input: {
-          ...far.input,
-          openOrders: [{ ...far.input.openOrders[0]!, price: rescue.targetPrice! }],
-        },
-      };
-      // Less than one more offset adverse, or a recovery: keep the queue position.
-      expect(planDecibelPatientTPV1(at(rested, 75870), side).targetPrice).toBeNull();
-      expect(planDecibelPatientTPV1(at(rested, 75830), side).targetPrice).toBeNull();
-      // Two more offsets adverse right after the previous step: wait out the cooldown.
-      const committed = { ...rested, tpAdverseProgress: rescue.authorization };
-      expect(planDecibelPatientTPV1(at(committed, 75940), side)).toMatchObject({
-        targetPrice: null,
-        reason: 'TP_ADVERSE_RESCUE_COOLDOWN',
-      });
-      // After the cooldown it follows again, still one offset from maker.
-      const cooled = {
-        ...rested,
-        tpAdverseProgress: {
-          ...rescue.authorization!,
-          observedAt: rescue.authorization!.observedAt - 60_000,
-        },
-      };
-      expect(planDecibelPatientTPV1(at(cooled, 75940), side).targetPrice).toBeCloseTo(
-        mirror(75940) - direction * offset(75940),
-        8,
-      );
-    },
-  );
 
   it.each([1, -1])(
     'Candle rule moves the TP only after two closed 5-minute candles outside the band (%s)',
@@ -10989,179 +10945,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   );
 
   it.each([1, -1])(
-    'Break-even hold keeps an adverse TP at net >= 0 until the position is old enough (%s)',
-    (sign) => {
-      const side = sign < 0 ? 'BUY' : 'SELL';
-      const direction = sign < 0 ? 1 : -1;
-      const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
-      const tick = 0.1;
-      const withRegime = (fixture: decibel_production_live_snapshot_v1) => ({
-        ...fixture,
-        input: {
-          ...fixture.input,
-          // A TP well inside profit, so break-even leaves room to step toward.
-          openOrders: [{ ...fixture.input.openOrders[0]!, price: mirror(75650) }],
-        },
-        practicalCapacityInputs: {
-          ...fixture.practicalCapacityInputs!,
-          tpRegimePrices: fixture.practicalCapacityInputs!.tpRegimePrices!.map((p, i) => ({
-            ...p,
-            midpoint: mirror(75740 + (i % 2) * 40),
-          })),
-        },
-      });
-      const at = (snapshot: decibel_production_live_snapshot_v1, maker: number) => ({
-        ...movePatientMarket(snapshot, mirror(maker)),
-        priceRangeBps: 6,
-      });
-      // Opened 40 seconds ago: too young for any adverse step.
-      const young = at(withRegime(adaptiveTPFixture(sign, 60000, 40000)), 75850);
-      expect(planDecibelPatientTPV1(young, side)).toMatchObject({
-        targetPrice: null,
-        reason: 'TP_ADVERSE_POSITION_TOO_YOUNG',
-      });
-      // Production re-stamps receivedAt on every read; the age comes from the venue time.
-      const restamp = (snapshot: decibel_production_live_snapshot_v1) => {
-        const ledger = snapshot.input.actualFillLedger;
-        return {
-          ...snapshot,
-          input: {
-            ...snapshot.input,
-            actualFillLedger: {
-              ...ledger,
-              fills: ledger.fills.map((fill) => ({
-                ...fill,
-                receivedAt: new Date(snapshot.input.now),
-              })),
-            },
-          },
-        };
-      };
-      const restamped = at(restamp(withRegime(adaptiveTPFixture(sign))), 75850);
-      expect(planDecibelPatientTPV1(restamped, side).reason).toBe(
-        'REPRICE:TP_ADVERSE_EXIT_REPRICE',
-      );
-      // An unknown venue time never freezes the TP: it counts as an old position.
-      const unknownTime = at(withRegime(adaptiveTPFixture(sign, 60000, 40000)), 75850);
-      const unknownLedger = unknownTime.input.actualFillLedger;
-      expect(
-        planDecibelPatientTPV1(
-          {
-            ...unknownTime,
-            input: {
-              ...unknownTime.input,
-              actualFillLedger: {
-                ...unknownLedger,
-                fills: unknownLedger.fills.map((fill) => ({ ...fill, venueTimestamp: null })),
-              },
-            },
-          },
-          side,
-        ).reason,
-      ).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
-      // Past the delay, inside the hold.
-      const fresh = withRegime(
-        adaptiveTPFixture(sign, 60000, DECIBEL_TP_ADVERSE_DELAY_MS_V1 + 40000),
-      );
-      const far = at(fresh, 75850);
-      const breakEven = getDecibelBreakEvenTPPriceV1(far, side)!;
-      const net = (snapshot: decibel_production_live_snapshot_v1, price: number) =>
-        assessDecibelExitEconomicsV1(snapshot, side, 0.00047, price).netPnlUsd!;
-      // "Break-even" accepts up to 1 bps of the notional as a net loss.
-      const tolerance = (0.00047 * 75780 * DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1) / 10_000;
-      expect(net(far, breakEven)).toBeGreaterThanOrEqual(-tolerance * 1.01);
-      expect(net(far, breakEven + direction * tick)).toBeLessThan(-tolerance * 0.99);
-      // 18 bps adverse would trigger the rescue offset; the hold stops it at break-even.
-      const held = planDecibelPatientTPV1(far, side);
-      expect(held).toMatchObject({
-        targetPrice: breakEven,
-        reason: 'REPRICE:TP_ADVERSE_EXIT_REPRICE',
-      });
-      expect(assessDecibelAdaptiveTPV1(far, side, breakEven)).toMatchObject({ allowed: true });
-      const rested = {
-        ...far,
-        tpAdverseProgress: held.authorization,
-        input: { ...far.input, openOrders: [{ ...far.input.openOrders[0]!, price: breakEven }] },
-      };
-      // Further adverse while the hold lasts: the TP stays at break-even.
-      expect(planDecibelPatientTPV1(at(rested, 76000), side)).toMatchObject({
-        targetPrice: null,
-        reason: 'TP_ADVERSE_BREAK_EVEN_HOLD',
-      });
-      // Past the hold, the rescue offset applies and may go below break-even.
-      const aged = withRegime(adaptiveTPFixture(sign, 60000));
-      const agedRested = {
-        ...at(aged, 75850),
-        input: {
-          ...at(aged, 75850).input,
-          openOrders: [{ ...aged.input.openOrders[0]!, price: breakEven }],
-        },
-      };
-      const rescue = planDecibelPatientTPV1(at(agedRested, 76000), side);
-      expect(rescue.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
-      expect(direction * (rescue.targetPrice! - breakEven)).toBeGreaterThan(0);
-    },
-  );
-
-  it.each([1, -1])(
-    'Patient TP separates first/new adverse progress and waits through recovery (%s)',
-    (sign) => {
-      let snapshot = adaptiveTPFixture(sign);
-      const side = sign < 0 ? 'BUY' : 'SELL';
-      const direction = sign < 0 ? 1 : -1;
-      const maker = sign < 0 ? snapshot.input.book.bestBid : snapshot.input.book.bestAsk;
-      const first = planDecibelPatientTPV1(snapshot, side);
-      expect(first.authorization).not.toBeNull();
-      expect(first.targetPrice).not.toBe(maker);
-      expect(assessDecibelAdaptiveTPV1(snapshot, side, first.targetPrice!).allowed).toBe(true);
-      snapshot = {
-        ...snapshot,
-        tpAdverseProgress: first.authorization,
-        input: {
-          ...snapshot.input,
-          openOrders: [{ ...snapshot.input.openOrders[0]!, price: first.targetPrice! }],
-        },
-      };
-      for (const noise of [0.1, -0.1, 1, -1]) {
-        const row = {
-          ...snapshot,
-          input: {
-            ...snapshot.input,
-            book: {
-              ...snapshot.input.book,
-              bestBid: snapshot.input.book.bestBid + noise,
-              bestAsk: snapshot.input.book.bestAsk + noise,
-            },
-          },
-        };
-        expect(constructDecibelAdaptiveTPPriceV1(row, side, 0.00047, maker).price).toBe(
-          first.targetPrice,
-        );
-        expect(planDecibelPatientTPV1(row, side).adjustmentReady).toBe(false);
-      }
-      const continued = movePatientMarket(snapshot, maker + direction * 150);
-      const second = planDecibelPatientTPV1(continued, side);
-      expect(second.adjustmentReady).toBe(true);
-      expect(direction * (second.targetPrice! - first.targetPrice!)).toBeGreaterThan(0);
-      expect(direction * (maker + direction * 150 - second.targetPrice!)).toBeGreaterThan(
-        second.movementBandUsd,
-      );
-      expect(
-        assessDecibelAdaptiveTPV1(continued, side, second.targetPrice!).projectedSessionPnlUsd,
-      ).toBeGreaterThan(-2);
-      const recovered = movePatientMarket(snapshot, first.targetPrice! - direction * 0.1);
-      expect(constructDecibelAdaptiveTPPriceV1(recovered, side, 0.00047, maker).price).toBe(
-        first.targetPrice,
-      );
-      expect(
-        side === 'BUY'
-          ? recovered.input.book.bestAsk <= first.targetPrice! + 1e-8
-          : recovered.input.book.bestBid >= first.targetPrice! - 1e-8,
-      ).toBe(true);
-    },
-  );
-
-  it.each([1, -1])(
     'Patient TP keeps mild adverse movement and one-tick candidate noise (%s)',
     (sign) => {
       const base = adaptiveTPFixture(sign);
@@ -11244,7 +11027,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const current = mild.input.openOrders[0]!;
       const action = { action: 'NO_OP' as const, side, current, desired: null, reason: 'HOLD' };
       const review = evaluateDecibelTPPriceSuitabilityV1(action, mild, null, 0, 0)!;
-      expect(review.TP_REPRICE_REASON).toBe('KEEP:TP_ADVERSE_NEW_SIGNIFICANT_PROGRESS_REQUIRED');
+      expect(review.TP_REPRICE_REASON).toBe('KEEP:TP_ADVERSE_INSIDE_SAFE_BAND');
       expect(review.TP_PRICE_SUITABILITY).toBe('KEEP');
       expect(review.TP_ADVERSE_MOVEMENT_BAND_USD).toBeGreaterThan(0);
       const missing = {
@@ -11273,33 +11056,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         .price,
     ).toBe(base.input.openOrders[0]!.price);
   });
-
-  it.each([1, -1])(
-    'Patient TP clips a meaningful partial step to the remaining budget (%s)',
-    (sign) => {
-      const base = adaptiveTPFixture(sign);
-      const snapshot = {
-        ...base,
-        sessionConfiguration: { ...base.sessionConfiguration!, maxLossUsd: 0.01, pnlUsd: -0.001 },
-      };
-      const side = sign < 0 ? 'BUY' : 'SELL';
-      const direction = sign < 0 ? 1 : -1;
-      const plan = planDecibelPatientTPV1(snapshot, side);
-      expect(assessDecibelAdaptiveTPV1(snapshot, side, plan.targetPrice!).allowed).toBe(false);
-      const target = constructDecibelAdaptiveTPPriceV1(
-        snapshot,
-        side,
-        0.00047,
-        plan.targetPrice!,
-      ).price!;
-      const review = assessDecibelAdaptiveTPV1(snapshot, side, target);
-      expect(review.allowed).toBe(true);
-      expect(review.authorization!.targetPrice).toBe(target);
-      expect(review.projectedSessionPnlUsd).toBeGreaterThanOrEqual(-0.01);
-      expect(direction * (target - base.input.openOrders[0]!.price)).toBeGreaterThanOrEqual(4);
-      expect(direction * (plan.targetPrice! - target)).toBeGreaterThan(0);
-    },
-  );
 
   it('Patient TP cannot strategically cancel a TP without verified strategy ownership', async () => {
     const base = adaptiveTPFixture();
@@ -11415,135 +11171,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     expect(planDecibelPatientTPV1(newer, 'BUY').authorization!.positionKey).not.toBe(key);
   });
 
-  it('Patient TP compares the old maker chase and patient steps on identical synthetic market frames', () => {
-    const rows = [];
-    for (const sign of [-1, 1]) {
-      const side = sign < 0 ? 'BUY' : 'SELL';
-      const direction = sign < 0 ? 1 : -1;
-      let tape = adaptiveTPFixture(sign);
-      const firstMaker = side === 'BUY' ? tape.input.book.bestBid : tape.input.book.bestAsk;
-      const results = (['before', 'after'] as const).map((policy) => ({
-        policy,
-        side,
-        price: tape.input.openOrders[0]!.price,
-        progress: null as typeof tape.tpAdverseProgress,
-        cancels: 0,
-        nearMakerReplacements: 0,
-        shallowRecoveryBookCrossings: 0,
-        maxLossViolations: 0,
-        steps: [] as Array<{
-          maker: number;
-          newAdverseMovement: number;
-          step: number;
-          distanceBefore: number;
-          distanceAfter: number;
-          projectedSessionPnlUsd: number | null;
-        }>,
-        anchor: tape.authenticatedPositions![0]!.entryPrice!,
-      }));
-      for (const [index, move] of [0, 35, 70, 220].entries()) {
-        if (index) tape = movePatientMarket(tape, firstMaker + direction * move);
-        for (const row of results) {
-          const snapshot = {
-            ...tape,
-            tpAdverseProgress: row.progress ?? null,
-            input: {
-              ...tape.input,
-              openOrders: [{ ...tape.input.openOrders[0]!, price: row.price }],
-            },
-          };
-          const maker = side === 'BUY' ? snapshot.input.book.bestBid : snapshot.input.book.bestAsk;
-          const points = snapshot.practicalCapacityInputs!.tpRegimePrices!.map((p) => p.midpoint);
-          const changes = points.slice(1).map((p, i) => p - points[i]!);
-          const rms = Math.sqrt(changes.reduce((sum, p) => sum + p * p, 0) / changes.length);
-          const oldBand = Math.max(
-            0.1,
-            snapshot.input.book.bestAsk - snapshot.input.book.bestBid,
-            Math.ceil(rms / 0.1) * 0.1,
-          );
-          const costs = assessDecibelExitEconomicsV1(snapshot, side, 0.00047, maker);
-          const oldProjected =
-            snapshot.sessionConfiguration!.exitAccounting!.realizedPnlAfterFeesUsd +
-            costs.breakdown!.grossPnlUsd -
-            costs.breakdown!.exitFeeReserveUsd -
-            costs.breakdown!.transactionGasReserveUsd -
-            costs.breakdown!.safetyReserveUsd;
-          const beforeReplace =
-            direction * (maker - snapshot.authenticatedPositions![0]!.entryPrice!) > oldBand &&
-            costs.netPnlUsd! < 0 &&
-            direction * (maker - row.price) > oldBand &&
-            oldProjected >= -2;
-          const plan = planDecibelPatientTPV1(snapshot, side);
-          const target =
-            row.policy === 'before'
-              ? maker
-              : constructDecibelAdaptiveTPPriceV1(snapshot, side, 0.00047, maker).price!;
-          const replace = row.policy === 'before' ? beforeReplace : target !== row.price;
-          if (replace) {
-            const projected =
-              row.policy === 'before'
-                ? oldProjected
-                : assessDecibelAdaptiveTPV1(snapshot, side, target).projectedSessionPnlUsd;
-            row.cancels++;
-            if (Math.abs(maker - target) <= 0.10000001) row.nearMakerReplacements++;
-            if (projected === null || projected < -2) row.maxLossViolations++;
-            row.steps.push({
-              maker,
-              newAdverseMovement: direction * (maker - row.anchor),
-              step: direction * (target - row.price),
-              distanceBefore: direction * (maker - row.price),
-              distanceAfter: direction * (maker - target),
-              projectedSessionPnlUsd: projected,
-            });
-            row.price = target;
-            row.anchor = maker;
-            if (row.policy === 'after') row.progress = plan.authorization;
-          }
-          // Separate counterfactual shallow rebound, not a fill inserted into
-          // the continuation tape: patient TP deliberately requires more recovery.
-          if (index === 0)
-            row.shallowRecoveryBookCrossings = Number(
-              direction * (row.price - (sign < 0 ? 75740 : 151426.8 - 75740)) >= 0,
-            );
-        }
-      }
-      const before = results[0]!,
-        after = results[1]!;
-      expect(before.cancels).toBe(4);
-      expect(after.cancels).toBe(2);
-      expect(after.nearMakerReplacements).toBe(0);
-      expect(before.shallowRecoveryBookCrossings).toBe(1);
-      expect(after.shallowRecoveryBookCrossings).toBe(0);
-      expect(after.maxLossViolations).toBe(0);
-      const recovery = movePatientMarket(tape, after.price - direction * 0.1);
-      for (const row of results)
-        rows.push({
-          ...row,
-          progress: undefined,
-          replacementPlaces: row.cancels,
-          recoveryBookCrossings: Number(
-            side === 'BUY'
-              ? recovery.input.book.bestAsk <= row.price + 1e-8
-              : recovery.input.book.bestBid >= row.price - 1e-8,
-          ),
-          positionOpenTimeMs: null,
-          missedExecutableFills: null,
-        });
-    }
-    writeFileSync(
-      '.tmp_patient_replay_metrics.log',
-      JSON.stringify(
-        {
-          provenance:
-            'Synthetic quote-policy replay; no authenticated fills, no actual CANCEL/PLACE latency or execution simulation. Recovery frame deliberately crosses the patient TP; crossings are not fill rate.',
-          rows,
-        },
-        null,
-        2,
-      ),
-    );
-  });
-
   it.each([
     'NORMAL',
     'PARTIAL',
@@ -11578,6 +11205,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         ),
       environment: { DECIBEL_EXECUTOR_DRY_RUN: 'false' },
       cancelOutcome: scenario === 'ACK_UNKNOWN' ? 'CANCEL_OUTCOME_UNKNOWN' : 'CANCEL_CONFIRMED',
+      exchangeCandles: adverseCandles(snapshot),
     });
     const current = snapshot.input.openOrders[0]!;
     ownIncidentTP(test, snapshot);
@@ -11738,7 +11366,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       oldCandidateNetPnlUsd: number;
       newMakerNetPnlUsd: number;
     };
-    const base = adaptiveTPFixture(-1, f.timestamp);
+    const base = adaptiveTPFixture(-1, f.timestamp, undefined, f.entryBasis);
     // Aggregate reconstruction, explicitly not a claim to replay original fills.
     const order = {
       venueOrderId: 'aggregate-entry',
@@ -11759,8 +11387,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       executedUsdNotional: -f.positionBase * f.entryBasis,
       makerOrTaker: 'MAKER',
       // Past the break-even hold: this replays the post-hold adverse step.
-      receivedAt: new Date(f.timestamp - DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 - 1),
-      venueTimestamp: new Date(f.timestamp - DECIBEL_TP_BREAK_EVEN_HOLD_MS_V1 - 1),
+      receivedAt: new Date(f.timestamp - ADAPTIVE_TP_OPENED_AGO_MS),
+      venueTimestamp: new Date(f.timestamp - ADAPTIVE_TP_OPENED_AGO_MS),
       transactionVersion: '123',
       fee: {
         availability: 'AVAILABLE',
@@ -11789,60 +11417,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     expect(net(f.restingTP)).toBeCloseTo(f.restingNetPnlUsd, 12);
     expect(net(f.oldCandidate)).toBeCloseTo(f.oldCandidateNetPnlUsd, 12);
     expect(net(f.bestBid)).toBeCloseTo(f.newMakerNetPnlUsd, 12);
-    const patientPrice = constructDecibelAdaptiveTPPriceV1(
-      snapshot,
-      'BUY',
-      -f.positionBase,
-      f.oldCandidate,
-    ).price!;
-    const observedWithoutRegime = {
-      ...snapshot,
-      practicalCapacityInputs: { ...snapshot.practicalCapacityInputs!, tpRegimePrices: [] },
-    };
-    expect(
-      constructDecibelAdaptiveTPPriceV1(
-        observedWithoutRegime,
-        'BUY',
-        -f.positionBase,
-        f.oldCandidate,
-      ).price,
-    ).toBe(f.restingTP);
-    const widerRegime = {
-      ...snapshot,
-      practicalCapacityInputs: {
-        ...snapshot.practicalCapacityInputs!,
-        tpRegimePrices: snapshot.practicalCapacityInputs!.tpRegimePrices!.map((p, i) => ({
-          ...p,
-          midpoint: 75740 + (i % 2) * 28,
-        })),
-      },
-    };
-    expect(
-      constructDecibelAdaptiveTPPriceV1(widerRegime, 'BUY', -f.positionBase, f.oldCandidate).price,
-    ).toBe(f.restingTP);
-    expect(patientPrice).toBe(75712.1);
-    expect(patientPrice).toBeLessThan(f.bestBid - 28);
-    expect(
-      assessDecibelAdaptiveTPV1(snapshot, 'BUY', patientPrice).projectedSessionPnlUsd,
-    ).toBeGreaterThan(-2);
-    const current = snapshot.input.openOrders[0]!;
-    const review = evaluateDecibelTPPriceSuitabilityV1(
-      {
-        action: 'WOULD_REPLACE',
-        side: 'BUY',
-        current,
-        desired: { ...current, generation: 1, price: patientPrice },
-        reason: 'TP_PRICE_REVIEW_REQUIRED',
-      },
-      snapshot,
-      0,
-      0,
-      0,
-    )!;
-    expect(review).toMatchObject({
-      TP_REPRICE_DECISION: 'REPRICE',
-      TP_EXIT_POLICY_MODE: 'ADVERSE_EXIT_REPRICE',
-    });
   });
 
   it('PID36848 scopes TP blockers to reductions and reopens normal admission after verified flat', async () => {
@@ -11905,24 +11479,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     expect(assessDecibelTPActionV1(exhausted, 'BUY', 0.00002, price)).toContain(
       'LOSS_BUDGET_EXCEEDED',
     );
-    // Trigger uses observed movement as well as spread/tick; a large live move
-    // raises the band, without any new USD/time configuration or loss epsilon.
-    const noisy = {
-      ...snapshot,
-      practicalCapacityInputs: {
-        ...snapshot.practicalCapacityInputs!,
-        recentMidpoints: [75600, 75700],
-        tpRegimePrices: snapshot.practicalCapacityInputs!.tpRegimePrices!.map((p, i) => ({
-          ...p,
-          midpoint: 75600 + (i % 2) * 100,
-        })),
-      },
-    };
-    expect(assessDecibelAdaptiveTPV1(noisy, 'BUY', price)).toMatchObject({
-      mode: 'NORMAL_TP',
-      allowed: false,
-      movementBandUsd: 132.1,
-    });
   });
 
   it.each(['BUDGET', 'MAX_LOSS', 'STALE', 'BASIS', 'QUANTITY', 'FEES', 'UNRESOLVED'] as const)(
@@ -15447,7 +15003,6 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       DECIBEL_EXECUTION_RELEASE_STAGE: 'CANARY',
       DECIBEL_EXECUTOR_ENABLED: 'true',
       DECIBEL_EXECUTOR_DRY_RUN: 'false',
-      DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: 'false',
     });
     const actor = new decibel_production_live_orchestrator_v1(
       journal,

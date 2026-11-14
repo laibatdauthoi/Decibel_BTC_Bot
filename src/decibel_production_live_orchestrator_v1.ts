@@ -124,11 +124,6 @@ import {
 } from './decibel_market_regime_v1.js';
 import type { decibel_raw_ws_bbo_observation_v1 } from './decibel_adverse_selection_evidence_v1.js';
 import {
-  classifyDecibelMarketRegimeV1,
-  selectDecibelRegimeSideEdgeV1,
-  type decibel_regime_edge_model_v1,
-} from './decibel_regime_edge_gate_v1.js';
-import {
   DECIBEL_PRODUCTION_CANDIDATE_DISTANCE_BPS_V1,
   DECIBEL_PRODUCTION_LIFECYCLE_COST_BUDGET_BPS_V1,
 } from './decibel_smart_ladder_v1.js';
@@ -172,15 +167,8 @@ const ProductionLiveEnvironmentSchema = z.object({
   DECIBEL_PRODUCTION_REQUOTE_HYSTERESIS_FRACTION: z.coerce.number().min(0).max(1).default(0.5),
   DECIBEL_PRODUCTION_REPRICE_MINIMUM_TICKS: positiveInteger.default(50),
   DECIBEL_PRODUCTION_MIN_ACTIVE_ORDER_LIFETIME_MS: z.coerce.number().int().min(0).default(30_000),
-  DECIBEL_PRODUCTION_REGIME_EDGE_MODEL_PATH: z
-    .string()
-    .min(1)
-    .default('config/decibel_regime_edge_model_v1.json'),
-  DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED: z.enum(['true', 'false']).default('true'),
   /** Wide venue-side catastrophe stop for offline protection (decibel_catastrophe_stop_v1). */
   DECIBEL_CATASTROPHE_STOP_ENABLED: z.enum(['true', 'false']).default('true'),
-  /** Adverse TP steps follow the two-closed-5-minute-candle rule (decibel_exit_economics_v1). */
-  DECIBEL_TP_CANDLE_RULE_ENABLED: z.enum(['true', 'false']).default('true'),
   /** New entries must fade the last closed 5-minute candle (decibel_volatility_targets_v1). */
   DECIBEL_ENTRY_CANDLE_FILTER_ENABLED: z.enum(['true', 'false']).default('true'),
 });
@@ -212,10 +200,7 @@ export type decibel_production_live_configuration_v1 = Readonly<{
   requoteHysteresisFraction: number;
   repriceMinimumTicks: number;
   minimumActiveOrderLifetimeMs: number;
-  regimeEdgeModelPath: string;
-  regimeEdgeGateEnabled: boolean;
   catastropheStopEnabled: boolean;
-  tpCandleRuleEnabled: boolean;
   entryCandleFilterEnabled: boolean;
 }>;
 
@@ -227,7 +212,7 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
   entryCandleBlockers?: Readonly<{ BUY: string | null; SELL: string | null }> | null;
   /** Set while the gas wallet is below the entry reserve (decibel_gas_reserve_v1). */
   executionGasBlocker?: string | null;
-  /** Candle rules' market structure (decibel_market_structure_v1); set while they are on. */
+  /** Candle rules' market structure (decibel_market_structure_v1), built once per cycle. */
   marketStructure?: import('./decibel_market_structure_v1.js').decibel_market_structure_v1;
   venueReadWindow?: Readonly<{
     account: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
@@ -620,10 +605,7 @@ export function parseDecibelProductionLiveConfigurationV1(
     requoteHysteresisFraction: parsed.DECIBEL_PRODUCTION_REQUOTE_HYSTERESIS_FRACTION,
     repriceMinimumTicks: parsed.DECIBEL_PRODUCTION_REPRICE_MINIMUM_TICKS,
     minimumActiveOrderLifetimeMs: parsed.DECIBEL_PRODUCTION_MIN_ACTIVE_ORDER_LIFETIME_MS,
-    regimeEdgeModelPath: parsed.DECIBEL_PRODUCTION_REGIME_EDGE_MODEL_PATH,
-    regimeEdgeGateEnabled: parsed.DECIBEL_PRODUCTION_REGIME_EDGE_GATE_ENABLED === 'true',
     catastropheStopEnabled: parsed.DECIBEL_CATASTROPHE_STOP_ENABLED === 'true',
-    tpCandleRuleEnabled: parsed.DECIBEL_TP_CANDLE_RULE_ENABLED === 'true',
     entryCandleFilterEnabled: parsed.DECIBEL_ENTRY_CANDLE_FILTER_ENABLED === 'true',
   });
 }
@@ -2026,7 +2008,7 @@ export class decibel_production_live_orchestrator_v1 {
       this.Config.maximumVolatilitySpreadMultiplier,
       operationalRegime.policy.volatilitySpreadMultiplier,
     );
-    const regimeEdge = this.getRegimeEdgeInputs(snapshot);
+    const regimeEdge = this.getRegimeAdmissionInputs();
     return this.evaluateWithFlatPairCohort(snapshot, {
       minimumNotionalUsd: snapshot.minimumNotionalUsd,
       maximumNotionalUsd: snapshot.maximumNotionalUsd,
@@ -2185,7 +2167,6 @@ export class decibel_production_live_orchestrator_v1 {
     positionBase: number;
     action: decibel_recycling_action_v1;
   } | null = null;
-  private readonly RegimeEdgeModel: decibel_regime_edge_model_v1 | null;
   private LatestOperationalRegime: decibel_market_regime_result_v1 | null = null;
   private MarketRegimeState: 'WARMING' | 'READY' = 'WARMING';
   private readonly EnforceMarketRegimeReadiness: boolean;
@@ -2761,9 +2742,6 @@ export class decibel_production_live_orchestrator_v1 {
     private readonly getDecisionNow: () => number = Date.now,
   ) {
     this.cycleSequence = Journal.maximumCycleSequence();
-    // Production is frozen to the inventory-neutral admission policy.
-    // Regime models remain research-only and cannot override production quoting.
-    this.RegimeEdgeModel = null;
     this.EnforceMarketRegimeReadiness = regimeBootstrap?.enforceReadiness ?? false;
     const bootstrapObservedAt = regimeBootstrap?.observedAt ?? Date.now();
     const bootstrapCutoff = bootstrapObservedAt - Config.volatilityLookbackMs;
@@ -4813,15 +4791,13 @@ export class decibel_production_live_orchestrator_v1 {
       priceRangeBps: calculateDecibelMidpointRangeBpsV1(structure.samples, now),
       executionGasBlocker: getDecibelGasEntryBlockerV1(this.GasBalanceApt),
       entryCandleBlockers:
-        this.Config.entryCandleFilterEnabled &&
-        this.Config.tpCandleRuleEnabled &&
-        snapshot.input.actualInventoryBase === 0
+        this.Config.entryCandleFilterEnabled && snapshot.input.actualInventoryBase === 0
           ? Object.freeze({
               BUY: getDecibelEntryCandleBlockerV1('BUY', structure.closedCandles),
               SELL: getDecibelEntryCandleBlockerV1('SELL', structure.closedCandles),
             })
           : null,
-      ...(this.Config.tpCandleRuleEnabled ? { marketStructure: structure } : {}),
+      marketStructure: structure,
     };
   }
 
@@ -4850,41 +4826,30 @@ export class decibel_production_live_orchestrator_v1 {
     );
   }
 
-  private getRegimeEdgeInputs(snapshot: decibel_production_live_snapshot_v1) {
-    if (this.RegimeEdgeModel === null) {
-      const regime =
-        this.MarketRegimeState === 'READY' && this.LatestOperationalRegime !== null
-          ? this.LatestOperationalRegime.regime
-          : ('WARMING' as const);
-      const eligible = !this.EnforceMarketRegimeReadiness || this.MarketRegimeState === 'READY';
-      return Object.freeze({
-        regime,
-        bid: Object.freeze({
-          eligible,
-          reason: eligible ? 'OPERATIONAL_REGIME_READY' : 'MARKET_REGIME_WARMING',
-          distanceBps: null,
-          adverseSelectionBps: null,
-          sampleCount: 0,
-        }),
-        ask: Object.freeze({
-          eligible,
-          reason: eligible ? 'OPERATIONAL_REGIME_READY' : 'MARKET_REGIME_WARMING',
-          distanceBps: null,
-          adverseSelectionBps: null,
-          sampleCount: 0,
-        }),
-      });
-    }
-    const regime = classifyDecibelMarketRegimeV1(
-      this.MidpointHistory,
-      snapshot.input.now,
-      this.RegimeEdgeModel.regimeLookbackMs,
-      this.RegimeEdgeModel.regimeThresholdBps,
-    );
+  /** Production uses the inventory-neutral admission policy: no regime edge model, only
+   * the operational regime's readiness. */
+  private getRegimeAdmissionInputs() {
+    const regime =
+      this.MarketRegimeState === 'READY' && this.LatestOperationalRegime !== null
+        ? this.LatestOperationalRegime.regime
+        : ('WARMING' as const);
+    const eligible = !this.EnforceMarketRegimeReadiness || this.MarketRegimeState === 'READY';
     return Object.freeze({
       regime,
-      bid: selectDecibelRegimeSideEdgeV1(this.RegimeEdgeModel, regime, 'BUY'),
-      ask: selectDecibelRegimeSideEdgeV1(this.RegimeEdgeModel, regime, 'SELL'),
+      bid: Object.freeze({
+        eligible,
+        reason: eligible ? 'OPERATIONAL_REGIME_READY' : 'MARKET_REGIME_WARMING',
+        distanceBps: null,
+        adverseSelectionBps: null,
+        sampleCount: 0,
+      }),
+      ask: Object.freeze({
+        eligible,
+        reason: eligible ? 'OPERATIONAL_REGIME_READY' : 'MARKET_REGIME_WARMING',
+        distanceBps: null,
+        adverseSelectionBps: null,
+        sampleCount: 0,
+      }),
     });
   }
 
