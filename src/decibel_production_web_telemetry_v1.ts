@@ -1096,6 +1096,10 @@ export function projectDecibelTelemetryTradingDecisionV1(
   }
 }
 
+/** The actor's last decision is shown while its cycle is at most this old (the dashboard's
+ * own freshness window). */
+export const DECIBEL_TELEMETRY_ACTOR_DECISION_MAX_AGE_MS_V1 = 15_000;
+
 export function mapDecibelProductionWebTelemetryV1(
   input: Readonly<{
     overviewTotalSessionsExecuted?: number | null;
@@ -1384,18 +1388,26 @@ export function mapDecibelProductionWebTelemetryV1(
         : null,
   };
   const projectedDecision = projectDecibelTelemetryTradingDecisionV1(snapshot, decisionContext);
+  const sameSession = storedDecision?.evidence.sessionId === input.execution?.sessionId;
   const sameSnapshot =
-    storedDecision?.evidence.sourceStateHash === snapshot?.sourceStateHash &&
-    storedDecision?.evidence.sessionId === input.execution?.sessionId;
+    sameSession && storedDecision?.evidence.sourceStateHash === snapshot?.sourceStateHash;
+  // The published snapshot is rebuilt on every BBO frame from the latest components but keeps
+  // the cycle-derived fields (candle blockers, capacity inputs) of an older cycle, so its hash
+  // almost never matches. While the actor's last cycle is fresh, its own decision is the
+  // truth; re-deriving it on that mixed snapshot showed stale blockers (2026-11-14).
+  const actorCycleFresh =
+    input.lastSuccessfulCycleAt !== null &&
+    input.generatedAt - input.lastSuccessfulCycleAt <=
+      DECIBEL_TELEMETRY_ACTOR_DECISION_MAX_AGE_MS_V1;
   // The actor owns eligibility. Presentation may revoke stale/unsafe permission,
   // but must not invent TRADE by independently selecting different quotes.
   const unifiedDecision =
     storedDecision &&
-    sameSnapshot &&
+    sameSession &&
     input.execution?.running &&
-    projectedDecision.evidenceComplete &&
     projectedDecision.state !== 'STOP' &&
-    input.execution.blocker == null
+    input.execution.blocker == null &&
+    (sameSnapshot ? projectedDecision.evidenceComplete : actorCycleFresh)
       ? storedDecision
       : projectedDecision;
   const telemetry: decibel_production_web_telemetry_v1 = Object.freeze({

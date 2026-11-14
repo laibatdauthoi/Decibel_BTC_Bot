@@ -36,6 +36,7 @@ import { decibel_execution_lifecycle_journal_v1 } from '../src/decibel_execution
 import {
   assertDecibelWebTelemetrySanitizedV1,
   calculateDecibelBotScopedPnlV1,
+  DECIBEL_TELEMETRY_ACTOR_DECISION_MAX_AGE_MS_V1,
   mapDecibelProductionWebTelemetryV1,
   projectDecibelTelemetryTradingDecisionV1,
   reconcileAllDecibelAcknowledgedOrdersV1,
@@ -1628,6 +1629,48 @@ describe('Decibel production web telemetry V1', () => {
       'WEB_TELEMETRY_SECRET_FIELD_REJECTED',
     );
     expect(() => assertDecibelWebTelemetrySanitizedV1({ market: 'BTC/USD' })).not.toThrow();
+  });
+
+  it('shows the actor decision while its cycle is fresh, even on a rebuilt snapshot', () => {
+    const history = readDecibelProductionWebHistoryV1('missing-journal.sqlite', 10, 10_100);
+    const snapshot = makeSnapshot();
+    const sessionId = snapshot.input.sessionId;
+    const actor = evaluateTradingDecision(snapshot, {
+      now: 10_000,
+      sessionId,
+      state: 'RUNNING',
+    });
+    // The actor decided on an earlier frame: its hash no longer matches the published one.
+    const stored = {
+      ...actor,
+      primaryReason: 'ACTOR_DECISION_MARKER',
+      evidence: { ...actor.evidence, sessionId, sourceStateHash: 'older-frame' },
+    };
+    const map = (generatedAt: number) =>
+      mapDecibelProductionWebTelemetryV1({
+        snapshot,
+        history,
+        configuration,
+        startedAt: 1_000,
+        generatedAt,
+        lastSuccessfulCycleAt: 10_000,
+        connectionError: null,
+        execution: {
+          running: true,
+          sessionId,
+          cycles: 3,
+          lastAction: 'HOLD',
+          blocker: null,
+          tradingDecision: stored,
+        },
+      }).runtime.tradingDecision;
+    expect(map(10_000 + DECIBEL_TELEMETRY_ACTOR_DECISION_MAX_AGE_MS_V1).primaryReason).toBe(
+      'ACTOR_DECISION_MARKER',
+    );
+    // A stale cycle falls back to the presentation's own projection.
+    expect(map(10_001 + DECIBEL_TELEMETRY_ACTOR_DECISION_MAX_AGE_MS_V1).primaryReason).not.toBe(
+      'ACTOR_DECISION_MARKER',
+    );
   });
 
   it('maps runtime, ladder, risk, and degraded state without execution controls', () => {
