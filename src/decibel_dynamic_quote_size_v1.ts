@@ -24,6 +24,7 @@ export type decibel_quote_size_input_v1 = Readonly<{
     price: number;
     quantity: number;
     venueOrderId?: string;
+    reduceOnly?: boolean;
   }>[];
   remainingTargetUsd: number | null;
   replacingVenueOrderId?: string | undefined;
@@ -101,10 +102,12 @@ export function calculateDecibelDynamicQuoteSizeV1(input: decibel_quote_size_inp
         .filter((order) => order.side === input.side)
         .reduce((sum, order) => sum + getDecibelQuantityUnitsV1(order.quantity), 0n),
     ) / 1e8;
-  const pendingVolumeUsd = pendingOrders.reduce(
-    (sum, order) => sum + order.price * order.quantity,
-    0,
-  );
+  // Only same-side opening orders consume the remaining target: an opposite-side entry is the
+  // alternative (whichever fills first, the other is cancelled) and a reduce-only exit never
+  // counts (2026-11-14: summing both sides halved the last entries).
+  const pendingVolumeUsd = pendingOrders
+    .filter((order) => order.side === input.side && order.reduceOnly !== true)
+    .reduce((sum, order) => sum + order.price * order.quantity, 0);
   const reducing =
     input.reduceOnly === true &&
     ((input.inventoryBase < 0 && input.side === 'BUY') ||

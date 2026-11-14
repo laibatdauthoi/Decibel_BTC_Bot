@@ -1309,16 +1309,19 @@ export class decibel_production_live_orchestrator_v1 {
           0,
           Math.min(
             collateralNotional + pendingUsd,
-            remainingTargetBudgetUsd(
-              target,
-              executed,
-              snapshot.sessionConfiguration?.preferredEntrySizeUsd,
-              Math.max(
-                snapshot.input.metadata.minimumSize *
-                  Math.max(baseline.desiredBid.price, baseline.desiredAsk.price),
-                snapshot.minimumNotionalUsd,
+            // Each side may rest one full entry toward the target: the two entries are
+            // alternatives, so the volume allowance is per side, not shared (2026-11-14).
+            (snapshot.input.actualInventoryBase === 0 ? 2 : 1) *
+              remainingTargetBudgetUsd(
+                target,
+                executed,
+                snapshot.sessionConfiguration?.preferredEntrySizeUsd,
+                Math.max(
+                  snapshot.input.metadata.minimumSize *
+                    Math.max(baseline.desiredBid.price, baseline.desiredAsk.price),
+                  snapshot.minimumNotionalUsd,
+                ),
               ),
-            ),
           ),
         ),
         preferredSide:

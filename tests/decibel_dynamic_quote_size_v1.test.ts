@@ -80,7 +80,7 @@ describe('Deterministic dynamic quote size budgets', () => {
       }).finalNotionalUsd,
     ).toBeLessThanOrEqual(20 + 1e-9);
   });
-  it('uses V2 maker + taker executions and reserves pending volume on both sides', () => {
+  it('uses V2 maker + taker executions and reserves only same-side opening volume', () => {
     const totalExecutedVolumeUsd = 20 + 10;
     const result = calculateDecibelDynamicQuoteSizeV1({
       ...input,
@@ -93,26 +93,39 @@ describe('Deterministic dynamic quote size budgets', () => {
     const pending = calculateDecibelDynamicQuoteSizeV1({
       ...input,
       remainingTargetUsd: 20,
-      openOrders: [{ side: 'SELL', price: 80_000, quantity: 0.00005 }],
+      openOrders: [{ side: 'BUY', price: 80_000, quantity: 0.00005 }],
     });
     expect(pending).toMatchObject({ volumeBudgetUsd: 16, finalSizeBtc: 0.0002 });
+    // The opposite-side entry is the alternative and a reduce-only exit never counts.
+    for (const order of [
+      { side: 'SELL' as const, price: 80_000, quantity: 0.00005 },
+      { side: 'BUY' as const, price: 80_000, quantity: 0.00005, reduceOnly: true },
+    ])
+      expect(
+        calculateDecibelDynamicQuoteSizeV1({
+          ...input,
+          remainingTargetUsd: 20,
+          openOrders: [order],
+        }),
+      ).toMatchObject({ volumeBudgetUsd: 20, finalSizeBtc: 0.00025 });
   });
   it('releases only the exact cancelled replacement reservation for planning', () => {
     const openOrders = [
       { venueOrderId: 'bid', side: 'BUY' as const, price: 80_000, quantity: 0.00031 },
       { venueOrderId: 'ask', side: 'SELL' as const, price: 80_000, quantity: 0.00025 },
     ];
+    // Replacing the resting BUY releases it; the opposite-side entry never counts.
     const result = calculateDecibelDynamicQuoteSizeV1({
       ...input,
       openOrders,
       replacingVenueOrderId: 'bid',
     });
-    expect(result.pendingVolumeUsd).toBe(20);
+    expect(result.pendingVolumeUsd).toBe(0);
     expect(result.finalSizeBtc).toBe(0.00031);
-    // Pending orders leave $5.20 of the target missing: one more minimum trade finishes it.
-    const boundary = calculateDecibelDynamicQuoteSizeV1({ ...input, openOrders });
-    expect(boundary.finalSizeBtc).toBe(0.00013);
-    expect(boundary.bindingConstraint).toBe('REMAINING_TRADING_VOLUME');
+    // Without the replacement the resting BUY ($24.80) still holds its share of the target.
+    const kept = calculateDecibelDynamicQuoteSizeV1({ ...input, openOrders });
+    expect(kept.pendingVolumeUsd).toBeCloseTo(24.8, 9);
+    expect(kept.volumeBudgetUsd).toBeCloseTo(50 - 24.8, 9);
   });
   it('never rounds above a budget and finishes a tiny remainder with one minimum trade', () => {
     const rounded = calculateDecibelDynamicQuoteSizeV1({ ...input, remainingTargetUsd: 19.99 });

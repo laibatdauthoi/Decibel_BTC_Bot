@@ -34,8 +34,9 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
 3. **Gas reserve.** No new entry or DCA while the gas wallet holds < 0.1 APT
    (`ENTRY_GAS_BALANCE_LOW`). Exits are never blocked.
 4. **Size.** Preferred entry = target × 3/20, raised to the venue minimum, floored to the lot,
-   capped by margin and by the risk capacity. The last entry may use the remaining target,
-   the preferred size or the venue minimum, whichever is largest.
+   capped by margin and by the risk capacity. Near the end each side may rest the remaining
+   target, the preferred size or the venue minimum, whichever is largest: the two flat entries
+   are alternatives, so the target may be overshot by up to one entry.
 5. **Price.** Passive PostOnly maker order inside the BBO. For 5 minutes after a TP fill, the
    next entry rests at least `clamp(0.5 x R, 5, 25)` bps from that exit (anti-chase). A resting entry is
    repriced only after the market moves more than `clamp(0.3 x R, 3, 15)` bps.

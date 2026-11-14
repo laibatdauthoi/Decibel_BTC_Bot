@@ -14598,7 +14598,9 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     expect(test.calls()).toBe(0);
     await test.orchestrator.close();
   });
-  it('reserves a $50 remaining target for BOTH flat quotes instead of spending it all on the first side', async () => {
+  // The two flat entries are alternatives (whichever fills first, the other is cancelled), so
+  // each side may rest a full entry toward the remaining target (2026-11-14).
+  it('lets each flat quote use the $50 remaining target on its own side', async () => {
     const snapshot = twoSidedSnapshot(0, 50),
       test = make({ snapshots: [snapshot, snapshot] });
     const result = await test.orchestrator.evaluateOnce();
@@ -14606,24 +14608,24 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       ask = result.evaluation!.desiredAsk!;
     expect(bid).not.toBeNull();
     expect(ask).not.toBeNull();
-    expect(bid.quantity * bid.price + ask.quantity * ask.price).toBeLessThanOrEqual(50 + 1e-8);
+    expect(bid.quantity * bid.price).toBeLessThanOrEqual(50 + 1e-8);
+    expect(ask.quantity * ask.price).toBeLessThanOrEqual(50 + 1e-8);
     expect(bid.quantity * bid.price).toBeGreaterThanOrEqual(10);
     expect(ask.quantity * ask.price).toBeGreaterThanOrEqual(10);
     await test.orchestrator.close();
   });
 
-  it('justifies one-sided flat planning when the remaining target cannot fund two executable minimums', async () => {
+  it('still quotes both flat sides when the remaining target only funds one executable minimum', async () => {
     const snapshot = twoSidedSnapshot(0, 15),
       test = make({ snapshots: [snapshot, snapshot] });
     const result = await test.orchestrator.evaluateOnce();
     const e = result.evaluation!;
     const orders = [e.desiredBid, e.desiredAsk].filter((order) => order !== null);
-    expect(orders).toHaveLength(1);
-    expect(orders[0]!.quantity * orders[0]!.price).toBeGreaterThanOrEqual(10);
-    expect(orders[0]!.quantity * orders[0]!.price).toBeLessThanOrEqual(15);
-    expect([e.bidEligibilityReason, e.askEligibilityReason]).toContain(
-      'COMBINED_BUDGET_BELOW_TWO_SIDE_MINIMUM',
-    );
+    expect(orders).toHaveLength(2);
+    for (const order of orders) {
+      expect(order!.quantity * order!.price).toBeGreaterThanOrEqual(10);
+      expect(order!.quantity * order!.price).toBeLessThanOrEqual(15 + 1e-8);
+    }
     await test.orchestrator.close();
   });
   it('releases an ACK side only from exact terminal cancellation and preserves release across restart', async () => {
@@ -14699,9 +14701,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     const other = test.journal.getIntent(second.intentId!)!;
     expect(other.side).not.toBe(body.side);
     expect(test.calls()).toBe(2);
-    expect(body.price * body.quantity + other.price * other.quantity).toBeLessThanOrEqual(
-      50 + 1e-8,
-    );
+    expect(body.price * body.quantity).toBeLessThanOrEqual(50 + 1e-8);
+    expect(other.price * other.quantity).toBeLessThanOrEqual(50 + 1e-8);
     expect(second.evaluation?.desiredBid).not.toBeNull();
     expect(second.evaluation?.desiredAsk).not.toBeNull();
     const partial = {
