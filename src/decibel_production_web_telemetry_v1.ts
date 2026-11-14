@@ -2,6 +2,7 @@ import {
   combineDecibelLifetimeTotalsV1,
   type decibel_overview_lifetime_totals_v1,
 } from './decibel_lifetime_totals_v1.js';
+import { DECIBEL_PRODUCTION_MUTATION_BUDGET_V1 } from './decibel_production_live_configuration_v1.js';
 import { calculateDecibelOverviewUTCVolumeV1 } from './decibel_overview_metrics_v1.js';
 import { DECIBEL_PRODUCTION_SESSION_HEARTBEAT_STALE_MS_V1 } from './decibel_production_session_v1.js';
 import { deriveDecibelPositionSafetyStatusV1 } from './decibel_position_safety_status_v1.js';
@@ -1182,10 +1183,8 @@ export function mapDecibelProductionWebTelemetryV1(
           ...(snapshot.maximumAbsPositionBase === undefined
             ? {}
             : { maximumAbsPositionBase: snapshot.maximumAbsPositionBase }),
-          maximumLadderLevelsPerSide: input.configuration.maximumLadderLevelsPerSide,
           maximumAggregateCollateralFraction:
             input.configuration.maximumAggregateCollateralFraction,
-          ladderLevelAllocations: [0.5, 0.3, 0.2],
           volatilitySpreadMultiplier: 1,
           maximumVolatilitySpreadMultiplier: input.configuration.maximumVolatilitySpreadMultiplier,
         });
@@ -1298,9 +1297,9 @@ export function mapDecibelProductionWebTelemetryV1(
     currentFeesByFillId,
     'BOT_ONLY',
   );
-  const placeLimit = Math.max(15, input.configuration.maximumLadderLevelsPerSide * 5);
-  const cancelLimit = Math.max(15, input.configuration.maximumLadderLevelsPerSide * 5);
-  const totalLimit = Math.max(30, input.configuration.maximumLadderLevelsPerSide * 10);
+  const placeLimit = DECIBEL_PRODUCTION_MUTATION_BUDGET_V1.placePerMinute;
+  const cancelLimit = DECIBEL_PRODUCTION_MUTATION_BUDGET_V1.cancelPerMinute;
+  const totalLimit = DECIBEL_PRODUCTION_MUTATION_BUDGET_V1.totalPerMinute;
   const attempts = input.history.mutationAttempts;
   const unresolvedIntent = input.history.intents
     .filter((intent) =>

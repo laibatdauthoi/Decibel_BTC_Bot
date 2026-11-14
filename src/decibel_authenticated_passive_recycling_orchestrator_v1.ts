@@ -510,13 +510,11 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     bidHalfSpreadBps?: number;
     askHalfSpreadBps?: number;
     maximumAbsPositionBase?: number;
-    maximumLadderLevelsPerSide?: number;
     candidateSearchDepthPerSide?: number;
     candidateDistanceBps?: readonly number[];
     bidCandidateDistanceBps?: readonly number[];
     askCandidateDistanceBps?: readonly number[];
     maximumAggregateCollateralFraction?: number;
-    ladderLevelAllocations?: readonly number[];
     volatilitySpreadMultiplier?: number;
     entryPriceMovementBps?: number;
     maximumVolatilitySpreadMultiplier?: number;
@@ -882,9 +880,10 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     fairPrice: fair.fairPrice ?? midpoint,
     maximumInventoryPriceSkewBps: sizing?.maximumInventoryPriceSkewBps ?? 2,
     configuration: {
-      maximumLevelsPerSide: sizing?.maximumLadderLevelsPerSide ?? 3,
+      // One quote level per side (production has quoted a single level since 2026-10).
+      maximumLevelsPerSide: 1,
       maximumAggregateCollateralFraction: sizing?.maximumAggregateCollateralFraction ?? 0.5,
-      levelAllocations: sizing?.ladderLevelAllocations ?? [0.5, 0.3, 0.2],
+      levelAllocations: [1],
       baseHalfSpreadBps: sizing?.halfSpreadBps ?? 0,
       ...(sizing?.bidHalfSpreadBps === undefined
         ? {}

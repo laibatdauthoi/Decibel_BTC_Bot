@@ -1,4 +1,5 @@
 import { readDecibelOverviewLifetimeTotalsV1 } from './decibel_lifetime_totals_v1.js';
+import { DECIBEL_PRODUCTION_MUTATION_BUDGET_V1 } from './decibel_production_live_configuration_v1.js';
 import {
   projectDecibelStrategyStatusV1,
   type decibel_strategy_status_v1,
@@ -1783,18 +1784,9 @@ export async function runDecibelProductionWebV1(
       RuntimeExecutor,
       runtimeConfiguration,
       {
-        maxPlaceAttemptsPerMinute: Math.max(
-          15,
-          runtimeConfiguration.maximumLadderLevelsPerSide * 5,
-        ),
-        maxCancelAttemptsPerMinute: Math.max(
-          15,
-          runtimeConfiguration.maximumLadderLevelsPerSide * 5,
-        ),
-        maxTotalMutationAttemptsPerMinute: Math.max(
-          30,
-          runtimeConfiguration.maximumLadderLevelsPerSide * 10,
-        ),
+        maxPlaceAttemptsPerMinute: DECIBEL_PRODUCTION_MUTATION_BUDGET_V1.placePerMinute,
+        maxCancelAttemptsPerMinute: DECIBEL_PRODUCTION_MUTATION_BUDGET_V1.cancelPerMinute,
+        maxTotalMutationAttemptsPerMinute: DECIBEL_PRODUCTION_MUTATION_BUDGET_V1.totalPerMinute,
         maxConsecutiveUnknownOutcomes: 1,
         maxKnownLiveOrders: 2,
         submissionTimeoutMs: runtimeConfiguration.submissionTimeoutMs,

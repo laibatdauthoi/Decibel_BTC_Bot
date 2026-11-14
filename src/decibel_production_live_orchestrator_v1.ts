@@ -702,7 +702,6 @@ export class decibel_production_live_orchestrator_v1 {
       ...(snapshot.maximumAbsPositionBase === undefined
         ? {}
         : { maximumAbsPositionBase: snapshot.maximumAbsPositionBase }),
-      maximumLadderLevelsPerSide: 1,
       bidCandidateDistanceBps: adaptCandidateDistances(
         operationalRegime.policy.bidDistanceMultiplier,
       ),
@@ -712,7 +711,6 @@ export class decibel_production_live_orchestrator_v1 {
       maximumAggregateCollateralFraction:
         this.Config.maximumAggregateCollateralFraction * operationalRegime.policy.sizeMultiplier,
       maximumInventoryPriceSkewBps: operationalRegime.policy.maximumInventoryPriceSkewBps,
-      ladderLevelAllocations: [0.5, 0.3, 0.2],
       volatilitySpreadMultiplier,
       entryPriceMovementBps: operationalRegime.inputs.realizedVolatilityBps,
       maximumVolatilitySpreadMultiplier: this.Config.maximumVolatilitySpreadMultiplier,

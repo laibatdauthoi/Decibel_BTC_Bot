@@ -7,6 +7,13 @@ import {
   type decibel_production_release_stage_v1,
 } from './decibel_production_execution_v1.js';
 
+/** Mutation attempts per minute (one quote level per side since 2026-11-14). */
+export const DECIBEL_PRODUCTION_MUTATION_BUDGET_V1 = Object.freeze({
+  placePerMinute: 15,
+  cancelPerMinute: 15,
+  totalPerMinute: 30,
+});
+
 const positiveInteger = z.coerce.number().int().positive();
 const ProductionLiveEnvironmentSchema = z.object({
   DECIBEL_EXECUTION_MODE: z.literal('production'),
@@ -34,7 +41,6 @@ const ProductionLiveEnvironmentSchema = z.object({
     .max(120_000)
     .default(30_000),
   DECIBEL_PRODUCTION_LIVE_MAX_CYCLES: positiveInteger.optional(),
-  DECIBEL_SMART_LADDER_MAX_LEVELS_PER_SIDE: z.coerce.number().int().min(1).max(3).default(3),
   DECIBEL_SMART_LADDER_COLLATERAL_FRACTION: z.coerce.number().positive().max(0.5).default(0.5),
   DECIBEL_SMART_LADDER_VOLATILITY_LOOKBACK_MS: positiveInteger.default(900_000),
   DECIBEL_SMART_LADDER_MAX_VOLATILITY_MULTIPLIER: z.coerce.number().min(1).max(3).default(3),
@@ -67,7 +73,6 @@ export type decibel_production_live_configuration_v1 = Readonly<{
   shutdownTimeoutMs: number;
   submissionTimeoutMs: number;
   maxCycles: number | null;
-  maximumLadderLevelsPerSide: number;
   maximumAggregateCollateralFraction: number;
   volatilityLookbackMs: number;
   maximumVolatilitySpreadMultiplier: number;
@@ -108,7 +113,6 @@ export function parseDecibelProductionLiveConfigurationV1(
     shutdownTimeoutMs: parsed.DECIBEL_PRODUCTION_LIVE_SHUTDOWN_TIMEOUT_MS,
     submissionTimeoutMs: parsed.DECIBEL_PRODUCTION_SUBMISSION_TIMEOUT_MS,
     maxCycles: parsed.DECIBEL_PRODUCTION_LIVE_MAX_CYCLES ?? null,
-    maximumLadderLevelsPerSide: parsed.DECIBEL_SMART_LADDER_MAX_LEVELS_PER_SIDE,
     maximumAggregateCollateralFraction: parsed.DECIBEL_SMART_LADDER_COLLATERAL_FRACTION,
     volatilityLookbackMs: parsed.DECIBEL_SMART_LADDER_VOLATILITY_LOOKBACK_MS,
     maximumVolatilitySpreadMultiplier: parsed.DECIBEL_SMART_LADDER_MAX_VOLATILITY_MULTIPLIER,
