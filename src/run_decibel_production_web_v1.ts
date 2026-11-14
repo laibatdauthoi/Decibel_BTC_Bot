@@ -1755,6 +1755,11 @@ export async function runDecibelProductionWebV1(
       ...(Source.verifyTimedOutIntent === undefined
         ? {}
         : { verifyTimedOutIntent: Source.verifyTimedOutIntent.bind(Source) }),
+      // Venue candles for the candle rules (missing before 2026-11-14: production always
+      // fell back to the BBO history).
+      ...(Source.readExchangeCandles1m === undefined
+        ? {}
+        : { readExchangeCandles1m: Source.readExchangeCandles1m.bind(Source) }),
     });
     const RuntimeSource = wrapDecibelProductionLiveStateSourceV1(
       RuntimeSourceBase,

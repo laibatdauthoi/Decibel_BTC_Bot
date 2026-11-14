@@ -82,6 +82,12 @@ export function wrapDecibelProductionLiveStateSourceV1(
           verifyTimedOutIntent: (...arguments_: timeout_arguments) =>
             Source.verifyTimedOutIntent!(...arguments_),
         }),
+    ...(Source.readExchangeCandles1m === undefined
+      ? {}
+      : {
+          readExchangeCandles1m: (startMs: number, endMs: number) =>
+            Source.readExchangeCandles1m!(startMs, endMs),
+        }),
     ...(Source.close === undefined ? {} : { close: () => Source.close!() }),
   });
 }
