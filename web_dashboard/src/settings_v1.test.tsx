@@ -185,8 +185,9 @@ describe('Settings draft, saved and active configuration', () => {
   );
 
   it.each([
-    ['0.5', 30, 'NOT ENOUGH FOR DCA (MIN $0.76)'],
-    ['0.76', 30, null],
+    ['0.5', 30, 'NOT ENOUGH FOR DCA (MIN $0.76 · 2× $1.51)'],
+    ['0.76', 30, '2× DCA NEEDS MIN $1.51'],
+    ['1.51', 30, null],
     ['0.1', 10, null], // the entry warning takes precedence
   ] as const)(
     'warns inline when Max Loss %s cannot fund a DCA addition for a $%s entry',
@@ -201,7 +202,10 @@ describe('Settings draft, saved and active configuration', () => {
         ?.find((row) => row.includes('MAX LOSS'));
       expect(maxLossRow).toBeDefined();
       if (warning) expect(maxLossRow).toContain(`<small>${warning}</small>`);
-      else expect(maxLossRow).not.toContain('NOT ENOUGH FOR DCA');
+      else {
+        expect(maxLossRow).not.toContain('NOT ENOUGH FOR DCA');
+        if (entry === 30) expect(maxLossRow).not.toContain('2× DCA NEEDS');
+      }
       expect(view.button('SAVE CHANGES').props.disabled).toBe(false);
     },
   );

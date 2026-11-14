@@ -49,12 +49,18 @@ export function formatSettingsMinimumMaxLossUsdV1(minimumUsd: number): string {
 
 /**
  * Smallest Max Loss whose stress-loss capacity can still admit the smallest DCA addition
- * (a third of the position) when the price is at the DCA trigger, using the same policy
- * floors: the entry is already `DECIBEL_DCA_TRIGGER_BPS_V1` in loss plus its entry fee, and
- * the capacity must cover the entry plus the addition. A lower bound, like the entry floor.
+ * (a third of the position) at the DCA trigger, using the same policy floors. A lower
+ * bound, like the entry floor.
+ *
+ * - 1 addition: the entry is `DECIBEL_DCA_TRIGGER_BPS_V1` in loss plus one entry fee; the
+ *   capacity covers the entry plus a third of it.
+ * - 2 additions: the first addition is a full entry at the trigger, so the second trigger
+ *   is 1.5 x the trigger below the entry; the two lots are then 1.5 x and 0.5 x the trigger
+ *   in loss plus two entry fees, and the capacity covers both lots plus a third of them.
  */
 export function calculateSettingsMinimumMaxLossForDCAUsdV1(
   entrySizeUsd: number | null,
+  additions: 1 | 2 = 1,
 ): number | null {
   if (entrySizeUsd === null || !Number.isFinite(entrySizeUsd) || entrySizeUsd <= 0) return null;
   const Policy = DECIBEL_CAPACITY_POLICY_V1;
@@ -63,8 +69,12 @@ export function calculateSettingsMinimumMaxLossForDCAUsdV1(
     2 * Policy.feePerLegBps +
     Policy.maximumBookSlippageBps +
     Policy.adverseSelectionBps;
-  const capacityBps = (1 + DECIBEL_DCA_MINIMUM_ADDITION_FRACTION_V1) * lossBps;
-  const unrealizedBps = DECIBEL_DCA_TRIGGER_BPS_V1 + Policy.feePerLegBps;
+  const lots = additions; // entry-sized lots held when the last addition is admitted
+  const capacityBps = lots * (1 + DECIBEL_DCA_MINIMUM_ADDITION_FRACTION_V1) * lossBps;
+  const unrealizedBps =
+    additions === 1
+      ? DECIBEL_DCA_TRIGGER_BPS_V1 + Policy.feePerLegBps
+      : 2 * DECIBEL_DCA_TRIGGER_BPS_V1 + 2 * Policy.feePerLegBps;
   return (
     (entrySizeUsd * (capacityBps + unrealizedBps)) /
     10_000 /
@@ -76,8 +86,9 @@ export function calculateSettingsMinimumMaxLossForDCAUsdV1(
 export function isSettingsMaxLossBelowDCAFloorV1(
   maxLoss: string,
   entrySizeUsd: number | null,
+  additions: 1 | 2 = 1,
 ): boolean {
-  const minimum = calculateSettingsMinimumMaxLossForDCAUsdV1(entrySizeUsd);
+  const minimum = calculateSettingsMinimumMaxLossForDCAUsdV1(entrySizeUsd, additions);
   const value = Number(maxLoss);
   return (
     minimum !== null &&

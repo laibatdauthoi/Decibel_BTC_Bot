@@ -66,4 +66,16 @@ describe('Settings Max Loss entry floor', () => {
     expect(isSettingsMaxLossBelowDCAFloorV1('', 30)).toBe(false);
     expect(isSettingsMaxLossBelowDCAFloorV1('0.5', null)).toBe(false);
   });
+
+  it('requires more Max Loss for two DCA additions', () => {
+    // After a full-size first addition the second trigger is 37.5 bps below the entry:
+    // lots 37.5 + 12.5 bps in loss plus two fees; capacity for 2 lots plus a third.
+    const floor = calculateSettingsMinimumMaxLossForDCAUsdV1(30, 2)!;
+    expect(floor).toBeCloseTo((30 * ((8 / 3) * 153 + 70)) / 10_000 / 0.95, 9);
+    expect(formatSettingsMinimumMaxLossUsdV1(floor)).toBe('$1.51');
+    const lossRemaining = floor * 0.95 - (30 * 70) / 10_000;
+    expect(lossRemaining / (153 / 10_000)).toBeCloseTo(80, 9);
+    expect(isSettingsMaxLossBelowDCAFloorV1('1', 30, 2)).toBe(true);
+    expect(isSettingsMaxLossBelowDCAFloorV1('1.51', 30, 2)).toBe(false);
+  });
 });

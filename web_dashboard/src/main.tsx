@@ -1275,6 +1275,13 @@ export const SettingsView = (
   // Advisory: below this the risk capacity cannot fund even the smallest DCA addition.
   const maxLossDCAFloorUsd = calculateSettingsMinimumMaxLossForDCAUsdV1(draftEntrySizeUsd);
   const maxLossBelowDCAFloor = isSettingsMaxLossBelowDCAFloorV1(pending.maxLoss, draftEntrySizeUsd);
+  // Hint: the Max Loss needed for both DCA additions.
+  const maxLossTwoDCAFloorUsd = calculateSettingsMinimumMaxLossForDCAUsdV1(draftEntrySizeUsd, 2);
+  const maxLossBelowTwoDCAFloor = isSettingsMaxLossBelowDCAFloorV1(
+    pending.maxLoss,
+    draftEntrySizeUsd,
+    2,
+  );
   const sessionStatusCode = StartRequest.isBusy()
     ? startRequest.phase === 'CHECKING_ACCOUNT'
       ? 'CHECKING_ACCOUNT'
@@ -1372,7 +1379,13 @@ export const SettingsView = (
         ) : key === 'maxLoss' && maxLossBelowFloor && maxLossFloorUsd !== null ? (
           <small>{`TOO SMALL FOR ENTRY (MIN ${formatSettingsMinimumMaxLossUsdV1(maxLossFloorUsd)})`}</small>
         ) : key === 'maxLoss' && maxLossBelowDCAFloor && maxLossDCAFloorUsd !== null ? (
-          <small>{`NOT ENOUGH FOR DCA (MIN ${formatSettingsMinimumMaxLossUsdV1(maxLossDCAFloorUsd)})`}</small>
+          <small>{`NOT ENOUGH FOR DCA (MIN ${formatSettingsMinimumMaxLossUsdV1(maxLossDCAFloorUsd)}${
+            maxLossTwoDCAFloorUsd === null
+              ? ''
+              : ` · 2× ${formatSettingsMinimumMaxLossUsdV1(maxLossTwoDCAFloorUsd)}`
+          })`}</small>
+        ) : key === 'maxLoss' && maxLossBelowTwoDCAFloor && maxLossTwoDCAFloorUsd !== null ? (
+          <small>{`2× DCA NEEDS MIN ${formatSettingsMinimumMaxLossUsdV1(maxLossTwoDCAFloorUsd)}`}</small>
         ) : changed ? (
           <small>CHANGED</small>
         ) : null}
