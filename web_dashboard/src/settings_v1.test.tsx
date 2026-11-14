@@ -104,6 +104,7 @@ function renderView(props: Props) {
     button,
     inputs: elements.filter((item) => item.type === 'input'),
     action: elements.find((item) => item.props.onStart !== undefined)!,
+    elements,
   };
 }
 // Supply the server projection at the exact draft key; effects are disabled in this handler harness.
@@ -396,6 +397,49 @@ describe('Settings draft, saved and active configuration', () => {
       '<span class="session-configuration-label">Capital</span><strong>$3.00</strong>',
     );
     expect(props.session!.activeSession!.configSnapshot.capitalToUseUsd).toBe(3);
+  });
+  it('asks for END SESSION in the in-app dialog and ends only after confirmation', () => {
+    const fetchMock = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const props = createProps();
+    props.session = {
+      activeSession: {
+        configRevision: 2,
+        configSnapshot: props.settings!.values,
+        sessionId: 'test',
+        startedAt: 1,
+        endedAt: null,
+        status: 'RUNNING',
+      },
+      state: 'RUNNING',
+      ownerState: 'OWNED',
+    } as Props['session'];
+    type DialogProps = { title?: string; onConfirm?: () => void; onCancel?: () => void };
+    const dialogOf = (view: ReturnType<typeof renderView>) =>
+      view.elements.find((item) => (item.props as DialogProps).onConfirm !== undefined) as
+        ReactElement<DialogProps> | undefined;
+    let view = renderView(props);
+    expect(dialogOf(view)).toBeUndefined();
+    // END SESSION opens the dialog; nothing is sent yet.
+    (view.action.props as { onEnd: () => void }).onEnd();
+    view = renderView(props);
+    expect(dialogOf(view)?.props.title).toBe('END SESSION');
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Cancel closes it without ending the session.
+    dialogOf(view)!.props.onCancel!();
+    view = renderView(props);
+    expect(dialogOf(view)).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Confirm ends the session.
+    (view.action.props as { onEnd: () => void }).onEnd();
+    view = renderView(props);
+    dialogOf(view)!.props.onConfirm!();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/session/end',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    view = renderView(props);
+    expect(dialogOf(view)).toBeUndefined();
   });
   it('shows the current saved-capital blocker only inside a keyboard-focusable tooltip', () => {
     const props = createProps();

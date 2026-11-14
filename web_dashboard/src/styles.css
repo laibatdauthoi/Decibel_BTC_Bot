@@ -3981,6 +3981,57 @@ body:has(.settings-view:not([hidden])) {
   outline: 2px solid var(--foreground);
   outline-offset: 3px;
 }
+.confirm-dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+}
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+.confirm-dialog > header {
+  padding: 18px 24px 14px;
+  border-bottom: 3px solid var(--line);
+}
+.confirm-dialog h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+.confirm-dialog > p {
+  margin: 0;
+  padding: 20px 24px;
+  line-height: 1.5;
+}
+.confirm-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 24px 24px;
+}
+.confirm-dialog button {
+  min-width: 120px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-weight: 600;
+  cursor: pointer;
+}
+.confirm-dialog .confirm-dialog-confirm {
+  background: var(--surface-dark);
+  color: var(--surface-light);
+}
+.confirm-dialog button:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 3px;
+}
+
 .activity-history-modal {
   width: min(1120px, calc(100vw - 48px));
   max-width: calc(100vw - 48px);

@@ -1,4 +1,5 @@
 import { useSessionSharePreviewV1 } from './share_preview_v1';
+import { ConfirmDialog } from './confirm_dialog_v1';
 import { SessionHistoryActions } from './activity_actions_v1';
 import { parseSavedSettingsV1, selectSavedSettingsV1 } from './settings_state_v1';
 import { validateSettingsCapitalMarginV1 } from '../../src/settings_capital_margin_v1';
@@ -1199,6 +1200,8 @@ export const SettingsView = (
     key: string;
     value: number | null;
   } | null>(null);
+  // Declared after the other hooks: the Settings tests address hook state by position.
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
   const draftQuery = new URLSearchParams({
     capitalToUseUsd: pending.capital,
     maxLossUsd: pending.maxLoss,
@@ -1359,10 +1362,17 @@ export const SettingsView = (
       .then(() => props.refreshSession())
       .catch(() => undefined);
   };
+  const canEndSession = (): boolean =>
+    !EndInFlight.current &&
+    !ending &&
+    props.session?.activeSession != null &&
+    props.session.ownerState === 'OWNED';
   const endSession = (): void => {
-    if (EndInFlight.current || ending) return;
-    if (!props.session?.activeSession || props.session.ownerState !== 'OWNED') return;
-    if (!window.confirm('END CURRENT SESSION? EXISTING EXECUTION MUST RECONCILE FIRST.')) return;
+    if (canEndSession()) setConfirmingEnd(true);
+  };
+  const confirmEndSession = (): void => {
+    setConfirmingEnd(false);
+    if (!canEndSession() || !props.session?.activeSession) return;
     EndInFlight.current = true;
     EndingSessionId.current = props.session.activeSession.sessionId;
     setEnding(true);
@@ -1608,6 +1618,15 @@ export const SettingsView = (
               onStart={startSession}
               onEnd={endSession}
             />
+            {confirmingEnd && (
+              <ConfirmDialog
+                title="END SESSION"
+                message="End the current session? The bot stops opening positions, closes the open position with reduce-only orders and reconciles all orders before the session ends."
+                confirmLabel="END SESSION"
+                onConfirm={confirmEndSession}
+                onCancel={() => setConfirmingEnd(false)}
+              />
+            )}
             {startRequest.notice && <p role="status">{startRequest.notice}</p>}
           </>
         </aside>
