@@ -25,6 +25,10 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     sizeTargetDenominator: 20,
     /** After a TP fill the next entry rests at least this far from the exit (anti-chase). */
     reentryDistance: Object.freeze({ factor: 0.5, minBps: 5, maxBps: 25 }),
+    /** The re-entry distance only applies this long after the exit fill. 2026-11-14: an
+     * unexpiring anchor kept a BUY 15 bps under the market for two hours; in the 05-14/11
+     * backtest 5 minutes beat no expiry (and 10-60 minutes) in both halves. */
+    reentryExpiryMs: 5 * 60_000,
     /** A resting entry is repriced only when the market moved more than this. */
     replacementBand: Object.freeze({ factor: 0.3, minBps: 3, maxBps: 15 }),
     /** No new entry or DCA while the 5-minute range is wider than this (bps). */

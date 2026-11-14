@@ -4,6 +4,7 @@ import {
   assertDecibelRecoveryIntentV1,
   getDecibelVerifiedCurrentPlaceOwnerV1,
 } from '../src/decibel_protective_recovery_admission_v1.js';
+import { DECIBEL_STRATEGY_POLICY_V1 } from '../src/decibel_strategy_policy_v1.js';
 import { createDecibelMarketStructureV1 } from '../src/decibel_market_structure_v1.js';
 import { makeDecibelActivityBaselineFixtureV1 } from './fixtures/decibel_activity_baseline_fixture_v1.js';
 import {
@@ -18474,7 +18475,7 @@ describe('re-entry after a TP fill', () => {
     };
     place(base.input.sessionId, `d1s${'b'.repeat(29)}`, 'own-exit', 7001);
     place('another-session', `d1s${'c'.repeat(29)}`, 'foreign-exit', 7002);
-    const limitsFor = (fills: ReturnType<typeof exitFill>[], inventory = 0) =>
+    const limitsFor = (fills: ReturnType<typeof exitFill>[], inventory = 0, now = base.input.now) =>
       (
         test.orchestrator as unknown as {
           getReentryPriceLimits(s: typeof base): { BUY: number; SELL: number } | null;
@@ -18483,6 +18484,7 @@ describe('re-entry after a TP fill', () => {
         ...base,
         input: {
           ...base.input,
+          now,
           actualInventoryBase: inventory,
           actualFillLedger: { ...base.input.actualFillLedger, fills },
         },
@@ -18495,6 +18497,11 @@ describe('re-entry after a TP fill', () => {
     expect(limitsFor([exitFill('foreign-exit', `d1s${'c'.repeat(29)}`, 100)])).toBeNull();
     expect(limitsFor([])).toBeNull();
     expect(limitsFor([exitFill('own-exit', `d1s${'b'.repeat(29)}`, 100)], 0.5)).toBeNull();
+    // The anchor expires: the exit fill was at 1,000 ms.
+    const own = [exitFill('own-exit', `d1s${'b'.repeat(29)}`, 100)];
+    const expiry = DECIBEL_STRATEGY_POLICY_V1.entry.reentryExpiryMs;
+    expect(limitsFor(own, 0, 1_000 + expiry)).not.toBeNull();
+    expect(limitsFor(own, 0, 1_000 + expiry + 1)).toBeNull();
     await test.orchestrator.close();
   });
 });

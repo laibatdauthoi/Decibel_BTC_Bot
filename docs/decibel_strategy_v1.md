@@ -36,8 +36,8 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
 4. **Size.** Preferred entry = target × 3/20, raised to the venue minimum, floored to the lot,
    capped by margin and by the risk capacity. The last entry may use the remaining target,
    the preferred size or the venue minimum, whichever is largest.
-5. **Price.** Passive PostOnly maker order inside the BBO. After a TP fill, the next entry
-   rests at least `clamp(0.5 x R, 5, 25)` bps from that exit (anti-chase). A resting entry is
+5. **Price.** Passive PostOnly maker order inside the BBO. For 5 minutes after a TP fill, the
+   next entry rests at least `clamp(0.5 x R, 5, 25)` bps from that exit (anti-chase). A resting entry is
    repriced only after the market moves more than `clamp(0.3 x R, 3, 15)` bps.
 
 ## 3. Take profit

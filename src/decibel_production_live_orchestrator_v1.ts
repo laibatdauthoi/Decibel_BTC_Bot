@@ -1,3 +1,4 @@
+import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 import { calculateDecibelEntrySizeV1 } from './decibel_entry_size_v1.js';
 import { assessDecibelSnapshotDCAV1 } from './decibel_dca_v1.js';
 import { buildDecibelMarketStructureV1 } from './decibel_market_structure_v1.js';
@@ -3428,7 +3429,7 @@ export class decibel_production_live_orchestrator_v1 {
   }
 
   /**
-   * While flat after an exit fill in this session, the next entry rests at least the
+   * While flat shortly after an exit fill in this session, the next entry rests at least the
    * volatility-scaled re-entry distance away from that exit price.
    */
   private getReentryPriceLimits(
@@ -3441,6 +3442,9 @@ export class decibel_production_live_orchestrator_v1 {
     for (const fill of snapshot.input.actualFillLedger.fills)
       if (last === null || at(fill) > at(last)) last = fill;
     if (last === null || !(last.executedPrice > 0)) return null;
+    // The anti-chase distance only holds shortly after the exit; later the market has moved.
+    if (snapshot.input.now - at(last) > DECIBEL_STRATEGY_POLICY_V1.entry.reentryExpiryMs)
+      return null;
     const owner = this.Journal.findPlaceByExactIdentity(
       last.venueOrderId,
       last.localExecutionRequestId,

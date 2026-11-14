@@ -161,7 +161,7 @@ export function runDecibelStrategyBacktestV1(
   let position: position_v1 | null = null;
   let entries: { BUY: number | null; SELL: number | null } = { BUY: null, SELL: null };
   let dcaOrder: number | null = null;
-  let lastExit: { price: number } | null = null;
+  let lastExit: { price: number; at: number } | null = null;
   let lastDecisionAt = Number.NEGATIVE_INFINITY;
   let previousAt: number | null = null;
 
@@ -238,7 +238,7 @@ export function runDecibelStrategyBacktestV1(
     );
     position = null;
     dcaOrder = null;
-    lastExit = { price };
+    lastExit = { price, at };
   };
   const riskCapacityUsd = () =>
     (Math.max(0, config.maxLossUsd + Math.min(0, sessionPnl)) *
@@ -351,8 +351,8 @@ export function runDecibelStrategyBacktestV1(
           continue;
         }
         let price = side === 'BUY' ? row.bid : row.ask;
-        const exit = lastExit as { price: number } | null;
-        if (exit !== null) {
+        const exit = lastExit as { price: number; at: number } | null;
+        if (exit !== null && now - exit.at <= P.entry.reentryExpiryMs) {
           const distance = scaleDecibelBacktestBpsV1(range, P.entry.reentryDistance);
           const limit = exit.price * (1 + ((side === 'BUY' ? -1 : 1) * distance) / 10_000);
           price =
