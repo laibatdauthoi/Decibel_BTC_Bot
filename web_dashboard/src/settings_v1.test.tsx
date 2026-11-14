@@ -183,9 +183,9 @@ describe('Settings draft, saved and active configuration', () => {
   );
 
   it.each([
-    ['0.5', 30, 'NOT ENOUGH FOR DCA (MIN $0.76 · 2× $1.51)'],
-    ['0.76', 30, '2× DCA NEEDS MIN $1.51'],
-    ['1.51', 30, null],
+    ['0.5', 30, 'NOT ENOUGH FOR DCA (MIN $0.81 · 2× $1.61)'],
+    ['0.81', 30, '2× DCA NEEDS MIN $1.61'],
+    ['1.61', 30, null],
     ['0.1', 10, null], // the entry warning takes precedence
   ] as const)(
     'warns inline when Max Loss %s cannot fund a DCA addition for a $%s entry',

@@ -40,8 +40,9 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     /** How far the price may run against the entry before adverse steps are considered;
      * max 40 -> 25 on 2026-11-14 (a break-even TP sat for an hour inside a 40 bps band). */
     safeBand: Object.freeze({ factor: 1.2, minBps: 10, maxBps: 25 }),
-    /** Closed 5-minute candles outside the band (no return inside) before a step. */
-    candleCloses: 2,
+    /** Closed 5-minute candles outside the band (no return inside) before a step.
+     * 2 -> 3 on 2026-11-14: better in both halves of the 05-14/11 backtest. */
+    candleCloses: 3,
     /** A TP already at break-even may take the rescue step after this many closes. */
     breakEvenStaleCloses: 3,
     /** "Break-even" accepts this net loss (bps of notional): a recovery missed by ~1 bps. */
@@ -50,8 +51,9 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     rescueOffset: Object.freeze({ factor: 0.5, minBps: 5, maxBps: 20 }),
   }),
   dca: Object.freeze({
-    /** Each addition needs the price this far against the current average entry (bps). */
-    triggerBps: 25,
+    /** Each addition needs the price this far against the current average entry (bps).
+     * 25 -> 40 on 2026-11-14: better in both halves of the 05-14/11 backtest. */
+    triggerBps: 40,
     maximumAdditions: 2,
     /** The smallest addition, as a fraction of the position (keeps TP replacement exact). */
     minimumAdditionFraction: 1 / 3,

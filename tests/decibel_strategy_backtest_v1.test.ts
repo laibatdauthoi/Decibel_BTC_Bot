@@ -67,12 +67,12 @@ describe('decibel strategy backtest v1', () => {
   });
 
   it('adds once at the DCA trigger after the move settles and averages the entry', () => {
-    // Long at 100,000, then 30 bps lower for 15 minutes with flat 5-minute candles.
+    // Long at 100,000, then 50 bps lower for 15 minutes with flat 5-minute candles.
     const rows = [
       ...flatBook(start, 3, 100_000),
       { at: start + 3_000, bid: 99_999.9, ask: 100_000 },
-      ...flatBook(start + 4_000, 15 * 60, 99_700),
-      { at: start + 4_000 + 15 * 60_000, bid: 99_699.9, ask: 99_700 },
+      ...flatBook(start + 4_000, 15 * 60, 99_500),
+      { at: start + 4_000 + 15 * 60_000, bid: 99_499.9, ask: 99_500 },
     ];
     const result = runDecibelStrategyBacktestV1(rows, {
       ...config,
@@ -89,10 +89,10 @@ describe('decibel strategy backtest v1', () => {
     const policy = overrideDecibelBacktestPolicyV1(
       DECIBEL_STRATEGY_POLICY_V1,
       'adverse.candleCloses',
-      3,
+      4,
     );
-    expect(policy.adverse.candleCloses).toBe(3);
-    expect(DECIBEL_STRATEGY_POLICY_V1.adverse.candleCloses).toBe(2);
+    expect(policy.adverse.candleCloses).toBe(4);
+    expect(DECIBEL_STRATEGY_POLICY_V1.adverse.candleCloses).toBe(3);
     expect(() =>
       overrideDecibelBacktestPolicyV1(DECIBEL_STRATEGY_POLICY_V1, 'adverse.unknown', 1),
     ).toThrow('BACKTEST_POLICY_PATH_INVALID');

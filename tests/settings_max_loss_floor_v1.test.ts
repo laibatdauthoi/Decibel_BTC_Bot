@@ -52,12 +52,13 @@ describe('Settings Max Loss entry floor', () => {
   });
 
   it('requires enough Max Loss for the smallest DCA addition at the trigger', () => {
-    // $30 entry: capacity for 4/3 of it at 153 bps, plus 25 bps loss and a 10 bps fee.
+    // $30 entry: capacity for 4/3 of it at 153 bps, plus the 40 bps trigger loss and a
+    // 10 bps fee.
     const floor = calculateSettingsMinimumMaxLossForDCAUsdV1(30)!;
-    expect(floor).toBeCloseTo((30 * ((4 / 3) * 153 + 35)) / 10_000 / 0.95, 9);
+    expect(floor).toBeCloseTo((30 * ((4 / 3) * 153 + 50)) / 10_000 / 0.95, 9);
     expect(floor).toBeGreaterThan(calculateSettingsMinimumMaxLossUsdV1(30)!);
     // At the floor, capacity after the unrealized loss covers the entry plus a third.
-    const lossRemaining = floor * 0.95 - (30 * 35) / 10_000;
+    const lossRemaining = floor * 0.95 - (30 * 50) / 10_000;
     expect(lossRemaining / (153 / 10_000)).toBeCloseTo(40, 9);
     expect(isSettingsMaxLossBelowDCAFloorV1('0.5', 30)).toBe(true);
     expect(
@@ -68,14 +69,14 @@ describe('Settings Max Loss entry floor', () => {
   });
 
   it('requires more Max Loss for two DCA additions', () => {
-    // After a full-size first addition the second trigger is 37.5 bps below the entry:
-    // lots 37.5 + 12.5 bps in loss plus two fees; capacity for 2 lots plus a third.
+    // After a full-size first addition the second trigger is 60 bps below the entry:
+    // lots 60 + 20 bps in loss plus two fees; capacity for 2 lots plus a third.
     const floor = calculateSettingsMinimumMaxLossForDCAUsdV1(30, 2)!;
-    expect(floor).toBeCloseTo((30 * ((8 / 3) * 153 + 70)) / 10_000 / 0.95, 9);
-    expect(formatSettingsMinimumMaxLossUsdV1(floor)).toBe('$1.51');
-    const lossRemaining = floor * 0.95 - (30 * 70) / 10_000;
+    expect(floor).toBeCloseTo((30 * ((8 / 3) * 153 + 100)) / 10_000 / 0.95, 9);
+    expect(formatSettingsMinimumMaxLossUsdV1(floor)).toBe('$1.61');
+    const lossRemaining = floor * 0.95 - (30 * 100) / 10_000;
     expect(lossRemaining / (153 / 10_000)).toBeCloseTo(80, 9);
     expect(isSettingsMaxLossBelowDCAFloorV1('1', 30, 2)).toBe(true);
-    expect(isSettingsMaxLossBelowDCAFloorV1('1.51', 30, 2)).toBe(false);
+    expect(isSettingsMaxLossBelowDCAFloorV1('1.61', 30, 2)).toBe(false);
   });
 });

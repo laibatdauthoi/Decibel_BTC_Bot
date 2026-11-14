@@ -49,7 +49,7 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
 ### Adverse repricing (candle rule)
 
 - **Safe band** = `clamp(1.2 x R, 10, 25)` bps against the entry basis.
-- A step needs the price outside the band **and** 2 closed 5-minute candles with no return
+- A step needs the price outside the band **and** 3 closed 5-minute candles with no return
   inside it, counted from the latest of: leaving the band, the opening fill, the previous step.
 - First step: TP to **break-even** (net ≥ −1 bps of notional).
 - Later steps: TP rests `clamp(0.5 x R, 5, 20)` bps from the maker price (rescue).
@@ -61,7 +61,7 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
 ## 4. DCA
 
 - At most 2 maker additions per position, counted from the session's fill ledger.
-- Each needs the price ≥ 25 bps against the **current** average entry basis.
+- Each needs the price ≥ 40 bps against the **current** average entry basis.
 - Only after the last closed 5-minute candle stops extending the move (no new low for a long,
   no new high for a short): `DCA_PRICE_STILL_MAKING_NEW_LOWS/HIGHS`.
 - Size: at least 1/3 of the position, at most the preferred entry size and the risk capacity
@@ -77,7 +77,7 @@ riskCapacity  = lossRemaining / (lossBps / 10_000)
 
 - The session Max Loss triggers the canonical reduce-only unwind. There is no tight
   per-position stop-loss (it would realize noise as taker losses).
-- Settings shows the Max Loss needed for one and two DCA additions.
+- Settings shows the Max Loss needed for one and two DCA additions ($0.81 and $1.61 for a $30 entry).
 
 ## 6. Catastrophe stop (offline protection only)
 

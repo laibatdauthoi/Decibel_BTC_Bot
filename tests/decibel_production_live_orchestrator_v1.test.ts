@@ -10121,16 +10121,16 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
             timeInForce: 'PostOnly',
           },
         });
-      const far = decide(snapshot(40));
+      const far = decide(snapshot(50));
       expect(far.actionPlan[side].reason).not.toMatch(/^(DCA_|POSITION_GROWTH)/);
       expect(decide(snapshot(10)).actionPlan[side].reason).toBe('DCA_ADVERSE_DISTANCE_REQUIRED');
       // The last closed candle still extends the move: wait for it to settle.
-      expect(decide(snapshot(40, 10)).actionPlan[side].reason).toBe(
+      expect(decide(snapshot(50, 10)).actionPlan[side].reason).toBe(
         sign > 0 ? 'DCA_PRICE_STILL_MAKING_NEW_LOWS' : 'DCA_PRICE_STILL_MAKING_NEW_HIGHS',
       );
       // No candle history: no addition.
       expect(
-        decide({ ...snapshot(40), marketStructure: undefined } as unknown as ReturnType<
+        decide({ ...snapshot(50), marketStructure: undefined } as unknown as ReturnType<
           typeof snapshot
         >).actionPlan[side].reason,
       ).toBe('DCA_CANDLE_EVIDENCE_REQUIRED');
@@ -10728,7 +10728,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   };
 
   it.each([1, -1])(
-    'Candle rule moves the TP only after two closed 5-minute candles outside the band (%s)',
+    'Candle rule moves the TP only after three closed 5-minute candles outside the band (%s)',
     (sign) => {
       const side = sign < 0 ? 'BUY' : 'SELL';
       const direction = sign < 0 ? 1 : -1;
@@ -10744,7 +10744,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           openOrders: [{ ...fixture.input.openOrders[0]!, price: mirror(75650) }],
         },
       };
-      // 18 bps adverse (maker 75850 vs basis 75713.4); 6 bps range -> 10 bps safe band.
+      // 19.8 bps adverse (maker 75850 vs basis 75700); 6 bps range -> 10 bps safe band.
       const far = (outsideMinutes: number, snapshot = base) => {
         const moved = movePatientMarket(snapshot, mirror(75850));
         return {
@@ -10752,8 +10752,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           priceRangeBps: 6,
           marketStructure: createDecibelMarketStructureV1(
             'BBO_FALLBACK',
-            Array.from({ length: 15 }, (_, i) => {
-              const minutesAgo = 14 - i;
+            Array.from({ length: 25 }, (_, i) => {
+              const minutesAgo = 24 - i;
               return {
                 at: moved.input.now - minutesAgo * minute,
                 midpoint: minutesAgo <= outsideMinutes ? mirror(75850) : mirror(75720),
@@ -10765,8 +10765,10 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       };
       // Outside for 4 minutes: only one candle has closed.
       expect(planDecibelPatientTPV1(far(4), side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
-      // Outside for 9 minutes: two closes, the first step goes to break-even.
-      const ready = far(9);
+      // Outside for 9 minutes: two closes, still waiting for the third.
+      expect(planDecibelPatientTPV1(far(9), side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
+      // Outside for 14 minutes: three closes, the first step goes to break-even.
+      const ready = far(14);
       const breakEven = getDecibelBreakEvenTPPriceV1(ready, side)!;
       const first = planDecibelPatientTPV1(ready, side);
       expect(first).toMatchObject({
@@ -10774,29 +10776,29 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
         targetPrice: breakEven,
       });
       expect(assessDecibelAdaptiveTPV1(ready, side, breakEven).allowed).toBe(true);
-      // Right after the step: two new closes are needed again.
+      // Right after the step: three new closes are needed again.
       const atBreakEven = {
         ...base,
         tpAdverseProgress: first.authorization,
         input: { ...base.input, openOrders: [{ ...base.input.openOrders[0]!, price: breakEven }] },
       };
-      expect(planDecibelPatientTPV1(far(14, atBreakEven), side).reason).toBe(
+      expect(planDecibelPatientTPV1(far(19, atBreakEven), side).reason).toBe(
         'TP_ADVERSE_AWAITING_CANDLE_CLOSES',
       );
-      // Two closes after the step: the TP rests the rescue offset from the maker.
+      // Three closes after the step: the TP rests the rescue offset from the maker.
       const later = {
         ...atBreakEven,
         tpAdverseProgress: {
           ...first.authorization!,
-          observedAt: first.authorization!.observedAt - 9 * minute,
+          observedAt: first.authorization!.observedAt - 14 * minute,
         },
       };
-      const rescue = planDecibelPatientTPV1(far(14, later), side);
+      const rescue = planDecibelPatientTPV1(far(19, later), side);
       expect(rescue.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
       expect(direction * (rescue.targetPrice! - breakEven)).toBeGreaterThan(0);
       // Back inside the band: no step.
       const inside = {
-        ...far(9),
+        ...far(14),
         marketStructure: createDecibelMarketStructureV1('BBO_FALLBACK', [], now),
       };
       expect(

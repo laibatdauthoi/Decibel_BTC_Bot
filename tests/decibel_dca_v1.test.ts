@@ -36,13 +36,14 @@ describe('single DCA addition', () => {
   it('mirrors the limit for a short and admits only prices far enough adverse', () => {
     const short = assessDecibelDCAV1({ ...long, positionBase: -0.0004, markPrice: 75200 });
     expect(short).toMatchObject({ allowed: true, side: 'SELL' });
-    expect(short.priceLimit).toBeCloseTo(75000 * 1.0025, 9);
-    expect(isDecibelDCAPriceAdmittedV1(short, 'SELL', 75190)).toBe(true);
-    expect(isDecibelDCAPriceAdmittedV1(short, 'SELL', 75180)).toBe(false);
-    expect(isDecibelDCAPriceAdmittedV1(short, 'BUY', 75190)).toBe(false);
+    expect(short.priceLimit).toBeCloseTo(75000 * (1 + DECIBEL_DCA_TRIGGER_BPS_V1 / 10_000), 9);
+    const above = short.priceLimit! + 10;
+    expect(isDecibelDCAPriceAdmittedV1(short, 'SELL', above)).toBe(true);
+    expect(isDecibelDCAPriceAdmittedV1(short, 'SELL', short.priceLimit! - 10)).toBe(false);
+    expect(isDecibelDCAPriceAdmittedV1(short, 'BUY', above)).toBe(false);
     const buy = assessDecibelDCAV1(long);
-    expect(isDecibelDCAPriceAdmittedV1(buy, 'BUY', 74812.5)).toBe(true);
-    expect(isDecibelDCAPriceAdmittedV1(buy, 'BUY', 74820)).toBe(false);
+    expect(isDecibelDCAPriceAdmittedV1(buy, 'BUY', buy.priceLimit!)).toBe(true);
+    expect(isDecibelDCAPriceAdmittedV1(buy, 'BUY', buy.priceLimit! + 10)).toBe(false);
   });
 
   it('allows two additions, then refuses; refuses missing evidence and exhausted capacity', () => {
