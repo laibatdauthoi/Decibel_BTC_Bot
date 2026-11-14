@@ -1,4 +1,5 @@
 import { readDecibelOverviewLifetimeTotalsV1 } from './decibel_lifetime_totals_v1.js';
+import { installDecibelProcessErrorPolicyV1 } from './decibel_process_error_policy_v1.js';
 import { DECIBEL_PRODUCTION_MUTATION_BUDGET_V1 } from './decibel_production_live_configuration_v1.js';
 import {
   projectDecibelStrategyStatusV1,
@@ -3118,6 +3119,18 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   });
   void readDecibelWindowsProcessIdentityV1(process.pid).then((identity) =>
     RuntimeForensics.record('WINDOWS_NODE_IDENTITY', { identity }),
+  );
+  // Keep running through the got settled-cancel error a network drop triggers; any other
+  // uncaught exception still exits (decibel_process_error_policy_v1).
+  installDecibelProcessErrorPolicyV1(
+    process,
+    (line) => console.error(line),
+    (error) =>
+      RuntimeForensics.record('CONTAINED_UNCAUGHT_EXCEPTION', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack ?? null,
+      }),
   );
   process.on('uncaughtExceptionMonitor', (error, origin) => {
     RuntimeForensics.record('UNCAUGHT_EXCEPTION', {
