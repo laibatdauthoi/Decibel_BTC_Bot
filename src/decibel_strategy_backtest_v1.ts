@@ -360,6 +360,18 @@ export function runDecibelStrategyBacktestV1(
               ? Math.min(price, roundToTick(limit, tick, 'DOWN'))
               : Math.max(price, roundToTick(limit, tick, 'UP'));
         }
+        // Chase cap: stay near the signal candle's extreme instead of following a bounce.
+        const signal = candles?.at(-1);
+        if (signal !== undefined && P.entry.maxChaseBps > 0) {
+          const cap =
+            side === 'BUY'
+              ? signal.low * (1 + P.entry.maxChaseBps / 10_000)
+              : signal.high * (1 - P.entry.maxChaseBps / 10_000);
+          price =
+            side === 'BUY'
+              ? Math.min(price, roundToTick(cap, tick, 'DOWN'))
+              : Math.max(price, roundToTick(cap, tick, 'UP'));
+        }
         const resting = entries[side];
         const band = scaleDecibelBacktestBpsV1(range, P.entry.replacementBand);
         if (resting === null || (Math.abs(price - resting) / price) * 10_000 > band)

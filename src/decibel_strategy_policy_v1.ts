@@ -31,6 +31,10 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     reentryExpiryMs: 5 * 60_000,
     /** A resting entry is repriced only when the market moved more than this. */
     replacementBand: Object.freeze({ factor: 0.3, minBps: 3, maxBps: 15 }),
+    /** A flat entry rests at most this far above the signal candle's low (BUY) or below its
+     * high (SELL), so it does not chase a bounce after the signal; 0 disables the cap
+     * (research, 2026-11-15). */
+    maxChaseBps: 0,
     /** No new entry or DCA while the 5-minute range is wider than this (bps). */
     volatilityPauseBps: 40,
   }),
