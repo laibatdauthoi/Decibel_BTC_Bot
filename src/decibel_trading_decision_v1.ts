@@ -599,7 +599,17 @@ export function evaluateTradingDecision(
       const executed =
         config.targetSemanticsVersion === 2 ? config.totalExecutedVolumeUsd : config.makerVolumeUsd;
       if (executed === undefined || executed === null) return null;
-      if (notional > config.targetMakerVolumeUsd - executed + 1e-9) {
+      // While any volume is missing, one normal entry (the preferred size, at least a
+      // venue-minimum order) stays allowed even if it is larger than the remainder: live
+      // 2026-11-14 a $1.37 remainder was below the $1.38 venue minimum and the session sat
+      // idle for hours. Once the target is reached no entry is allowed.
+      const remaining = config.targetMakerVolumeUsd - executed;
+      const minimumOrderUsd = Math.max(
+        snapshot.input.metadata.minimumSize * order.price,
+        snapshot.minimumNotionalUsd,
+      );
+      const allowance = Math.max(remaining, config.preferredEntrySizeUsd ?? 0, minimumOrderUsd);
+      if (!(remaining > 1e-9) || notional > allowance + 1e-9) {
         tpReasons[side] = 'ENTRY_EXCEEDS_REMAINING_TARGET';
         return null;
       }
@@ -688,7 +698,11 @@ export function evaluateTradingDecision(
               : source && calculateDecibelExitCoverageV1(source).entryPaused
                 ? (tpReasons[source.actualInventoryBase > 0 ? 'SELL' : 'BUY'] ??
                   'INVENTORY_EXIT_COVERAGE_REQUIRED')
-                : (e?.bidEligibilityReason ?? e?.askEligibilityReason ?? 'NO_EXECUTABLE_QUOTE'))));
+                : (tpReasons.BUY ??
+                  tpReasons.SELL ??
+                  e?.bidEligibilityReason ??
+                  e?.askEligibilityReason ??
+                  'NO_EXECUTABLE_QUOTE'))));
   if (state !== 'TRADE') add(primaryReason);
   const config = snapshot?.sessionConfiguration;
   const terminal = /MAX_LOSS_REACHED|SESSION_ENDED|SESSION_STOPPING/.test(primaryReason);

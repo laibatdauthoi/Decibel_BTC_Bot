@@ -7038,6 +7038,34 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     expect(decide(0.00018)).toMatchObject({ askEligible: true });
     expect(0.0003 * price).toBeGreaterThan(21.7);
     expect(decide(0.0003).actionPlan.SELL.reason).toBe('ENTRY_EXCEEDS_REMAINING_TARGET');
+    // Live 2026-11-14: $1.37 left, below a one-lot venue minimum. One normal entry (the
+    // preferred size) stays allowed so the session can finish; none once it is reached.
+    const nearlyDone = (executed: number) => ({
+      ...snapshot,
+      input: { ...snapshot.input, openOrders: [] },
+      sessionConfiguration: {
+        ...snapshot.sessionConfiguration!,
+        preferredEntrySizeUsd: 16.5,
+        totalExecutedVolumeUsd: executed,
+      },
+    });
+    const finalEntry = (executed: number, quantity: number) =>
+      evaluateTradingDecision(nearlyDone(executed), {
+        now: snapshot.input.now,
+        sessionId: snapshot.input.sessionId,
+        state: 'RUNNING',
+        candidate: {
+          side: 'SELL',
+          price,
+          quantity,
+          reduceOnly: false,
+          postOnly: true,
+          timeInForce: 'PostOnly',
+        },
+      });
+    expect(0.0002 * price).toBeLessThan(16.5);
+    expect(finalEntry(200 - 1.37, 0.0002)).toMatchObject({ askEligible: true });
+    expect(finalEntry(200, 0.0002).actionPlan.SELL.reason).toBe('ENTRY_EXCEEDS_REMAINING_TARGET');
   });
 
   it('shrinks new ENTRY quantities to the Max Loss risk capacity in live quote construction', () => {
