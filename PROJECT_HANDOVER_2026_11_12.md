@@ -45,9 +45,9 @@ Evidence labels used below: **VERIFIED** (checked directly during this audit), *
 
 Main work streams since 21/10 (DOCUMENTED in `docs/`, newest first):
 
-1. **Entry risk admission / START transition** (`decibel_risk_blocked_root_cause_audit_v1.md`, `decibel_start_transition_risk_diagnostics_v1.md`, 2026-11-10). START → RUNNING activation failure no longer triggers an invalid rollback (`SESSION_TRANSITION_CONFLICT`). Exact risk diagnostics are added. The stress-loss rule is retained.
-2. **Dynamic entry size + DCA policy** (`decibel_dynamic_entry_size_v1.md`, 2026-11-09).
-3. **Market pipeline audit** (`decibel_market_pipeline_audit_v1.md`, 2026-11-09). Found an old-generation coalescing timer firing after reconnect, and SDK error handling that could re-mark the feed connected. Fix status was **not independently verified** in this audit.
+1. **Entry risk admission / START transition** (`docs/archive/decibel_risk_blocked_root_cause_audit_v1.md`, `docs/archive/decibel_start_transition_risk_diagnostics_v1.md`, 2026-11-10). START → RUNNING activation failure no longer triggers an invalid rollback (`SESSION_TRANSITION_CONFLICT`). Exact risk diagnostics are added. The stress-loss rule is retained.
+2. **Dynamic entry size + DCA policy** (`docs/archive/decibel_dynamic_entry_size_v1.md`, 2026-11-09).
+3. **Market pipeline audit** (`docs/archive/decibel_market_pipeline_audit_v1.md`, 2026-11-09). Found an old-generation coalescing timer firing after reconnect, and SDK error handling that could re-mark the feed connected. Fix status was **not independently verified** in this audit.
 4. **Dashboard work** (2026-11-08 to 11-09): overview metrics, share card / PNG export, logo, settings capital validation, activity history, session modal.
 5. **Entry pricing / replacement policy**: maker breakeven pricing, balanced ENTRY replacement, entry price priority/stability.
 6. **TP policy**: patient TP with persisted adverse anchors, TP decision liveness, partial TP coverage recovery.
@@ -59,9 +59,9 @@ Main work streams since 21/10 (DOCUMENTED in `docs/`, newest first):
 
 **VERIFIED/DOCUMENTED:** a deterministic, single-instance, local-Windows bot for the Decibel BTC/USD perpetual on Aptos mainnet. No AI model is called when making trading decisions (`AGENTS.md`). The operator controls it from a React dashboard at `http://127.0.0.1:4173` (loopback only, no HTTP authentication).
 
-Business flow per session (DOCUMENTED, `decibel_unified_trading_decision_v1.md`, `decibel_dynamic_entry_size_v1.md`):
+Business flow per session (DOCUMENTED, `docs/archive/decibel_unified_trading_decision_v1.md`, `docs/archive/decibel_dynamic_entry_size_v1.md`):
 
-1. The operator saves Settings: **Capital to use, Max Loss, Target maker volume, order notional, max position**. Then the operator presses **Start Session**.
+1. The operator saves Settings: **Capital to use, Max Loss, Target volume**. Then the operator presses **Start Session**.
 2. **ENTRY**: from flat, a side may open only when it fades the last closed 5-minute candle (a long after a lower low than the candle before, a short after a higher high; `ENTRY_REQUIRES_NEW_LOW/HIGH`, flag `DECIBEL_ENTRY_CANDLE_FILTER_ENABLED`, needs the candle rule's midpoints; 2026-11-14, from 55 live trips: +0.2 bps vs −8.2 bps). A passive PostOnly maker order, priced at the nearest tick that still satisfies the lifecycle cost equation (maker fee + safety + 2 × gas/quantity), bounded by the BBO.
 3. **ENTRY lifecycle**: FLAT → PLACING → OPEN → (CANCELLING) → FLAT. A verified fill hands protection to the TP workflow. A partial fill keeps the residual OPEN and protects the filled part.
 4. **TP**: a reduce-only maker order with net ≥ 0 (breakeven allowed). Adverse repricing (2026-11-13): once the price is outside the safe band (clamp(1.2 × 5-minute range, 10, 25) bps against the entry), a step needs two clock-aligned 5-minute candles to close with the price never back inside the band since it left (or since the opening fill / previous step). The first step moves the TP to break-even (net ≥ −1 bps of the notional), later steps rest it the rescue offset (clamp(0.5 × range, 5, 20) bps) from the maker. A TP already at break-even for three closes (about 15 minutes) since the previous step may take the rescue step even if the price came back inside the band. New entries and DCA additions pause while the 5-minute range is above 40 bps (`ENTRY_VOLATILITY_PAUSE`). The earlier time rule and recovery corridor were removed on 2026-11-14 (the candle rule is always on; its flag is gone). Full spec: `docs/decibel_strategy_v1.md`.
@@ -100,15 +100,17 @@ The runtime model in the 21/10 handover §4 is still accurate. Treat that sectio
 | orderNotionalUsd     | 10    |
 | maxPositionUsd       | 50    |
 
+`orderNotionalUsd` and `maxPositionUsd` were retired on 2026-11-14 (they no longer sized orders or limited positions). Older settings files still load; the keys are dropped.
+
 `.env` limits (VERIFIED, non-secret): `DECIBEL_PRODUCTION_LIVE_MIN_NOTIONAL_USD=10`, `..._MAX_NOTIONAL_USD=50`, `MAX_EFFECTIVE_LEVERAGE=40`, `MARKET_SYMBOL=BTC/USD`.
 
-### Entry size (DOCUMENTED, `decibel_dynamic_entry_size_v1.md`)
+### Entry size (DOCUMENTED, `docs/archive/decibel_dynamic_entry_size_v1.md`)
 
 - Fixed target: `preferredEntrySizeUsd = max(10, targetMakerVolumeUsd / 20)`. With target $300 this is **$15**.
 - "Until capital limit" (negative target sentinel): `max(10, capital × collateralFraction / 4)`.
 - The size is raised to the venue minimum, floored to the lot, and capped by executable margin capacity. Max Loss is **not** an input.
 
-### Independent stress-loss admission (DOCUMENTED, `decibel_risk_blocked_root_cause_audit_v1.md`; constants VERIFIED in `decibel_risk_capacity_v1.ts`)
+### Independent stress-loss admission (DOCUMENTED, `docs/archive/decibel_risk_blocked_root_cause_audit_v1.md`; constants VERIFIED in `decibel_risk_capacity_v1.ts`)
 
 ```text
 lossBps       = adverseMoveBps + entryFeeBps + exitFeeBps + exitSlippageBps + adverseSelectionBps
@@ -243,7 +245,7 @@ Run inside a Linux VM against the mounted Windows workspace, using the existing 
 
 The 21/10 handover §12 still applies (authority, allowed mutations, invariants, structured returns). Additionally:
 
-- Read `docs/decibel_unified_trading_decision_v1.md`, `docs/decibel_dynamic_entry_size_v1.md` and `docs/decibel_risk_blocked_root_cause_audit_v1.md` before touching decision, sizing or risk.
+- Read `docs/archive/decibel_unified_trading_decision_v1.md`, `docs/archive/decibel_dynamic_entry_size_v1.md` and `docs/archive/decibel_risk_blocked_root_cause_audit_v1.md` before touching decision, sizing or risk.
 - Before diagnosing "bot doesn't trade", check the TRADE/WAIT/STOP primary reason and the exact predicate diagnostics. RISK_BLOCKED with small Max Loss is expected.
 - Never write to `.env`, `config/production_state/`, the execution journal or the session DB without explicit user permission.
 - Write fix reports into the existing docs pattern, but prefer updating this handover over creating more one-off reports.

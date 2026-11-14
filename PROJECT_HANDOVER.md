@@ -287,7 +287,7 @@ During the audit, `http://127.0.0.1:4173/api/telemetry` was reachable and return
 ### Documentation conflicts
 
 - `README.md` describes a much broader legacy read-only/paper/research system and commands absent from the current manifest.
-- `docs/decibel_external_executor_plugin_v1.md` says a live executor exists; `docs/decibel_production_executor_handoff_v1.md` says no executor is included. Current source includes one.
+- `docs/archive/decibel_external_executor_plugin_v1.md` says a live executor exists; `docs/archive/decibel_production_executor_handoff_v1.md` says no executor is included. Current source includes one.
 - `.env.example` is dominated by legacy settings and does not document the complete current production web execution-mode tuple.
 - Many production modules/docs are untracked and therefore absent from a clean clone.
 
