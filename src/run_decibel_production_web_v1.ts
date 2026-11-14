@@ -130,7 +130,11 @@ import {
   enterDecibelHTTPReadBackoffForErrorV1,
   getDecibelHTTPReadBackoffUntilV1,
 } from './decibel_http_read_backoff_v1.js';
-import { selectNewestDecibelRuntimeSnapshotV1 } from './decibel_runtime_snapshot_owner_v1.js';
+import {
+  carryDecibelCycleDerivedFieldsV1,
+  publishDecibelRuntimeSnapshotV1,
+  selectNewestDecibelRuntimeSnapshotV1,
+} from './decibel_runtime_snapshot_owner_v1.js';
 import { readDecibelLegacyHandoffV1 } from './decibel_legacy_handoff_v1.js';
 import {
   decibel_runtime_supervisor_v1,
@@ -993,7 +997,7 @@ export async function runDecibelProductionWebV1(
     candidate: decibel_production_live_snapshot_v1 | null,
     ownerRevision: number,
   ): decibel_production_live_snapshot_v1 | null => {
-    snapshot = selectNewestDecibelRuntimeSnapshotV1(
+    snapshot = publishDecibelRuntimeSnapshotV1(
       snapshot,
       candidate,
       ownerRevision,
@@ -1096,12 +1100,17 @@ export async function runDecibelProductionWebV1(
     candidate: decibel_production_live_snapshot_v1,
     ownerRevision: number,
   ): void => {
-    const authoritative = selectNewestDecibelRuntimeSnapshotV1(
+    const selected = selectNewestDecibelRuntimeSnapshotV1(
       snapshot,
       candidate,
       ownerRevision,
       snapshotOwnerRevision,
     );
+    // A venue read carries no cycle-derived fields: keep the latest cycle's.
+    const authoritative =
+      selected !== null && snapshot !== null && selected !== snapshot
+        ? carryDecibelCycleDerivedFieldsV1(selected, snapshot)
+        : selected;
     if (authoritative === null) throw new Error('AUTHENTICATED_SNAPSHOT_PUBLICATION_FAILED');
     if (
       authoritative.accountMetrics === undefined ||
