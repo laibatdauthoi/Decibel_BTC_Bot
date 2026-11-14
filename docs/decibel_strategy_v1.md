@@ -104,12 +104,13 @@ The adverse-TP candle rule is always on (its flag was removed with the legacy ru
 | `DECIBEL_ENTRY_CANDLE_FILTER_ENABLED` | Entries from flat skip the candle filter   |
 | `DECIBEL_CATASTROPHE_STOP_ENABLED`    | No venue catastrophe stop                  |
 
-## 9. Dashboard
+## 9. Strategy status (telemetry only)
 
-The STRATEGY strip (`decibel_strategy_status_v1`, telemetry `runtime.strategy`) shows the
-candle source, R, DCA additions used, the catastrophe stop trigger, and for each rule its
-state (PASS / BLOCK / WAIT / IDLE), the reason, and how many cycles of the current session it
-blocked or waited. It is presentation only and never feeds back into decisions.
+Each cycle the web runtime projects `decibel_strategy_status_v1` into telemetry
+`runtime.strategy` (GET `/api/telemetry`): candle source, R, DCA additions used, the
+catastrophe stop trigger, and for each rule its state (PASS / BLOCK / WAIT / IDLE), reason
+and blocked cycles this session. It is not shown on the dashboard (the operator's status
+areas are Settings and the top-right indicator) and never feeds back into decisions.
 
 ## 10. Backtest
 

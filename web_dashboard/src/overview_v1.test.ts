@@ -186,7 +186,7 @@ function getSection(html: string, className: string): string {
   return html.split(`<section class="${className}">`)[1]?.split('</section>')[0] ?? '';
 }
 describe('Overview evidence and original presentation', () => {
-  it('keeps original market header, two columns, planned BUY/SELL quotes, five metric cards and the strategy strip', () => {
+  it('keeps original market header, two columns, planned BUY/SELL quotes and five metric cards', () => {
     const p = createProps();
     const html = renderOverview(p);
     expect(html).toContain('class="market-view"');
@@ -224,9 +224,8 @@ describe('Overview evidence and original presentation', () => {
     expect(html).not.toContain('LIVE ORDERS');
     expect(html).not.toContain('<details');
     expect(html).not.toContain('overview-compact');
-    // Market header, bot state, quotes, metric cards and the strategy strip.
-    expect(html.match(/<section /g)).toHaveLength(5);
-    expect(html).toContain('strategy-strip');
+    expect(html.match(/<section /g)).toHaveLength(4);
+    expect(html).not.toContain('strategy-strip');
     expect(getSection(html, 'inventory-strip').match(/<small>/g)).toHaveLength(5);
   });
   it('stopped bot shows planned quotes with no session totals or assertion they are open orders', () => {
