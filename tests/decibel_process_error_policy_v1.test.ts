@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DECIBEL_GOT_SETTLED_CANCEL_MESSAGE_V1,
   installDecibelProcessErrorPolicyV1,
+  isDecibelGotNetworkErrorV1,
   isDecibelGotSettledCancelErrorV1,
 } from '../src/decibel_process_error_policy_v1.js';
 
@@ -56,5 +57,47 @@ describe('process error policy v1', () => {
     emitter.emit('uncaughtException', new TypeError('boom'), 'uncaughtException');
     expect(exit).toHaveBeenCalledWith(1);
     expect(contained).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The stack recorded when the bot exited on 2026-11-15 11:57 UTC after a network drop.
+const gotNetworkError = (code = 'ECONNRESET') => {
+  const error = Object.assign(new Error(`read ${code}`), { code });
+  error.name = 'RequestError';
+  error.stack = [
+    `RequestError: read ${code}`,
+    String.raw`    at ClientRequest.<anonymous> (D:\study\Decibel_BTC_Bot\node_modules\got\dist\source\core\index.js:970:111)`,
+    String.raw`    at ClientRequest.flushHeaders (D:\study\Decibel_BTC_Bot\node_modules\http2-wrapper\source\client-request.js:363:10)`,
+  ].join('\n');
+  return error;
+};
+
+describe('process error policy v1: got network errors', () => {
+  it('recognises only network RequestErrors raised from got', () => {
+    expect(isDecibelGotNetworkErrorV1(gotNetworkError())).toBe(true);
+    expect(isDecibelGotNetworkErrorV1(gotNetworkError('EAI_AGAIN'))).toBe(true);
+    expect(isDecibelGotNetworkErrorV1(gotNetworkError('ERR_NON_2XX_3XX_RESPONSE'))).toBe(false);
+    const elsewhere = gotNetworkError();
+    elsewhere.stack =
+      'RequestError: read ECONNRESET\n    at x (D:/study/Decibel_BTC_Bot/src/x.ts:1:1)';
+    expect(isDecibelGotNetworkErrorV1(elsewhere)).toBe(false);
+    expect(
+      isDecibelGotNetworkErrorV1(
+        Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps running through a got network error', () => {
+    const { emitter, exit, target } = fakeProcess();
+    const log = vi.fn();
+    const contained = vi.fn();
+    installDecibelProcessErrorPolicyV1(target, log, contained);
+    emitter.emit('uncaughtException', gotNetworkError(), 'uncaughtException');
+    expect(exit).not.toHaveBeenCalled();
+    expect(contained).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls[0]![0]).toContain(
+      'GOT_NETWORK_ERROR ORIGIN=uncaughtException CODE=ECONNRESET',
+    );
   });
 });

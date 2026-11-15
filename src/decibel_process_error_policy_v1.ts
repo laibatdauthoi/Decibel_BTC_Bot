@@ -7,6 +7,12 @@
  * Nothing can catch it, so Node exited the bot (twice on 2026-11-14, right after DNS
  * failures). The request it belongs to has already settled, so that one error is logged
  * and the process keeps running. Every other uncaught exception still exits with code 1.
+ *
+ * Extended 2026-11-16 (operator approved): got can also emit a network `RequestError`
+ * (for example `read ECONNRESET` from http2-wrapper's flushHeaders, 2026-11-15 11:57) on a
+ * request nobody listens to any more. Such a got network error is contained too: the bot's
+ * own reads and submissions observe failures through their awaited promises, and an order
+ * whose outcome is unknown is resolved by journal reconciliation, never by a blind retry.
  */
 export const DECIBEL_GOT_SETTLED_CANCEL_MESSAGE_V1 =
   'The `onCancel` handler was attached after the promise settled.';
@@ -16,6 +22,25 @@ export function isDecibelGotSettledCancelErrorV1(error: unknown): boolean {
     return false;
   const stack = (error.stack ?? '').replace(/\\/g, '/');
   return stack.includes('/p-cancelable/') && stack.includes('/got/');
+}
+
+export const DECIBEL_GOT_NETWORK_ERROR_CODES_V1: ReadonlySet<string> = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ECONNABORTED',
+  'ETIMEDOUT',
+  'EPIPE',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+]);
+
+export function isDecibelGotNetworkErrorV1(error: unknown): boolean {
+  if (!(error instanceof Error) || error.name !== 'RequestError') return false;
+  const code: unknown = Reflect.get(error, 'code');
+  if (typeof code !== 'string' || !DECIBEL_GOT_NETWORK_ERROR_CODES_V1.has(code)) return false;
+  return (error.stack ?? '').replace(/\\/g, '/').includes('/got/');
 }
 
 type process_like_v1 = Readonly<{
@@ -32,6 +57,13 @@ export function installDecibelProcessErrorPolicyV1(
     if (isDecibelGotSettledCancelErrorV1(error)) {
       log(
         `DECIBEL_PRODUCTION_CONTAINED_EXCEPTION=GOT_SETTLED_CANCEL ORIGIN=${origin} DETAIL=${error.message}`,
+      );
+      recordContained(error);
+      return;
+    }
+    if (isDecibelGotNetworkErrorV1(error)) {
+      log(
+        `DECIBEL_PRODUCTION_CONTAINED_EXCEPTION=GOT_NETWORK_ERROR ORIGIN=${origin} CODE=${String(Reflect.get(error, 'code'))} DETAIL=${error.message}`,
       );
       recordContained(error);
       return;
