@@ -13,6 +13,8 @@ export type decibel_production_session_runtime_v1 = Readonly<{
   activate?(): void;
   wake?(): void;
   closePaused?(): Promise<void>;
+  /** Stop the control loop for a process shutdown without ending the session. */
+  pauseForShutdown?(): Promise<Readonly<{ settled: boolean }>>;
   stop(reason: string): Promise<
     Readonly<{
       safeToEnd: boolean;
@@ -412,6 +414,32 @@ export class decibel_production_session_controller_v1 {
       const result = await Runtime.stop(reason);
       if (!result.safeToEnd) return this.Sessions.get(active.sessionId);
       return this.completeUnwind(active.sessionId, result.accounting ?? {}, reason);
+    });
+  }
+
+  /**
+   * Process shutdown (Ctrl+C) while a session runs: keep the session RUNNING, cancel resting
+   * opening orders, keep the reduce-only TP and the venue catastrophe stop, and release the
+   * runtime. The heartbeat stops, so the next process proves this owner absent and resumes the
+   * session through the normal crash recovery. A session that is already stopping is not paused.
+   */
+  public pauseForShutdown(): Promise<Readonly<{ paused: boolean; settled: boolean }>> {
+    return this.exclusive(async () => {
+      const active = this.Sessions.getActive();
+      const Runtime = this.Runtime;
+      if (
+        active === null ||
+        Runtime === null ||
+        !this.ownsActiveRuntime() ||
+        active.status !== 'RUNNING' ||
+        active.unwindRequested ||
+        active.takeoverPaused ||
+        !Runtime.pauseForShutdown
+      )
+        return Object.freeze({ paused: false, settled: false });
+      const result = await Runtime.pauseForShutdown();
+      this.Runtime = null;
+      return Object.freeze({ paused: true, settled: result.settled });
     });
   }
 

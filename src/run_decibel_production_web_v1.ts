@@ -560,6 +560,9 @@ export function assertDecibelSessionMutationOwnerV1(ownsRuntime: () => boolean):
     throw new execution_preflight_rejection_v1('SESSION_RUNTIME_OWNER_NOT_EXCLUSIVE');
 }
 
+/** Control cycles a Ctrl+C pause may run to cancel resting entries before the process exits. */
+const DECIBEL_SHUTDOWN_PAUSE_MAXIMUM_CYCLES_V1 = 6;
+
 export async function handleDecibelProductionSessionRequestV1(
   method: string,
   pathname: string,
@@ -2088,6 +2091,28 @@ export async function runDecibelProductionWebV1(
         execution = { ...execution, running: false, blocker: 'SESSION_TAKEOVER_PAUSED' };
         await RuntimeOrchestrator.close();
       },
+      pauseForShutdown: async () => {
+        RuntimeSupervisor.cancelScheduled(runtimeScheduleKey);
+        RuntimeSupervisor.cancelScheduled(`${runtimeScheduleKey}:replacement-follow-up`);
+        if (activeCycle !== null) await activeCycle;
+        if (runtimeClosed) return Object.freeze({ settled: true });
+        // Cancel resting entries so nothing opens while the bot is offline; the reduce-only TP
+        // and the venue catastrophe stop keep protecting an open position.
+        RuntimeOrchestrator.requestShutdownPause();
+        for (
+          let attempt = 0;
+          attempt < DECIBEL_SHUTDOWN_PAUSE_MAXIMUM_CYCLES_V1 &&
+          !runtimeClosed &&
+          !RuntimeOrchestrator.isShutdownPauseSettled();
+          attempt += 1
+        )
+          await scheduleCycle();
+        const settled = RuntimeOrchestrator.isShutdownPauseSettled();
+        runtimeClosed = true;
+        execution = { ...execution, running: false, blocker: 'SESSION_PAUSED_FOR_SHUTDOWN' };
+        await RuntimeOrchestrator.close();
+        return Object.freeze({ settled });
+      },
       setHistoricalRecoveryBlocker: (blocker: string | null) => {
         protectiveRecoveryBlocker = blocker;
         RuntimeOrchestrator.setHistoricalRecoveryBlocker(blocker);
@@ -2779,7 +2804,19 @@ export async function runDecibelProductionWebV1(
       closeLocalResources();
       return;
     }
-    void SessionController.end('PROCESS_SHUTDOWN')
+    // Ctrl+C pauses a running session instead of ending it: the next start resumes it. Use
+    // END to end a session; a session that is already stopping finishes its unwind.
+    void SessionController.pauseForShutdown()
+      .then((pause) => {
+        RuntimeForensics.record('SESSION_PAUSED_FOR_SHUTDOWN', { ...pause });
+        if (pause.paused) {
+          console.log(
+            `DECIBEL_PRODUCTION_WEB_SHUTDOWN=SESSION_PAUSED ENTRIES_CANCELLED=${pause.settled ? 'YES' : 'UNVERIFIED'}`,
+          );
+          return null;
+        }
+        return SessionController.end('PROCESS_SHUTDOWN');
+      })
       .catch((error: unknown) => {
         console.error(
           `DECIBEL_PRODUCTION_WEB_SHUTDOWN=OWNER_UNWIND_FAILED BLOCKER=${error instanceof Error ? error.message : 'UNKNOWN'}`,

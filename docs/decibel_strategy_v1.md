@@ -105,8 +105,18 @@ riskCapacity  = lossRemaining / (lossBps / 10_000)
 
 Operator END, `TARGET_VOLUME_REACHED`, `MAX_LOSS_REACHED` or
 `TARGET_UNREACHABLE_MINIMUM_ORDER`. A session terminalizes only after an authenticated flat
-position, zero orders, zero unresolved intents and a completed unwind. A restart while holding
-a position unwinds it at market.
+position, zero orders, zero unresolved intents and a completed unwind. An END (or a session
+already stopping when the process restarts) unwinds an open position at market.
+
+**Ctrl+C pauses, it does not end** (since 2026-11-16). On SIGINT/SIGTERM with a RUNNING session
+the bot cancels its resting entries (up to 6 control cycles), keeps the reduce-only TP and the
+venue catastrophe stop, leaves the session RUNNING and exits. The next start proves the old
+process absent (its heartbeat goes stale after 30 s) and resumes the session through the normal
+crash recovery. A session that is already stopping still finishes its unwind.
+
+**Network drops** do not stop the process: an uncaught got network `RequestError`
+(ECONNRESET, ETIMEDOUT, EAI_AGAIN, ...) is logged and contained like the got settled-cancel
+error (`decibel_process_error_policy_v1.ts`). Every other uncaught exception still exits.
 
 ## 8. Flags (all default on)
 

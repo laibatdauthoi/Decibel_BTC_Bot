@@ -620,6 +620,7 @@ export class decibel_production_live_orchestrator_v1 {
   private sessionUnwindRequested = false;
   /** Target reached: cancel resting entries, keep TP, finish when flat. No taker unwind. */
   private sessionDrainRequested = false;
+  private shutdownPauseRequested = false;
   private sessionUnwindCompleted = false;
   private riskReductionRequested = false;
   private IntendedAction: decibel_recycling_action_v1 | null = null;
@@ -1483,6 +1484,8 @@ export class decibel_production_live_orchestrator_v1 {
             throw new execution_preflight_rejection_v1('SESSION_TARGET_OR_UNWIND_PLACE_BLOCKED');
           if (this.sessionDrainRequested && intent.action === 'PLACE' && !intent.reduceOnly)
             throw new execution_preflight_rejection_v1('SESSION_TARGET_DRAINING');
+          if (this.shutdownPauseRequested && intent.action === 'PLACE' && !intent.reduceOnly)
+            throw new execution_preflight_rejection_v1('SESSION_SHUTDOWN_PAUSE');
         };
         this.DecisionGate = 'Source.validateSubmission';
         const validation = this.Source.validateSubmission?.(intent);
@@ -2232,13 +2235,14 @@ export class decibel_production_live_orchestrator_v1 {
       this.paused = true;
       return this.result('HOLD', null, 'SESSION_TARGET_DRAIN_COMPLETE', evaluation, 0);
     }
-    if (this.paused && !this.cancelAllRequested)
+    if (this.paused && !this.cancelAllRequested && !this.shutdownPauseRequested)
       return this.result('HOLD', null, 'OPERATOR_PAUSED', evaluation, 0);
     if (
       this.economicWarming &&
       this.HistoricalRecoveryBlocker === null &&
       !this.cancelAllRequested &&
       !this.sessionUnwindRequested &&
+      !this.shutdownPauseRequested &&
       evaluation.operatingState !== 'RISK_REDUCTION'
     )
       return this.result('HOLD', null, this.economicWarming, evaluation, 0);
@@ -2521,7 +2525,13 @@ export class decibel_production_live_orchestrator_v1 {
         0,
       );
     if (this.isDrainBlockedOpening(action, snapshot))
-      return this.result('BLOCKED', null, 'SESSION_TARGET_DRAINING', evaluation, 0);
+      return this.result(
+        'BLOCKED',
+        null,
+        this.isSessionDraining() ? 'SESSION_TARGET_DRAINING' : 'SESSION_SHUTDOWN_PAUSE',
+        evaluation,
+        0,
+      );
     const intent = buildIntent(action, evaluation, snapshot, this.cycleSequence);
     if (this.HistoricalRecoveryBlocker !== null) {
       if (action.current?.reduceOnly === true)
@@ -3317,8 +3327,35 @@ export class decibel_production_live_orchestrator_v1 {
     return this.sessionDrainRequested && !this.sessionUnwindRequested;
   }
 
+  /**
+   * Process shutdown without ending the session: cancel every resting opening order, refuse new
+   * ones and keep the reduce-only TP. Unlike a drain it never completes the session.
+   */
+  public requestShutdownPause(): void {
+    if (this.sessionUnwindRequested) return;
+    this.paused = false;
+    this.shutdownPauseRequested = true;
+  }
+
+  /** True once no opening order rests and no submission is unresolved. */
+  public isShutdownPauseSettled(): boolean {
+    const latest = this.getLatestSnapshot();
+    return (
+      this.shutdownPauseRequested &&
+      latest !== null &&
+      latest.input.openOrders.every((order) => order.reduceOnly === true) &&
+      this.Journal.nonTerminal().length === 0
+    );
+  }
+
+  private blocksOpeningOrders(): boolean {
+    return (
+      this.isSessionDraining() || (this.shutdownPauseRequested && !this.sessionUnwindRequested)
+    );
+  }
+
   private selectDrainCancellation(snapshot: decibel_production_live_snapshot_v1) {
-    if (!this.isSessionDraining()) return null;
+    if (!this.blocksOpeningOrders()) return null;
     const entry = snapshot.input.openOrders.find((order) => order.reduceOnly !== true);
     return entry
       ? {
@@ -3326,7 +3363,9 @@ export class decibel_production_live_orchestrator_v1 {
           side: entry.side,
           current: entry,
           desired: null,
-          reason: 'SESSION_TARGET_DRAIN_CANCEL_ENTRY',
+          reason: this.isSessionDraining()
+            ? 'SESSION_TARGET_DRAIN_CANCEL_ENTRY'
+            : 'SHUTDOWN_PAUSE_CANCEL_ENTRY',
         }
       : null;
   }
@@ -3336,7 +3375,7 @@ export class decibel_production_live_orchestrator_v1 {
     action: decibel_recycling_action_v1,
     snapshot: decibel_production_live_snapshot_v1,
   ): boolean {
-    if (!this.isSessionDraining()) return false;
+    if (!this.blocksOpeningOrders()) return false;
     if (action.action !== 'WOULD_PLACE' && action.action !== 'WOULD_REPLACE') return false;
     const desired = action.desired;
     if (desired === null) return false;

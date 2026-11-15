@@ -712,6 +712,70 @@ describe('Decibel production session V1', () => {
     fixture.Sessions.close();
   });
 
+  it('pauses a running session on Ctrl+C and the next process resumes it', async () => {
+    const fixture = createFixture(1_000);
+    const pauseForShutdown = vi.fn(() => Promise.resolve({ settled: true }));
+    const activate = vi.fn();
+    const first = new decibel_production_session_controller_v1(
+      fixture.Sessions,
+      fixture.Settings,
+      () => Promise.resolve({ stop: fixture.stop, activate, pauseForShutdown }),
+      () => 1_000,
+      () => undefined,
+      () => undefined,
+      { pid: 111, instanceId: '111-a' },
+    );
+    const session = await first.start(0);
+    await expect(first.pauseForShutdown()).resolves.toEqual({ paused: true, settled: true });
+    expect(pauseForShutdown).toHaveBeenCalledOnce();
+    expect(fixture.stop).not.toHaveBeenCalled();
+    expect(first.ownsActiveRuntime()).toBe(false);
+    expect(fixture.Sessions.get(session.sessionId)).toMatchObject({
+      status: 'RUNNING',
+      unwindRequested: false,
+    });
+
+    const resumedActivate = vi.fn();
+    const restarted = new decibel_production_session_controller_v1(
+      fixture.Sessions,
+      fixture.Settings,
+      () => Promise.resolve({ stop: fixture.stop, activate: resumedActivate }),
+      () => 1_000 + 31_000,
+      () => undefined,
+      () => undefined,
+      { pid: 222, instanceId: '222-b' },
+      (pid) => pid === 111,
+    );
+    await expect(restarted.recoverStartup()).resolves.toBe(1);
+    expect(resumedActivate).toHaveBeenCalledOnce();
+    expect(fixture.Sessions.getActive()).toMatchObject({
+      sessionId: session.sessionId,
+      status: 'RUNNING',
+      ownerPid: 222,
+    });
+    fixture.Sessions.close();
+  });
+
+  it('does not pause a session that is already stopping', async () => {
+    const fixture = createFixture(1_000);
+    const pauseForShutdown = vi.fn(() => Promise.resolve({ settled: true }));
+    const controller = new decibel_production_session_controller_v1(
+      fixture.Sessions,
+      fixture.Settings,
+      () => Promise.resolve({ stop: fixture.stop, pauseForShutdown }),
+      () => 1_000,
+    );
+    const session = await controller.start(0);
+    controller.requestUnwind(session.sessionId, 'MAX_LOSS_REACHED');
+    await expect(controller.pauseForShutdown()).resolves.toEqual({
+      paused: false,
+      settled: false,
+    });
+    expect(pauseForShutdown).not.toHaveBeenCalled();
+    expect(controller.ownsActiveRuntime()).toBe(true);
+    fixture.Sessions.close();
+  });
+
   it('retains the precise runtime preparation failure without silently retrying a rejected start', async () => {
     const fixture = createFixture();
     fixture.start.mockRejectedValueOnce(new Error('PRODUCTION_EXECUTOR_MODULE_REQUIRED'));

@@ -5046,6 +5046,58 @@ describe('Decibel production live orchestrator V1', () => {
     },
   );
 
+  it('cancels resting entries and opens nothing while paused for a process shutdown', async () => {
+    const Flat = makeSnapshot();
+    const openOrder = {
+      venueOrderId: 'pause-entry',
+      clientOrderId: `d1s${'e'.repeat(29)}`,
+      strategyConfigId: Flat.input.strategyConfigId,
+      market: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
+      side: 'SELL' as const,
+      price: 101,
+      quantity: 0.001,
+      orderType: 'LIMIT' as const,
+      timeInForce: 'PostOnly' as const,
+      postOnly: true as const,
+    };
+    const Resting = makeSnapshot({ input: { ...Flat.input, openOrders: [openOrder] } });
+    const test = make({
+      environment: { DECIBEL_EXECUTOR_DRY_RUN: 'false' },
+      snapshots: [Resting, Resting, Flat, Flat, Flat, Flat],
+      reconciliationResults: ['ORDER_OPEN', 'ORDER_CANCELLED', 'ORDER_CANCELLED'],
+      cancelTargetState: 'ORDER_OPEN',
+    });
+    const intent = buildDecibelExecutionIntentV1({
+      sessionId: Flat.input.sessionId,
+      cycleSequence: 1,
+      action: 'PLACE',
+      market: 'BTC/USD',
+      side: 'SELL',
+      price: openOrder.price,
+      quantity: openOrder.quantity,
+      tickSize: Flat.input.metadata.tickSize,
+      lotSize: Flat.input.metadata.lotSize,
+      clientOrderId: openOrder.clientOrderId,
+      knownVenueOrderId: null,
+      sourceStateHash: 'pause-entry',
+      strategyDecisionHash: 'pause-entry-decision',
+      createdAt: 1,
+    });
+    test.journal.prepare(intent);
+    test.journal.transition(intent.intentId, 'ACKNOWLEDGED', 2, openOrder.venueOrderId);
+    test.orchestrator.requestShutdownPause();
+
+    await test.orchestrator.evaluateOnce();
+    expect(test.submitted()).toContainEqual({ action: 'CANCEL', side: 'SELL' });
+    expect(test.orchestrator.isShutdownPauseSettled()).toBe(false);
+    for (let cycle = 0; cycle < 4 && !test.orchestrator.isShutdownPauseSettled(); cycle += 1)
+      await test.orchestrator.evaluateOnce();
+    expect(test.orchestrator.isShutdownPauseSettled()).toBe(true);
+    expect(test.submitted().filter((a) => a.action === 'PLACE')).toEqual([]);
+    expect(test.orchestrator.isSessionUnwindComplete()).toBe(false);
+    await test.orchestrator.close();
+  });
+
   it('switches a target drain to the reduce-only IOC unwind on an explicit unwind', async () => {
     const Positioned = makeSnapshot({
       input: { ...makeSnapshot().input, actualInventoryBase: 0.002 },
