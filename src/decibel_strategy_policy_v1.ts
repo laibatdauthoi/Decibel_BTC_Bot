@@ -55,6 +55,11 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     breakEvenStaleCloses: 3,
     /** "Break-even" accepts this net loss (bps of notional): a recovery missed by ~1 bps. */
     breakEvenToleranceBps: 1,
+    /** Adverse TP steps in units of R, the initial entry-to-TP distance (production since
+     * 2026-11-15, replacing the candle rule): after breakEvenMultiple x R against the entry
+     * the TP goes to break-even, then it moves stepMultiple x R closer for every further
+     * stepMultiple x R against. enabled = 0 restores the candle rule in the backtest only. */
+    rSteps: Object.freeze({ enabled: 1, breakEvenMultiple: 4, stepMultiple: 2 }),
     /** The rescue TP rests this far from the maker price. */
     rescueOffset: Object.freeze({ factor: 0.5, minBps: 5, maxBps: 20 }),
   }),
@@ -62,7 +67,9 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     /** Each addition needs the price this far against the current average entry (bps).
      * 25 -> 40 on 2026-11-14: better in both halves of the 05-14/11 backtest. */
     triggerBps: 40,
-    maximumAdditions: 2,
+    /** 0 disables DCA (2026-11-15, operator decision after backtests: in trends the
+     * additions doubled the losses). */
+    maximumAdditions: 0,
     /** The smallest addition, as a fraction of the position (keeps TP replacement exact). */
     minimumAdditionFraction: 1 / 3,
   }),

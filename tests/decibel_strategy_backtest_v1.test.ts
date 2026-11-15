@@ -78,6 +78,12 @@ describe('decibel strategy backtest v1', () => {
       ...config,
       dcaEnabled: true,
       maxLossUsd: 5,
+      // DCA is off in production; enable two additions to exercise the backtest logic.
+      policy: overrideDecibelBacktestPolicyV1(
+        DECIBEL_STRATEGY_POLICY_V1,
+        'dca.maximumAdditions',
+        2,
+      ),
     });
     expect(result.dcaAdditions).toBe(1);
   });

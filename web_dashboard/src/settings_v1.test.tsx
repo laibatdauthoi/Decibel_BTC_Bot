@@ -184,13 +184,12 @@ describe('Settings draft, saved and active configuration', () => {
   );
 
   it.each([
-    ['0.5', 30, 'NOT ENOUGH FOR DCA (MIN $0.81 · 2× $1.61)'],
-    ['0.81', 30, '2× DCA NEEDS MIN $1.61'],
-    ['1.61', 30, null],
-    ['0.1', 10, null], // the entry warning takes precedence
+    ['0.5', 30],
+    ['0.81', 30],
+    ['1.61', 30],
   ] as const)(
-    'warns inline when Max Loss %s cannot fund a DCA addition for a $%s entry',
-    (maxLoss, entry, warning) => {
+    'shows no DCA Max Loss hint for %s with a $%s entry while DCA is disabled',
+    (maxLoss, entry) => {
       const props = createProps();
       let view = renderView(props);
       view.inputs[2].props.onChange!({ target: { value: maxLoss } });
@@ -200,11 +199,7 @@ describe('Settings draft, saved and active configuration', () => {
         .match(/<label class="setting-row">.*?<\/label>/g)
         ?.find((row) => row.includes('MAX LOSS'));
       expect(maxLossRow).toBeDefined();
-      if (warning) expect(maxLossRow).toContain(`<small>${warning}</small>`);
-      else {
-        expect(maxLossRow).not.toContain('NOT ENOUGH FOR DCA');
-        if (entry === 30) expect(maxLossRow).not.toContain('2× DCA NEEDS');
-      }
+      expect(maxLossRow).not.toContain('DCA');
       expect(view.button('SAVE CHANGES').props.disabled).toBe(false);
     },
   );

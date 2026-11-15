@@ -1,4 +1,5 @@
 import { useSessionSharePreviewV1 } from './share_preview_v1';
+import { DECIBEL_STRATEGY_POLICY_V1 } from '../../src/decibel_strategy_policy_v1.js';
 import { ConfirmDialog } from './confirm_dialog_v1';
 import { SessionHistoryActions } from './activity_actions_v1';
 import { parseSavedSettingsV1, selectSavedSettingsV1 } from './settings_state_v1';
@@ -1237,10 +1238,14 @@ export const SettingsView = (
   const maxLossFloorUsd = calculateSettingsMinimumMaxLossUsdV1(draftEntrySizeUsd);
   const maxLossBelowFloor = isSettingsMaxLossBelowEntryFloorV1(pending.maxLoss, draftEntrySizeUsd);
   // Advisory: below this the risk capacity cannot fund even the smallest DCA addition.
-  const maxLossDCAFloorUsd = calculateSettingsMinimumMaxLossForDCAUsdV1(draftEntrySizeUsd);
+  // DCA hints only while the strategy allows additions (decibel_strategy_policy_v1).
+  const dcaAdditions = DECIBEL_STRATEGY_POLICY_V1.dca.maximumAdditions;
+  const maxLossDCAFloorUsd =
+    dcaAdditions >= 1 ? calculateSettingsMinimumMaxLossForDCAUsdV1(draftEntrySizeUsd) : null;
   const maxLossBelowDCAFloor = isSettingsMaxLossBelowDCAFloorV1(pending.maxLoss, draftEntrySizeUsd);
   // Hint: the Max Loss needed for both DCA additions.
-  const maxLossTwoDCAFloorUsd = calculateSettingsMinimumMaxLossForDCAUsdV1(draftEntrySizeUsd, 2);
+  const maxLossTwoDCAFloorUsd =
+    dcaAdditions >= 2 ? calculateSettingsMinimumMaxLossForDCAUsdV1(draftEntrySizeUsd, 2) : null;
   const maxLossBelowTwoDCAFloor = isSettingsMaxLossBelowDCAFloorV1(
     pending.maxLoss,
     draftEntrySizeUsd,

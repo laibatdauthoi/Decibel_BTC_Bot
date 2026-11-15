@@ -10070,106 +10070,93 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       }
     },
   );
-  it.each([1, -1])(
-    'admits a maker DCA addition far enough adverse within capacity (%s)',
-    (sign) => {
-      const fixture = tpPriceFixture(sign).snapshot;
-      const side = sign > 0 ? 'BUY' : 'SELL';
-      const maker = side === 'BUY' ? fixture.input.book.bestBid : fixture.input.book.bestAsk;
-      const position = fixture.input.actualInventoryBase;
-      // One authenticated opening fill: the entry, no addition used yet.
-      const entryOrder = {
-        venueOrderId: 'dca-entry',
-        localIntentId: 'dca-entry',
-        localExecutionRequestId: 'dca-entry',
-        marketAddress: fixture.input.market,
-        side,
-        requestedQuantity: Math.abs(position),
-      };
-      const ledger = applyDecibelActualFillTruthV1(createDecibelActualFillLedgerV1([entryOrder]), {
-        venueFillId: 'dca-entry-fill',
-        venueOrderId: entryOrder.venueOrderId,
-        localExecutionRequestId: entryOrder.localExecutionRequestId,
-        marketAddress: entryOrder.marketAddress,
-        side,
-        executedPrice: maker,
-        executedBaseQuantity: Math.abs(position),
-        executedUsdNotional: Math.abs(position) * maker,
-        makerOrTaker: 'MAKER',
-        receivedAt: new Date(fixture.input.now - 1000),
-        venueTimestamp: new Date(fixture.input.now - 1000),
-        fee: { availability: 'AVAILABLE', amount: 0.001, currency: 'USD' },
-        rebate: { availability: 'UNAVAILABLE', amount: null, currency: null },
-        executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM',
+  it.each([1, -1])('refuses every DCA addition while DCA is disabled (%s)', (sign) => {
+    const fixture = tpPriceFixture(sign).snapshot;
+    const side = sign > 0 ? 'BUY' : 'SELL';
+    const maker = side === 'BUY' ? fixture.input.book.bestBid : fixture.input.book.bestAsk;
+    const position = fixture.input.actualInventoryBase;
+    // One authenticated opening fill: the entry, no addition used yet.
+    const entryOrder = {
+      venueOrderId: 'dca-entry',
+      localIntentId: 'dca-entry',
+      localExecutionRequestId: 'dca-entry',
+      marketAddress: fixture.input.market,
+      side,
+      requestedQuantity: Math.abs(position),
+    };
+    const ledger = applyDecibelActualFillTruthV1(createDecibelActualFillLedgerV1([entryOrder]), {
+      venueFillId: 'dca-entry-fill',
+      venueOrderId: entryOrder.venueOrderId,
+      localExecutionRequestId: entryOrder.localExecutionRequestId,
+      marketAddress: entryOrder.marketAddress,
+      side,
+      executedPrice: maker,
+      executedBaseQuantity: Math.abs(position),
+      executedUsdNotional: Math.abs(position) * maker,
+      makerOrTaker: 'MAKER',
+      receivedAt: new Date(fixture.input.now - 1000),
+      venueTimestamp: new Date(fixture.input.now - 1000),
+      fee: { availability: 'AVAILABLE', amount: 0.001, currency: 'USD' },
+      rebate: { availability: 'UNAVAILABLE', amount: null, currency: null },
+      executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM',
+    });
+    // Midpoints every 30 s for 15 minutes; one sample in the last closed 5-minute candle
+    // can extend the move against the position by `extremeUsd`.
+    const candleMs = 300_000;
+    const currentStart = Math.floor(fixture.input.now / candleMs) * candleMs;
+    const midpoints = (extremeUsd: number) =>
+      Array.from({ length: 31 }, (_, i) => {
+        const at = fixture.input.now - (30 - i) * 30_000;
+        const inLast = at >= currentStart - candleMs && at < currentStart;
+        return {
+          at,
+          midpoint: inLast && i % 7 === 0 ? maker - sign * extremeUsd : maker,
+        };
       });
-      // Midpoints every 30 s for 15 minutes; one sample in the last closed 5-minute candle
-      // can extend the move against the position by `extremeUsd`.
-      const candleMs = 300_000;
-      const currentStart = Math.floor(fixture.input.now / candleMs) * candleMs;
-      const midpoints = (extremeUsd: number) =>
-        Array.from({ length: 31 }, (_, i) => {
-          const at = fixture.input.now - (30 - i) * 30_000;
-          const inLast = at >= currentStart - candleMs && at < currentStart;
-          return {
-            at,
-            midpoint: inLast && i % 7 === 0 ? maker - sign * extremeUsd : maker,
-          };
-        });
-      const snapshot = (basisOffsetBps: number, extremeUsd = 0) => ({
-        ...fixture,
-        marketStructure: createDecibelMarketStructureV1(
-          'BBO_FALLBACK',
-          midpoints(extremeUsd),
-          fixture.input.now,
-        ),
-        input: { ...fixture.input, actualFillLedger: ledger },
-        authenticatedPositions: [
-          {
-            market: 'BTC/USD',
-            size: position,
-            source: 'BOT' as const,
-            // A long's basis above the maker (a short's below) by the given distance.
-            entryPrice: maker * (1 + (sign * basisOffsetBps) / 10_000),
-          },
-        ],
-        sessionConfiguration: {
-          ...fixture.sessionConfiguration!,
-          preferredEntrySizeUsd: Math.abs(position) * maker,
-          exposureLimits: {
-            ...fixture.sessionConfiguration!.exposureLimits!,
-            riskCapacityUsd: Math.abs(position) * maker * 3,
-          },
+    const snapshot = (basisOffsetBps: number, extremeUsd = 0) => ({
+      ...fixture,
+      marketStructure: createDecibelMarketStructureV1(
+        'BBO_FALLBACK',
+        midpoints(extremeUsd),
+        fixture.input.now,
+      ),
+      input: { ...fixture.input, actualFillLedger: ledger },
+      authenticatedPositions: [
+        {
+          market: 'BTC/USD',
+          size: position,
+          source: 'BOT' as const,
+          // A long's basis above the maker (a short's below) by the given distance.
+          entryPrice: maker * (1 + (sign * basisOffsetBps) / 10_000),
+        },
+      ],
+      sessionConfiguration: {
+        ...fixture.sessionConfiguration!,
+        preferredEntrySizeUsd: Math.abs(position) * maker,
+        exposureLimits: {
+          ...fixture.sessionConfiguration!.exposureLimits!,
+          riskCapacityUsd: Math.abs(position) * maker * 3,
+        },
+      },
+    });
+    const decide = (snap: ReturnType<typeof snapshot>) =>
+      evaluateTradingDecision(snap, {
+        now: snap.input.now,
+        sessionId: snap.input.sessionId,
+        state: 'RUNNING',
+        candidate: {
+          side,
+          price: maker,
+          quantity: Math.abs(position),
+          reduceOnly: false,
+          postOnly: true,
+          timeInForce: 'PostOnly',
         },
       });
-      const decide = (snap: ReturnType<typeof snapshot>) =>
-        evaluateTradingDecision(snap, {
-          now: snap.input.now,
-          sessionId: snap.input.sessionId,
-          state: 'RUNNING',
-          candidate: {
-            side,
-            price: maker,
-            quantity: Math.abs(position),
-            reduceOnly: false,
-            postOnly: true,
-            timeInForce: 'PostOnly',
-          },
-        });
-      const far = decide(snapshot(50));
-      expect(far.actionPlan[side].reason).not.toMatch(/^(DCA_|POSITION_GROWTH)/);
-      expect(decide(snapshot(10)).actionPlan[side].reason).toBe('DCA_ADVERSE_DISTANCE_REQUIRED');
-      // The last closed candle still extends the move: wait for it to settle.
-      expect(decide(snapshot(50, 10)).actionPlan[side].reason).toBe(
-        sign > 0 ? 'DCA_PRICE_STILL_MAKING_NEW_LOWS' : 'DCA_PRICE_STILL_MAKING_NEW_HIGHS',
-      );
-      // No candle history: no addition.
-      expect(
-        decide({ ...snapshot(50), marketStructure: undefined } as unknown as ReturnType<
-          typeof snapshot
-        >).actionPlan[side].reason,
-      ).toBe('DCA_CANDLE_EVIDENCE_REQUIRED');
-    },
-  );
+    // DCA is off since 2026-11-15 (dca.maximumAdditions = 0): far adverse or not.
+    for (const basisOffsetBps of [10, 50, 200])
+      expect(decide(snapshot(basisOffsetBps)).actionPlan[side].reason).toBe('DCA_DISABLED');
+  });
   it.each(
     [1, -1].flatMap((sign) =>
       [false, true].flatMap((restartPending) =>
@@ -10574,8 +10561,10 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   ): decibel_production_live_snapshot_v1 => {
     const base = pid18876Snapshot(sign, false, 0.00047);
     const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
-    const bid = sign < 0 ? 75781 : mirror(75781.1);
-    const ask = sign < 0 ? 75781.1 : mirror(75781);
+    // 125 USD against the 75700 basis: past 6R of the 18.6 USD initial TP distance, so the
+    // 4R/2R rule takes its second step (break-even plus 2R).
+    const bid = sign < 0 ? 75825 : mirror(75825.1);
+    const ask = sign < 0 ? 75825.1 : mirror(75825);
     const basis = basisOverride ?? (sign < 0 ? 75700 : mirror(75700));
     // Explicit synthetic opening fill and 35s continuous regime. The incident
     // journal frame did not contain this history; do not label it observed.
@@ -10816,8 +10805,9 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           },
         },
       };
-      // Without candle evidence the candle rule cannot step, so only the re-target can.
-      const plan = planDecibelPatientTPV1({ ...snapshot, marketStructure: undefined }, side);
+      // The new average's R steps are not reached yet (50 USD against, R = 93.6 USD), so only
+      // the re-target can move the TP.
+      const plan = planDecibelPatientTPV1(snapshot, side);
       expect(plan.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
       // Closer to the market than the old TP, still a profitable TP for the new average.
       expect(direction * (plan.targetPrice! - oldTP.price)).toBeGreaterThan(0);
@@ -10825,137 +10815,58 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       // Not an adverse step: the candle timer keeps the position's opening time.
       expect(plan.authorization!.observedAt).toBeLessThan(now - 60_000);
       // Without a DCA the same old price is kept (a volatility change never reprices it).
-      expect(planDecibelPatientTPV1({ ...base, marketStructure: undefined }, side).reason).toBe(
-        'TP_ADVERSE_CANDLE_EVIDENCE_REQUIRED',
+      expect(planDecibelPatientTPV1(movePatientMarket(base, mirror(75720)), side).reason).toBe(
+        'TP_ADVERSE_WITHIN_R_STEPS',
       );
     },
   );
 
   it.each([1, -1])(
-    'Candle rule moves the TP only after three closed 5-minute candles outside the band (%s)',
+    'R steps: break-even after 4R against, then 2R closer per further 2R (%s)',
     (sign) => {
       const side = sign < 0 ? 'BUY' : 'SELL';
       const direction = sign < 0 ? 1 : -1;
       const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
-      const minute = 60_000;
-      const now = 1_800_000_000_000 + 2 * minute;
+      const now = 1_800_000_000_000 + 2 * 60_000;
       const fixture = adaptiveTPFixture(sign, now);
+      // Initial TP 50 USD from the 75700 basis: R = 50, break-even at 200 USD against.
       const base = {
         ...fixture,
         input: {
           ...fixture.input,
-          // A TP well inside profit, so break-even leaves room for the first step.
           openOrders: [{ ...fixture.input.openOrders[0]!, price: mirror(75650) }],
         },
       };
-      // 19.8 bps adverse (maker 75850 vs basis 75700); 6 bps range -> 10 bps safe band.
-      const far = (outsideMinutes: number, snapshot = base) => {
-        const moved = movePatientMarket(snapshot, mirror(75850));
-        return {
-          ...moved,
-          priceRangeBps: 6,
-          marketStructure: createDecibelMarketStructureV1(
-            'BBO_FALLBACK',
-            Array.from({ length: 25 }, (_, i) => {
-              const minutesAgo = 24 - i;
-              return {
-                at: moved.input.now - minutesAgo * minute,
-                midpoint: minutesAgo <= outsideMinutes ? mirror(75850) : mirror(75720),
-              };
-            }),
-            moved.input.now,
-          ),
-        };
-      };
-      // Outside for 4 minutes: only one candle has closed.
-      expect(planDecibelPatientTPV1(far(4), side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
-      // Outside for 9 minutes: two closes, still waiting for the third.
-      expect(planDecibelPatientTPV1(far(9), side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
-      // Outside for 14 minutes: three closes, the first step goes to break-even.
-      const ready = far(14);
-      const breakEven = getDecibelBreakEvenTPPriceV1(ready, side)!;
-      const first = planDecibelPatientTPV1(ready, side);
+      const at = (maker: number, snapshot = base) =>
+        planDecibelPatientTPV1(movePatientMarket(snapshot, mirror(maker)), side);
+      // 3R against: wait.
+      expect(at(75850).reason).toBe('TP_ADVERSE_WITHIN_R_STEPS');
+      // 4R against: break-even.
+      const atFour = movePatientMarket(base, mirror(75900));
+      const breakEven = getDecibelBreakEvenTPPriceV1(atFour, side)!;
+      const first = planDecibelPatientTPV1(atFour, side);
       expect(first).toMatchObject({
         reason: 'REPRICE:TP_ADVERSE_EXIT_REPRICE',
         targetPrice: breakEven,
       });
-      expect(assessDecibelAdaptiveTPV1(ready, side, breakEven).allowed).toBe(true);
-      // Right after the step: three new closes are needed again.
-      const atBreakEven = {
+      expect(first.authorization!.recoveryDistancePrice).toBeCloseTo(50, 9);
+      // Resting at break-even: 5R against is not a new step, 6R is (2R closer).
+      const rested = {
         ...base,
         tpAdverseProgress: first.authorization,
         input: { ...base.input, openOrders: [{ ...base.input.openOrders[0]!, price: breakEven }] },
       };
-      expect(planDecibelPatientTPV1(far(19, atBreakEven), side).reason).toBe(
-        'TP_ADVERSE_AWAITING_CANDLE_CLOSES',
+      expect(at(75950, rested).reason).toBe('TP_ADVERSE_AWAITING_NEXT_R_STEP');
+      const second = at(76000, rested);
+      expect(second.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
+      // 2R = 100 USD closer, within one tick of rounding.
+      expect(Math.abs(direction * (second.targetPrice! - breakEven) - 100)).toBeLessThanOrEqual(
+        0.1 + 1e-6,
       );
-      // Three closes after the step: the TP rests the rescue offset from the maker.
-      const later = {
-        ...atBreakEven,
-        tpAdverseProgress: {
-          ...first.authorization!,
-          observedAt: first.authorization!.observedAt - 14 * minute,
-        },
-      };
-      const rescue = planDecibelPatientTPV1(far(19, later), side);
-      expect(rescue.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
-      expect(direction * (rescue.targetPrice! - breakEven)).toBeGreaterThan(0);
-      // Back inside the band: no step.
-      const inside = {
-        ...far(14),
-        marketStructure: createDecibelMarketStructureV1('BBO_FALLBACK', [], now),
-      };
-      expect(
-        planDecibelPatientTPV1(
-          {
-            ...movePatientMarket(base, mirror(75760)),
-            priceRangeBps: 6,
-            marketStructure: createDecibelMarketStructureV1('BBO_FALLBACK', [], now),
-          },
-          side,
-        ).reason,
-      ).toBe('TP_ADVERSE_INSIDE_SAFE_BAND');
-      expect(planDecibelPatientTPV1(inside, side).reason).toBe('TP_ADVERSE_AWAITING_CANDLE_CLOSES');
-      // Fallback: at break-even for three closes since the step, the rescue step is allowed
-      // even though the price came back inside the band two minutes ago.
-      const choppy = (snapshot: decibel_production_live_snapshot_v1) => {
-        const moved = far(14, snapshot);
-        return {
-          ...moved,
-          marketStructure: createDecibelMarketStructureV1(
-            'BBO_FALLBACK',
-            moved.marketStructure.samples.map((sample) =>
-              sample.at === moved.input.now - 2 * minute
-                ? { ...sample, midpoint: mirror(75720) }
-                : sample,
-            ),
-            moved.input.now,
-          ),
-        };
-      };
-      const stale = {
-        ...atBreakEven,
-        tpAdverseProgress: {
-          ...first.authorization!,
-          observedAt: first.authorization!.observedAt - 31 * minute,
-        },
-      };
-      const fallback = planDecibelPatientTPV1(choppy(stale), side);
-      expect(fallback.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
-      expect(direction * (fallback.targetPrice! - breakEven)).toBeGreaterThan(0);
-      const notYet = {
-        ...atBreakEven,
-        tpAdverseProgress: {
-          ...first.authorization!,
-          observedAt: first.authorization!.observedAt - 10 * minute,
-        },
-      };
-      expect(planDecibelPatientTPV1(choppy(notYet), side).reason).toBe(
-        'TP_ADVERSE_AWAITING_CANDLE_CLOSES',
-      );
+      // Never away from the market: back inside the steps the TP stays.
+      expect(at(75800, rested).reason).toBe('TP_ADVERSE_WITHIN_R_STEPS');
     },
   );
-
   it.each([1, -1])(
     'places one wide catastrophe stop for an open position after the cycle (%s)',
     async (sign) => {
@@ -11047,7 +10958,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       { ...base, input: { ...base.input, book: { ...base.input.book, observedAt: 0 } } },
     ];
     for (const snapshot of cases)
-      expect(constructDecibelAdaptiveTPPriceV1(snapshot, 'BUY', 0.00047, 75781).price).toBe(
+      expect(constructDecibelAdaptiveTPPriceV1(snapshot, 'BUY', 0.00047, 75825).price).toBe(
         base.input.openOrders[0]!.price,
       );
   });
@@ -11080,8 +10991,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     };
     expect(planDecibelPatientTPV1(recovered, side)).toEqual(planDecibelPatientTPV1(base, side));
     expect(planDecibelPatientTPV1(recovered, side).adjustmentReady).toBe(true);
-    expect(constructDecibelAdaptiveTPPriceV1(recovered, side, 0.00047, 75781).price).toBe(
-      constructDecibelAdaptiveTPPriceV1(base, side, 0.00047, 75781).price,
+    expect(constructDecibelAdaptiveTPPriceV1(recovered, side, 0.00047, 75825).price).toBe(
+      constructDecibelAdaptiveTPPriceV1(base, side, 0.00047, 75825).price,
     );
   });
 
@@ -11095,7 +11006,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       const current = mild.input.openOrders[0]!;
       const action = { action: 'NO_OP' as const, side, current, desired: null, reason: 'HOLD' };
       const review = evaluateDecibelTPPriceSuitabilityV1(action, mild, null, 0, 0)!;
-      expect(review.TP_REPRICE_REASON).toBe('KEEP:TP_ADVERSE_INSIDE_SAFE_BAND');
+      expect(review.TP_REPRICE_REASON).toBe('KEEP:TP_ADVERSE_WITHIN_R_STEPS');
       expect(review.TP_PRICE_SUITABILITY).toBe('KEEP');
       expect(review.TP_ADVERSE_MOVEMENT_BAND_USD).toBeGreaterThan(0);
       const missing = {
@@ -11257,7 +11168,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
           openOrders: [{ ...snapshot.input.openOrders[0]!, quantity: 0.0003 }],
         },
       };
-    const partialTarget = constructDecibelAdaptiveTPPriceV1(snapshot, 'BUY', 0.00047, 75768).price!;
+    const partialTarget = constructDecibelAdaptiveTPPriceV1(snapshot, 'BUY', 0.00047, 75700).price!;
     let terminal = false;
     const journalPath = join(mkdtempSync(join(tmpdir(), 'adaptive-tp-')), 'journal.sqlite');
     let test = make({
@@ -11587,7 +11498,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
                 ...current,
                 generation: 1,
                 strategyConfigId: snapshot.input.strategyConfigId,
-                price: 75768,
+                price: 75700,
               },
               reason: 'TP_PRICE_REVIEW_REQUIRED',
             },
@@ -11597,7 +11508,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
             0,
           )?.TP_REPRICE_DECISION,
         ).toBe('KEEP');
-      } else expect(assessDecibelAdaptiveTPV1(snapshot, 'BUY', 75768).allowed).toBe(false);
+      } else expect(assessDecibelAdaptiveTPV1(snapshot, 'BUY', 75700).allowed).toBe(false);
     },
   );
 
@@ -11608,7 +11519,7 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
       let price = 75681.4;
       let replacements = 0;
       for (let i = 0; i < 10000; i++) {
-        const bid = 75810 + (i % 2 ? 0.1 : 0);
+        const bid = 75830 + (i % 2 ? 0.1 : 0);
         snapshot = {
           ...snapshot,
           input: {

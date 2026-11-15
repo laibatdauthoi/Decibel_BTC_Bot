@@ -21,7 +21,18 @@ describe('single DCA addition', () => {
     preferredEntrySizeUsd: 30,
     riskCapacityUsd: 60,
     openingOrderCount: 1,
+    // DCA is off in production (policy 0); these tests exercise the addition logic.
+    maximumAdditions: 2,
   };
+
+  it('is disabled by the production policy', () => {
+    const production = { ...long };
+    Reflect.deleteProperty(production, 'maximumAdditions');
+    expect(assessDecibelDCAV1(production)).toMatchObject({
+      allowed: false,
+      reason: 'DCA_DISABLED',
+    });
+  });
 
   it('admits one addition capped by the preferred size and the remaining risk capacity', () => {
     const admitted = assessDecibelDCAV1(long);

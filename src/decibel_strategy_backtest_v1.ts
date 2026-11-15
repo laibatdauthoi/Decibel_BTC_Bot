@@ -101,6 +101,8 @@ type position_v1 = {
   additions: number;
   tpPrice: number;
   tpStage: 'NORMAL' | 'BREAK_EVEN' | 'RESCUE';
+  /** Initial entry-to-TP distance (price), the R of the R-step rule. */
+  initialR: number;
   lastStepAt: number | null;
   realizedUsd: number;
   feesUsd: number;
@@ -196,6 +198,7 @@ export function runDecibelStrategyBacktestV1(
       additions: 0,
       tpPrice: initialTP(direction, price),
       tpStage: 'NORMAL',
+      initialR: Math.abs(initialTP(direction, price) - price),
       lastStepAt: null,
       realizedUsd: 0,
       feesUsd: fee,
@@ -383,7 +386,34 @@ export function runDecibelStrategyBacktestV1(
     // Adverse TP repricing: the candle rule.
     const direction = pos.direction;
     const makerPrice = direction > 0 ? row.ask : row.bid;
-    if (config.adverseRuleEnabled) {
+    const steps = P.adverse.rSteps;
+    if (config.adverseRuleEnabled && steps.enabled > 0 && pos.initialR > 0) {
+      // R-step rule: break-even after breakEvenMultiple x R against, then one step of
+      // stepMultiple x R closer per further stepMultiple x R against. Never moves away.
+      const R = pos.initialR;
+      const against = -direction * (makerPrice - pos.averagePrice);
+      const breakEven = roundToTick(
+        pos.averagePrice *
+          (1 + (direction * (2 * config.makerFeeBps - P.adverse.breakEvenToleranceBps)) / 10_000),
+        tick,
+        direction > 0 ? 'UP' : 'DOWN',
+      );
+      if (against >= steps.breakEvenMultiple * R) {
+        const k = Math.floor((against - steps.breakEvenMultiple * R) / (steps.stepMultiple * R));
+        const target = roundToTick(
+          breakEven - direction * k * steps.stepMultiple * R,
+          tick,
+          direction > 0 ? 'UP' : 'DOWN',
+        );
+        if (direction * (pos.tpPrice - target) > tick / 2) {
+          if (pos.tpStage === 'NORMAL') breakEvenSteps += 1;
+          else rescueSteps += 1;
+          pos.tpPrice = target;
+          pos.tpStage = k === 0 ? 'BREAK_EVEN' : 'RESCUE';
+          pos.lastStepAt = now;
+        }
+      }
+    } else if (config.adverseRuleEnabled) {
       const safeBand = scaleDecibelBacktestBpsV1(range, P.adverse.safeBand);
       const outside = (price: number) =>
         (-direction * (price - pos.averagePrice) * 10_000) / pos.averagePrice >= safeBand;

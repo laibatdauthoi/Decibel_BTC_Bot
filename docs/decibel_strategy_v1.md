@@ -47,28 +47,23 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
   cancelled and replaced at full size at the same price.
 - A new TP aims for net `clamp(0.25 x R, 1.5, 10)` bps after fees.
 
-### Adverse repricing (candle rule)
+### Adverse repricing (R steps, since 2026-11-15)
 
-- **Safe band** = `clamp(1.2 x R, 10, 25)` bps against the entry basis.
-- A step needs the price outside the band **and** 3 closed 5-minute candles with no return
-  inside it, counted from the latest of: leaving the band, the opening fill, the previous step.
-- First step: TP to **break-even** (net ≥ −1 bps of notional).
-- Later steps: TP rests `clamp(0.5 x R, 5, 20)` bps from the maker price (rescue).
-- A TP already at break-even for 3 closes since the previous step may take the rescue step
-  even if the price came back inside the band.
-- Without a market structure the TP holds (`TP_ADVERSE_CANDLE_EVIDENCE_REQUIRED`). The
-  earlier time rule and recovery corridor were removed on 2026-11-14.
+- **R** is the initial entry-to-TP distance (kept across steps).
+- After **4R** against the entry basis the TP moves to **break-even** (net ≥ −1 bps of
+  notional).
+- Then for every further **2R** against, the TP moves **2R closer** to the market. It never
+  moves away and never rests through the maker price.
+- Chosen from backtests on 2026-11-05..14 (live parameters, DCA off): about 1.5× the volume
+  of never moving the TP and half the holding time, at a lower cost per volume than the
+  earlier candle rule. Max Loss stays the hard stop.
 
 ## 4. DCA
 
-- At most 2 maker additions per position, counted from the session's fill ledger.
-- Each needs the price ≥ 40 bps against the **current** average entry basis.
-- Only after the last closed 5-minute candle stops extending the move (no new low for a long,
-  no new high for a short): `DCA_PRICE_STILL_MAKING_NEW_LOWS/HIGHS`.
-- Size: at least 1/3 of the position, at most the preferred entry size and the risk capacity
-  left after the position. The TP is then replaced at full size.
-- After an addition the TP moves to the normal TP of the new average (it was set for the old
-  one); this does not restart the adverse candle timer.
+Disabled since 2026-11-15 (`dca.maximumAdditions = 0`, reason `DCA_DISABLED`): in trending
+markets the additions doubled the losses. The addition logic (trigger, momentum gate,
+risk-capacity cap, TP re-target to the new average) is kept for a future re-enable, and the
+Settings DCA Max Loss hints are hidden while it is off.
 
 ## 5. Risk
 
@@ -80,7 +75,7 @@ riskCapacity  = lossRemaining / (lossBps / 10_000)
 
 - The session Max Loss triggers the canonical reduce-only unwind. There is no tight
   per-position stop-loss (it would realize noise as taker losses).
-- Settings shows the Max Loss needed for one and two DCA additions ($0.81 and $1.61 for a $30 entry).
+- Settings shows the Max Loss needed for DCA only while DCA is enabled.
 
 ## 6. Catastrophe stop (offline protection only)
 

@@ -42,8 +42,11 @@ export function assessDecibelDCAV1(
     riskCapacityUsd: number | null | undefined;
     /** Distinct filled opening orders in the current position epoch; null if unproven. */
     openingOrderCount: number | null;
+    /** Defaults to the policy (0: DCA disabled); tests pass their own. */
+    maximumAdditions?: number;
   }>,
 ): decibel_dca_assessment_v1 {
+  const maximumAdditions = input.maximumAdditions ?? DECIBEL_DCA_MAXIMUM_ADDITIONS_V1;
   const { positionBase, entryBasis, markPrice } = input;
   const side = positionBase > 0 ? 'BUY' : positionBase < 0 ? 'SELL' : null;
   const result = (
@@ -58,6 +61,7 @@ export function assessDecibelDCAV1(
       priceLimit,
       maximumNotionalUsd,
     });
+  if (maximumAdditions <= 0) return result('DCA_DISABLED');
   if (side === null || !Number.isFinite(positionBase)) return result('DCA_POSITION_REQUIRED');
   if (!finitePositive(entryBasis)) return result('DCA_ENTRY_BASIS_REQUIRED');
   if (!finitePositive(markPrice)) return result('DCA_MARK_PRICE_REQUIRED');
@@ -68,8 +72,7 @@ export function assessDecibelDCAV1(
   const openings = input.openingOrderCount;
   if (openings === null || !Number.isSafeInteger(openings) || openings < 1)
     return result('DCA_FILL_HISTORY_REQUIRED', priceLimit);
-  if (openings - 1 >= DECIBEL_DCA_MAXIMUM_ADDITIONS_V1)
-    return result('DCA_ADDITIONS_USED', priceLimit);
+  if (openings - 1 >= maximumAdditions) return result('DCA_ADDITIONS_USED', priceLimit);
   const capacity = input.riskCapacityUsd;
   if (typeof capacity !== 'number' || !Number.isFinite(capacity) || capacity < 0)
     return result('DCA_RISK_CAPACITY_REQUIRED', priceLimit);
