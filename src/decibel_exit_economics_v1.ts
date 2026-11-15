@@ -1,3 +1,4 @@
+import { countDecibelOpeningOrdersV1 } from './decibel_dca_v1.js';
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 import type { tp_adverse_progress_v1 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_CAPACITY_POLICY_V1 } from './decibel_risk_capacity_v1.js';
@@ -239,7 +240,7 @@ export function planDecibelPatientTPV1(
   );
   const band = bandTicks * tick;
   const distanceTicks = Math.round((direction * (maker - resting.price)) / tick);
-  const authorize = (stepTicks: number, minimumStepTicks: number) => {
+  const authorize = (stepTicks: number, minimumStepTicks: number, observedAt = input.now) => {
     const targetPrice = Number(
       ((Math.round(resting.price / tick) + direction * stepTicks) * tick).toPrecision(15),
     );
@@ -253,7 +254,7 @@ export function planDecibelPatientTPV1(
         targetPrice,
         previousPrice: resting.price,
         quantity: Math.abs(input.actualInventoryBase),
-        observedAt: input.now,
+        observedAt,
         triggerBandPrice: band,
         recoveryDistancePrice,
       },
@@ -261,6 +262,28 @@ export function planDecibelPatientTPV1(
       minimumStepTicks,
     );
   };
+  // After a DCA addition the TP still rests where it was set for the old average (the
+  // coverage upsize keeps its price). Move it to the normal TP of the current average;
+  // this is not an adverse step, so the candle timer keeps its reference (live 2026-11-14
+  // 21:02: a doubled TP sat 66 bps above the new average for 8 minutes).
+  if ((countDecibelOpeningOrdersV1(snapshot) ?? 0) >= 2) {
+    const normal = constructDecibelProfitableTPPriceV1(
+      snapshot,
+      side,
+      Math.abs(input.actualInventoryBase),
+      maker,
+    ).price;
+    const excessTicks =
+      normal === null
+        ? 0
+        : direction * (Math.round(normal / tick) - Math.round(resting.price / tick));
+    if (excessTicks > Math.max(1, spreadTicks))
+      return authorize(
+        excessTicks,
+        excessTicks,
+        progress?.observedAt ?? (Number.isFinite(epoch?.openedAt) ? epoch!.openedAt : input.now),
+      );
+  }
   // Candle rule (the only adverse rule since 2026-11-14): an adverse step needs the
   // price outside the safe band and two closed 5-minute candles without a return inside it,
   // counted from when it left the band, the opening fill or the previous step (whichever is

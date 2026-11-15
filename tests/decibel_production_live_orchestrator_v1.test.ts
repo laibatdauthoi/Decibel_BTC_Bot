@@ -10762,6 +10762,76 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
   };
 
   it.each([1, -1])(
+    'moves a TP left at the old price after a DCA to the normal TP of the new average (%s)',
+    (sign) => {
+      const side = sign < 0 ? ('BUY' as const) : ('SELL' as const);
+      const direction = side === 'BUY' ? 1 : -1;
+      const mirror = (p: number) => (sign < 0 ? p : 151426.8 - p);
+      const now = 1_800_000_000_000 + 2 * 60_000;
+      const base = adaptiveTPFixture(sign, now);
+      const ledger = base.input.actualFillLedger;
+      const entryFill = ledger.fills[0]!;
+      // One DCA addition of the same size, 150 USD further against the position.
+      const addition = {
+        ...ledger.orders[0]!,
+        venueOrderId: 'patient-dca',
+        localIntentId: 'patient-dca',
+        localExecutionRequestId: 'patient-dca',
+      };
+      const dcaPrice = mirror(75850);
+      const grown = applyDecibelActualFillTruthV1(
+        { ...ledger, orders: [...ledger.orders, addition] },
+        {
+          ...entryFill,
+          venueFillId: 'patient-dca-fill',
+          venueOrderId: addition.venueOrderId,
+          localExecutionRequestId: addition.localExecutionRequestId,
+          executedPrice: dcaPrice,
+          executedUsdNotional: dcaPrice * 0.00047,
+          receivedAt: new Date(now - 60_000),
+          venueTimestamp: new Date(now - 60_000),
+        },
+      );
+      const average = (base.authenticatedPositions![0]!.entryPrice! + dcaPrice) / 2;
+      const oldTP = base.input.openOrders[0]!;
+      const snapshot = {
+        ...base,
+        input: {
+          ...base.input,
+          actualInventoryBase: sign * 0.00094,
+          actualFillLedger: grown,
+          // The coverage upsize already covers the whole position at the old price.
+          openOrders: [{ ...oldTP, quantity: 0.00094 }],
+        },
+        authenticatedPositions: [
+          { ...base.authenticatedPositions![0]!, size: sign * 0.00094, entryPrice: average },
+        ],
+        reductionCapacity: { ...base.reductionCapacity!, maximumQuantityBtc: 0.00094 },
+        sessionConfiguration: {
+          ...base.sessionConfiguration!,
+          exitAccounting: {
+            ...base.sessionConfiguration!.exitAccounting!,
+            inventoryBase: sign * 0.00094,
+            entryBasis: average,
+          },
+        },
+      };
+      // Without candle evidence the candle rule cannot step, so only the re-target can.
+      const plan = planDecibelPatientTPV1({ ...snapshot, marketStructure: undefined }, side);
+      expect(plan.reason).toBe('REPRICE:TP_ADVERSE_EXIT_REPRICE');
+      // Closer to the market than the old TP, still a profitable TP for the new average.
+      expect(direction * (plan.targetPrice! - oldTP.price)).toBeGreaterThan(0);
+      expect(direction * (average - plan.targetPrice!)).toBeGreaterThan(0);
+      // Not an adverse step: the candle timer keeps the position's opening time.
+      expect(plan.authorization!.observedAt).toBeLessThan(now - 60_000);
+      // Without a DCA the same old price is kept (a volatility change never reprices it).
+      expect(planDecibelPatientTPV1({ ...base, marketStructure: undefined }, side).reason).toBe(
+        'TP_ADVERSE_CANDLE_EVIDENCE_REQUIRED',
+      );
+    },
+  );
+
+  it.each([1, -1])(
     'Candle rule moves the TP only after three closed 5-minute candles outside the band (%s)',
     (sign) => {
       const side = sign < 0 ? 'BUY' : 'SELL';

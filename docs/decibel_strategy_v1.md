@@ -67,6 +67,8 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
   no new high for a short): `DCA_PRICE_STILL_MAKING_NEW_LOWS/HIGHS`.
 - Size: at least 1/3 of the position, at most the preferred entry size and the risk capacity
   left after the position. The TP is then replaced at full size.
+- After an addition the TP moves to the normal TP of the new average (it was set for the old
+  one); this does not restart the adverse candle timer.
 
 ## 5. Risk
 
