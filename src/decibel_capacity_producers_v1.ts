@@ -653,26 +653,45 @@ export function produceDecibelPostFillMarginV1(
   const sells = openingOrders.filter((o) => o.side === 'SELL').reduce((s, o) => s + o.quantity, 0);
   const quantity = input.candidateHeadroomUsd / input.midpoint;
   const positions = [input.positionBase + buys + quantity, input.positionBase - sells - quantity];
-  const allocated = Math.min(input.capitalUsd * input.collateralFraction, input.availableMarginUsd);
+  // Venue available margin is free margin: it already excludes the initial margin the venue
+  // reserves for resting opening orders. Those orders are counted again in the scenario
+  // positions below, so add their reservation back once (as the risk capacity does) instead of
+  // charging it twice. Reduce-only orders reserve nothing and are not added back.
+  const reservedOrderMarginUsd =
+    openingOrders.reduce((sum, order) => sum + order.price * order.quantity, 0) / input.leverage;
+  const allocated = Math.min(
+    input.capitalUsd * input.collateralFraction,
+    input.availableMarginUsd + reservedOrderMarginUsd,
+  );
   const fixed = allocated * input.collateralReserveFraction + (input.transactionReserveUsd ?? 0);
-  const costs =
-    ((input.orders.reduce((s, o) => s + o.price * o.quantity, 0) + input.candidateHeadroomUsd) *
-      input.feeAndExitCostBps) /
-    10000;
-  const markToExecutionLoss =
-    input.orders.reduce(
-      (sum, order) =>
-        sum +
-        Math.max(
-          0,
-          order.quantity *
-            (order.side === 'BUY' ? order.price - r.markPrice : r.markPrice - order.price),
-        ),
-      0,
-    ) +
-    quantity * Math.abs(input.midpoint - r.markPrice);
+  // Each scenario models the fills that build that position: its own side's opening orders,
+  // every reduce-only order and the candidate. The opposite flat entry is an alternative that
+  // cannot build the same position, so its fee and mark costs are not charged to it.
+  const scenarioOrders = (side: 'BUY' | 'SELL') =>
+    input.orders.filter((order) => !openingOrders.includes(order) || order.side === side);
+  const scenarioCosts = (side: 'BUY' | 'SELL') => {
+    const orders = scenarioOrders(side);
+    const costs =
+      ((orders.reduce((s, o) => s + o.price * o.quantity, 0) + input.candidateHeadroomUsd) *
+        input.feeAndExitCostBps) /
+      10000;
+    const markToExecutionLoss =
+      orders.reduce(
+        (sum, order) =>
+          sum +
+          Math.max(
+            0,
+            order.quantity *
+              (order.side === 'BUY' ? order.price - r.markPrice : r.markPrice - order.price),
+          ),
+        0,
+      ) +
+      quantity * Math.abs(input.midpoint - r.markPrice);
+    return { costs, markToExecutionLoss };
+  };
   const mmr = r.maintenanceMultiplier / (r.maximumLeverage * r.maintenanceDivisor);
-  const scenarios = positions.map((position) => {
+  const scenarios = positions.map((position, index) => {
+    const { costs, markToExecutionLoss } = scenarioCosts(index === 0 ? 'BUY' : 'SELL');
     const notional = Math.abs(position) * Math.max(r.markPrice, input.midpoint);
     const initialMarginUsd = notional / input.leverage;
     const maintenanceMarginUsd = notional * mmr;

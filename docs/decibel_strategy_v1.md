@@ -86,6 +86,10 @@ riskCapacity  = lossRemaining / (lossBps / 10_000)
   opening orders only. A held position may sit up to one minimum order above it as the price
   moves (`getDecibelHeldPositionCapBaseV1`, since 2026-11-15); only a genuine overfill beyond
   that triggers the `POSITION_LIMIT_REACHED` reduction.
+- The post-fill margin check (`produceDecibelPostFillMarginV1`) models a long and a short fill.
+  Venue free margin already excludes the reservation of resting opening orders, so it is added
+  back once; each scenario is charged only its own side's opening orders, the reduce-only orders
+  and the candidate (the opposite flat entry is an alternative).
 - Settings shows the Max Loss needed for DCA only while DCA is enabled.
 
 ## 6. Catastrophe stop (offline protection only)

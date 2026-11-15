@@ -118,6 +118,37 @@ describe('Production fixed-rule post-fill margin producer', () => {
       expect(result.blocker).toBe(notional === 200 ? 'CAPACITY_POST_FILL_MARGIN_UNSAFE' : null);
     },
   );
+  // 2026-11-15 15:15 UTC: two flat entries of 0.00092 rested on a $4 capital. The venue free
+  // margin (1.02) already excluded their 2 x 1.49 reservation, which was charged a second time
+  // through the scenario position, so the bot halted with both orders frozen.
+  it('does not charge the margin the venue reserves for resting opening orders twice', () => {
+    const live = {
+      ...base,
+      rules: { ...rules, markPrice: 64638 },
+      equityUsd: 3.99,
+      availableMarginUsd: 1.02,
+      capitalUsd: 4,
+      maxLossUsd: 1,
+      midpoint: 64638,
+      candidateHeadroomUsd: 1.29,
+      candidatePositionLimitUsd: 60.7,
+      orders: [
+        { side: 'BUY' as const, quantity: 0.00092, price: 64509.8 },
+        { side: 'SELL' as const, quantity: 0.00092, price: 64870.8 },
+      ],
+    };
+    expect(produceDecibelPostFillMarginV1(live).blocker).toBeNull();
+    // Reduce-only orders reserve nothing, so nothing is added back for them.
+    expect(
+      produceDecibelPostFillMarginV1({
+        ...live,
+        positionBase: 0.00092,
+        availableMarginUsd: 0.2,
+        candidateHeadroomUsd: 0,
+        orders: [{ side: 'SELL' as const, quantity: 0.00092, price: 64870.8, reduceOnly: true }],
+      }).blocker,
+    ).toBe('CAPACITY_POST_FILL_MARGIN_UNSAFE');
+  });
   it('includes both-side resting and inflight quantities without netting opposite fills', () => {
     const result = produceDecibelPostFillMarginV1({
       ...base,
