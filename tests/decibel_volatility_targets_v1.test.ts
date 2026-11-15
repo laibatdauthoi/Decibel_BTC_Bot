@@ -11,6 +11,7 @@ import {
   getDecibelClosedCandlesV1,
   getDecibelEntryCandleBlockerV1,
   getDecibelEntryReplacementBandBpsV1,
+  getDecibelEntryQuoteLimitsV1,
   getDecibelTPSafeBandBpsV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
@@ -144,5 +145,18 @@ describe('volatility targets', () => {
     expect(getDecibelEntryCandleBlockerV1('BUY', getDecibelClosedCandlesV1([], now, 2))).toBe(
       'ENTRY_CANDLE_EVIDENCE_REQUIRED',
     );
+  });
+
+  it('rests flat entries a volatility-scaled offset behind the touch', () => {
+    // 0.3 x 20 bps = 6 bps: 70_000 x 0.9994 = 69_958 (BUY), 70_001 x 1.0006 = 70_043.0006 -> 70_043.1.
+    expect(getDecibelEntryQuoteLimitsV1(70_000, 70_001, 20, 0.1)).toEqual({
+      BUY: 69_958,
+      SELL: 70_043.1,
+    });
+    // Capped at 20 bps.
+    expect(getDecibelEntryQuoteLimitsV1(70_000, 70_001, 1_000, 0.1)!.BUY).toBe(69_860);
+    // No range (minimum 0 bps) or an invalid book: quote at the touch.
+    expect(getDecibelEntryQuoteLimitsV1(70_000, 70_001, null, 0.1)).toBeNull();
+    expect(getDecibelEntryQuoteLimitsV1(70_001, 70_000, 20, 0.1)).toBeNull();
   });
 });

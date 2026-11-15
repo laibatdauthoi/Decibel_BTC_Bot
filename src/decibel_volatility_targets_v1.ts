@@ -254,3 +254,28 @@ export function getDecibelEntryCandleBlockerV1(
   if (side === 'BUY') return last.low < previous.low ? null : 'ENTRY_REQUIRES_NEW_LOW';
   return last.high > previous.high ? null : 'ENTRY_REQUIRES_NEW_HIGH';
 }
+
+/**
+ * Entry quote offset (2026-11-15): a flat entry rests at least clamp(factor x 5-minute range,
+ * min, max) bps behind the touch, a volatility-scaled half-spread. Returns the BUY maximum and
+ * SELL minimum price on the tick grid, or null when the offset is zero (quote at the touch).
+ */
+export function getDecibelEntryQuoteLimitsV1(
+  bestBid: number,
+  bestAsk: number,
+  rangeBps: number | null | undefined,
+  tickSize: number,
+): Readonly<{ BUY: number; SELL: number }> | null {
+  const scale = DECIBEL_STRATEGY_POLICY_V1.entry.quoteOffset;
+  const offsetBps =
+    rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0
+      ? scale.minBps
+      : clamp(scale.factor * rangeBps, scale.minBps, scale.maxBps);
+  if (!(offsetBps > 0) || !(bestBid > 0) || !(bestAsk > bestBid) || !(tickSize > 0)) return null;
+  const buy = Math.floor((bestBid * (1 - offsetBps / 10_000)) / tickSize + 1e-9);
+  const sell = Math.ceil((bestAsk * (1 + offsetBps / 10_000)) / tickSize - 1e-9);
+  return Object.freeze({
+    BUY: Number((buy * tickSize).toPrecision(15)),
+    SELL: Number((sell * tickSize).toPrecision(15)),
+  });
+}

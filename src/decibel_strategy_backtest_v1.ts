@@ -353,7 +353,11 @@ export function runDecibelStrategyBacktestV1(
           entries[side] = null;
           continue;
         }
-        let price = side === 'BUY' ? row.bid : row.ask;
+        const offsetBps = scaleDecibelBacktestBpsV1(range, P.entry.quoteOffset);
+        let price =
+          side === 'BUY'
+            ? roundToTick(row.bid * (1 - offsetBps / 10_000), tick, 'DOWN')
+            : roundToTick(row.ask * (1 + offsetBps / 10_000), tick, 'UP');
         const exit = lastExit as { price: number; at: number } | null;
         if (exit !== null && now - exit.at <= P.entry.reentryExpiryMs) {
           const distance = scaleDecibelBacktestBpsV1(range, P.entry.reentryDistance);

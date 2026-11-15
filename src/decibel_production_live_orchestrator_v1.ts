@@ -20,6 +20,7 @@ import { deriveDecibelExitCoverageWorkflowV1 } from './decibel_exit_coverage_wor
 import {
   calculateDecibelMidpointRangeBpsV1,
   getDecibelEntryCandleBlockerV1,
+  getDecibelEntryQuoteLimitsV1,
   getDecibelEntryVolatilityPauseReasonV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
@@ -741,7 +742,7 @@ export class decibel_production_live_orchestrator_v1 {
       sessionDrainOnTarget: true,
       ...entryReplacementBandFor(snapshot),
       ...((limits) => (limits === null ? {} : { entryPriceLimits: limits }))(
-        this.getReentryPriceLimits(snapshot),
+        this.getEntryPriceLimits(snapshot),
       ),
       sessionDrainRequested: this.sessionDrainRequested,
     });
@@ -3435,6 +3436,28 @@ export class decibel_production_live_orchestrator_v1 {
    * While flat shortly after an exit fill in this session, the next entry rests at least the
    * volatility-scaled re-entry distance away from that exit price.
    */
+  /**
+   * Flat entry price limits: the volatility-scaled quote offset behind the touch, combined
+   * with the re-entry distance after a recent exit (the stricter of the two per side).
+   */
+  private getEntryPriceLimits(
+    snapshot: decibel_production_live_snapshot_v1,
+  ): Readonly<{ BUY: number; SELL: number }> | null {
+    if (snapshot.input.actualInventoryBase !== 0) return null;
+    const quote = getDecibelEntryQuoteLimitsV1(
+      snapshot.input.book.bestBid,
+      snapshot.input.book.bestAsk,
+      snapshot.priceRangeBps,
+      snapshot.input.metadata.tickSize,
+    );
+    const reentry = this.getReentryPriceLimits(snapshot);
+    if (quote === null || reentry === null) return quote ?? reentry;
+    return Object.freeze({
+      BUY: Math.min(quote.BUY, reentry.BUY),
+      SELL: Math.max(quote.SELL, reentry.SELL),
+    });
+  }
+
   private getReentryPriceLimits(
     snapshot: decibel_production_live_snapshot_v1,
   ): Readonly<{ BUY: number; SELL: number }> | null {

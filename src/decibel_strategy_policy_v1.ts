@@ -37,6 +37,12 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     maxChaseBps: 0,
     /** No new entry or DCA while the 5-minute range is wider than this (bps). */
     volatilityPauseBps: 40,
+    /** A flat entry rests at least clamp(factor x 5-minute range, min, max) bps behind the
+     * touch: a volatility-scaled half-spread (Avellaneda-Stoikov style) instead of quoting
+     * at the best bid/ask. 2026-11-15 backtest (05-10, 10-14, 14-15/11): 0.3 lowered the
+     * total net loss and the max drawdown in all three periods at about the same volume;
+     * 0.15 and 0.5 were worse in at least one. factor 0 quotes at the touch. */
+    quoteOffset: Object.freeze({ factor: 0.3, minBps: 0, maxBps: 20 }),
   }),
   tp: Object.freeze({
     /** A new TP aims for this net profit after fees. */

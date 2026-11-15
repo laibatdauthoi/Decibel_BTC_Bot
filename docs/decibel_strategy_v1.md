@@ -37,9 +37,16 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
    capped by margin and by the risk capacity. Near the end each side may rest the remaining
    target, the preferred size or the venue minimum, whichever is largest: the two flat entries
    are alternatives, so the target may be overshot by up to one entry.
-5. **Price.** Passive PostOnly maker order inside the BBO. For 5 minutes after a TP fill, the
+5. **Price.** Passive PostOnly maker order, resting at least `clamp(0.3 x R, 0, 20)` bps behind
+   the touch (a volatility-scaled half-spread, since 2026-11-15; at the touch while R is
+   unknown). For 5 minutes after a TP fill, the
    next entry rests at least `clamp(0.5 x R, 5, 25)` bps from that exit (anti-chase). A resting entry is
    repriced only after the market moves more than `clamp(0.3 x R, 3, 15)` bps.
+
+6. **Rejected on 2026-11-15 (backtest, three periods):** an entry flow filter (no entry during a
+   5-minute range spike over 2-3x its recent median, no entry fading a 5-15 minute move over
+   1-2x the typical range). No setting was better than the current rules in all periods, and
+   most cut the volume, so it was not added.
 
 ## 3. Take profit
 

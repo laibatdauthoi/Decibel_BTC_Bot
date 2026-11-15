@@ -67,6 +67,7 @@ import { calculateDecibelEntrySizeV1 } from '../src/decibel_entry_size_v1.js';
 import {
   getDecibelEntryReplacementBandBpsV1,
   getDecibelReentryPriceLimitV1,
+  getDecibelEntryQuoteLimitsV1,
   getDecibelTPTargetNetBpsV1,
 } from '../src/decibel_volatility_targets_v1.js';
 
@@ -14604,8 +14605,8 @@ describe('Unified deterministic TRADE / WAIT / STOP', () => {
     const orders = [e.desiredBid, e.desiredAsk].filter((order) => order !== null);
     expect(orders).toHaveLength(2);
     for (const order of orders) {
-      expect(order!.quantity * order!.price).toBeGreaterThanOrEqual(10);
-      expect(order!.quantity * order!.price).toBeLessThanOrEqual(15 + 1e-8);
+      expect(order.quantity * order.price).toBeGreaterThanOrEqual(10);
+      expect(order.quantity * order.price).toBeLessThanOrEqual(15 + 1e-8);
     }
     await test.orchestrator.close();
   });
@@ -18484,6 +18485,32 @@ describe('re-entry after a TP fill', () => {
     const expiry = DECIBEL_STRATEGY_POLICY_V1.entry.reentryExpiryMs;
     expect(limitsFor(own, 0, 1_000 + expiry)).not.toBeNull();
     expect(limitsFor(own, 0, 1_000 + expiry + 1)).toBeNull();
+    await test.orchestrator.close();
+  });
+
+  it('combines the volatility-scaled quote offset with the re-entry limits', async () => {
+    const base = makeSnapshot();
+    const test = make({ snapshots: [base] });
+    const limitsFor = (priceRangeBps: number | null, inventory = 0) =>
+      (
+        test.orchestrator as unknown as {
+          getEntryPriceLimits(s: typeof base): { BUY: number; SELL: number } | null;
+        }
+      ).getEntryPriceLimits({
+        ...base,
+        priceRangeBps,
+        input: { ...base.input, actualInventoryBase: inventory },
+      });
+    const { bestBid, bestAsk } = base.input.book;
+    const tick = base.input.metadata.tickSize;
+    const quote = getDecibelEntryQuoteLimitsV1(bestBid, bestAsk, 20, tick)!;
+    // 0.3 x 20 bps = 6 bps behind the touch.
+    expect(quote.BUY).toBeLessThanOrEqual(bestBid * (1 - 6 / 10_000) + 1e-9);
+    expect(quote.SELL).toBeGreaterThanOrEqual(bestAsk * (1 + 6 / 10_000) - 1e-9);
+    expect(limitsFor(20)).toEqual(quote);
+    // No range and no recent exit: quote at the touch (no limit); never with inventory.
+    expect(limitsFor(null)).toBeNull();
+    expect(limitsFor(20, 0.5)).toBeNull();
     await test.orchestrator.close();
   });
 });
