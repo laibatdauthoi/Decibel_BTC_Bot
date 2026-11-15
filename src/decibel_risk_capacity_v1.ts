@@ -420,3 +420,21 @@ export function calculateDecibelRiskCapacityV1(
       : {}),
   });
 }
+
+/**
+ * Position cap handed to the strategy while a position is held.
+ *
+ * The cap is a USD limit divided by the price, so it drifts with the market. A
+ * position sized at the cap would otherwise trip the forced risk reduction after a
+ * small adverse move, acting as a tight per-position stop. The held position may
+ * therefore sit up to one minimum order above the cap without forcing a reduction;
+ * only a genuine overfill beyond that returns the position itself as the cap, which
+ * triggers the reduction. Opening orders are still admitted against the raw cap.
+ */
+export function getDecibelHeldPositionCapBaseV1(
+  input: Readonly<{ capBase: number; inventoryBase: number; minimumSize: number }>,
+): number {
+  const held = Math.abs(input.inventoryBase);
+  if (held > input.capBase + input.minimumSize + 1e-12) return held;
+  return Math.max(input.capBase, held + input.minimumSize);
+}

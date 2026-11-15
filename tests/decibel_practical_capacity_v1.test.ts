@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateDecibelRiskCapacityV1,
+  getDecibelHeldPositionCapBaseV1,
   type decibel_capacity_inputs_v1,
 } from '../src/decibel_risk_capacity_v1.js';
 import { calculateDecibelDynamicQuoteSizeV1 } from '../src/decibel_dynamic_quote_size_v1.js';
@@ -330,5 +331,46 @@ describe('Approved practical capacity and historical snapshot isolation', () => 
       remainingTargetUsd: 0.22,
     });
     expect(quote.finalSizeBtc).toBe(0.00013);
+  });
+});
+
+describe('getDecibelHeldPositionCapBaseV1', () => {
+  // 2026-11-15 13:20 UTC: a 92-lot short entered under a 93-lot cap. A 0.3% rally floored
+  // the USD cap (60.35 / 65600) to 92 lots and the forced reduction chased the spike.
+  it('keeps a held position at a cap that drifted down with the price above the position', () => {
+    const capBase = Math.floor(60.35 / (65_600 * 0.00001)) * 0.00001;
+    const cap = getDecibelHeldPositionCapBaseV1({
+      capBase,
+      inventoryBase: -0.00092,
+      minimumSize: 0.00002,
+    });
+    expect(cap).toBeGreaterThan(0.00092);
+    expect(
+      getDecibelHeldPositionCapBaseV1({
+        capBase: 0.00091,
+        inventoryBase: 0.00092,
+        minimumSize: 0.00002,
+      }),
+    ).toBeGreaterThan(0.00092);
+  });
+
+  it('keeps the raw cap when it is wider than the held position', () => {
+    expect(
+      getDecibelHeldPositionCapBaseV1({
+        capBase: 0.002,
+        inventoryBase: 0.00092,
+        minimumSize: 0.00002,
+      }),
+    ).toBe(0.002);
+  });
+
+  it('returns the position itself, forcing a reduction, only after a genuine overfill', () => {
+    expect(
+      getDecibelHeldPositionCapBaseV1({
+        capBase: 0.00092,
+        inventoryBase: -0.00095,
+        minimumSize: 0.00002,
+      }),
+    ).toBe(0.00095);
   });
 });

@@ -4824,6 +4824,36 @@ describe('Decibel production live orchestrator V1', () => {
     expect(evaluation.desiredAskLadder).toEqual([]);
   });
 
+  it('does not force a reduction when the price-scaled cap drifts down to the held position', async () => {
+    const atCap = makeSnapshot({
+      input: { ...makeSnapshot().input, actualInventoryBase: 0.002 },
+      maximumAbsPositionBase: 0.002,
+      maximumNotionalUsd: 1,
+    });
+    const test = make({ snapshots: [atCap, atCap] });
+
+    const result = await test.orchestrator.evaluateOnce();
+
+    expect(result.evaluation?.riskReductionTrigger).toBe('NONE');
+    expect(result.evaluation?.operatingState).not.toBe('RISK_REDUCTION');
+    await test.orchestrator.close();
+  });
+
+  it('still forces a reduction after a genuine overfill beyond the cap', async () => {
+    const overfilled = makeSnapshot({
+      input: { ...makeSnapshot().input, actualInventoryBase: 0.004 },
+      maximumAbsPositionBase: 0.002,
+      maximumNotionalUsd: 1,
+    });
+    const test = make({ snapshots: [overfilled, overfilled] });
+
+    const result = await test.orchestrator.evaluateOnce();
+
+    expect(result.evaluation?.riskReductionTrigger).toBe('POSITION_LIMIT_REACHED');
+    expect(result.evaluation?.operatingState).toBe('RISK_REDUCTION');
+    await test.orchestrator.close();
+  });
+
   it('uses strict reduce-only post-only orders for moderate inventory reduction', async () => {
     const positioned = makeSnapshot({
       input: { ...makeSnapshot().input, actualInventoryBase: 0.002 },

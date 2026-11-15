@@ -82,6 +82,10 @@ riskCapacity  = lossRemaining / (lossBps / 10_000)
 
 - The session Max Loss triggers the canonical reduce-only unwind. There is no tight
   per-position stop-loss (it would realize noise as taker losses).
+- The position cap (`min(margin, exit depth, venue, safety)` in USD, divided by the price) gates
+  opening orders only. A held position may sit up to one minimum order above it as the price
+  moves (`getDecibelHeldPositionCapBaseV1`, since 2026-11-15); only a genuine overfill beyond
+  that triggers the `POSITION_LIMIT_REACHED` reduction.
 - Settings shows the Max Loss needed for DCA only while DCA is enabled.
 
 ## 6. Catastrophe stop (offline protection only)

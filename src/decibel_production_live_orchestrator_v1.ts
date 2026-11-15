@@ -51,6 +51,7 @@ import {
 } from './decibel_trading_decision_v1.js';
 import type { assembleDecibelCapacityCertificateV1 } from './decibel_capacity_producers_v1.js';
 import type { decibel_capacity_evidence_v1 } from './decibel_risk_capacity_v1.js';
+import { getDecibelHeldPositionCapBaseV1 } from './decibel_risk_capacity_v1.js';
 import {
   calculateDecibelDynamicQuoteSizeV1,
   allocateDecibelTwoSidedQuoteBudgetV1,
@@ -1123,12 +1124,14 @@ export class decibel_production_live_orchestrator_v1 {
       ...(snapshot.input.actualInventoryBase === 0
         ? {}
         : {
-            maximumAbsPositionBase: Math.max(
-              sizing.maximumAbsPositionBase ??
+            maximumAbsPositionBase: getDecibelHeldPositionCapBaseV1({
+              capBase:
+                sizing.maximumAbsPositionBase ??
                 sizing.maximumNotionalUsd /
                   ((snapshot.input.book.bestBid + snapshot.input.book.bestAsk) / 2),
-              Math.abs(snapshot.input.actualInventoryBase),
-            ),
+              inventoryBase: snapshot.input.actualInventoryBase,
+              minimumSize: snapshot.input.metadata.minimumSize,
+            }),
           }),
       availableMarginUsd: snapshot.authenticatedAvailableMarginUsd ?? sizing.availableMarginUsd,
       constrainQuoteQuantity: (
