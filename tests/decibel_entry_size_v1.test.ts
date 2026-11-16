@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decibel_execution_lifecycle_journal_v1 } from '../src/decibel_execution_lifecycle_journal_v1.js';
 import { buildDecibelExecutionIntentV1 } from '../src/decibel_execution_intent_v1.js';
-import { projectDecibelNextSessionEntrySizeUsdV1 } from '../src/run_decibel_production_web_v1.js';
+import { projectDecibelNextSessionEntrySizeUsdV1 } from '../src/decibel_production_web_helpers_v1.js';
 import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_orchestrator_v1.js';
 import { describe, expect, it } from 'vitest';
 import {

@@ -4,6 +4,7 @@ import {
   DECIBEL_MARKET_MAKER_V1,
   type decibel_market_state_v1,
 } from './decibel_market_state_v1.js';
+import { clampNumberV1 as clamp } from './decibel_math_v1.js';
 
 export const DECIBEL_FAIR_PRICE_VERSION_V1 = 'DECIBEL_FAIR_PRICE_V1' as const;
 
@@ -88,10 +89,6 @@ function stableConfiguration(configuration: decibel_fair_price_configuration_v1)
 
 function calculateBps(value: number, reference: number): number {
   return ((value - reference) / reference) * 10_000;
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, value));
 }
 
 function freezeAssessment(

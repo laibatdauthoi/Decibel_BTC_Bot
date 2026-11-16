@@ -25,7 +25,7 @@ import {
   runDecibelProductionWebBoundedDependencyV1,
   selectDecibelLastCompletedExecutionActionV1,
   startDecibelAuthenticatedBootstrapBeforeRecoveryV1,
-} from '../src/run_decibel_production_web_v1.js';
+} from '../src/decibel_production_web_helpers_v1.js';
 import {
   decibel_runtime_supervisor_v1,
   ensureDecibelAuthenticatedStateReadyForStartV1,
@@ -38,7 +38,7 @@ import {
   deriveDecibelSessionControlDiagnosticsV1,
   type decibel_session_start_attempt_v1,
 } from '../src/decibel_session_control_diagnostics_v1.js';
-import { handleDecibelProductionSessionRequestV1 } from '../src/run_decibel_production_web_v1.js';
+import { handleDecibelProductionSessionRequestV1 } from '../src/decibel_production_web_helpers_v1.js';
 
 const values = Object.freeze({
   capitalToUseUsd: 500,

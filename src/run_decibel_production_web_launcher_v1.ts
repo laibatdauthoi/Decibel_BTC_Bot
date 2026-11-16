@@ -16,6 +16,7 @@ import {
   decibel_rotating_log_v1,
   isDecibelProcessPresentV1,
   readDecibelWindowsProcessIdentityV1,
+  resolveDecibelProductionForensicsPathV1,
   resolveDecibelProductionNode22ExecutableV1,
 } from './decibel_process_forensics_v1.js';
 import {
@@ -30,7 +31,7 @@ const StdoutRedactor = new decibel_line_redactor_v1(Secrets);
 const StderrRedactor = new decibel_line_redactor_v1(Secrets);
 const launcherStartedAt = Date.now();
 const instanceId = `${process.pid}-${launcherStartedAt}`;
-const logRoot = resolve(process.env.DECIBEL_PRODUCTION_FORENSICS_PATH ?? 'data/production_runtime');
+const logRoot = resolve(resolveDecibelProductionForensicsPathV1(process.env));
 const productionNodeExecutable = resolveDecibelProductionNode22ExecutableV1(process.env);
 const PersistedExecutionMode = loadDecibelPersistedExecutionModeV1(process.env);
 assertDecibelPersistedExecutionModeV1(

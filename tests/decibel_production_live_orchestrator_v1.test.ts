@@ -40,7 +40,7 @@ import {
   finalizeDecibelVerifiedSessionV1,
   convergeDecibelStartupRecoveryV1,
   assertDecibelSessionMutationOwnerV1,
-} from '../src/run_decibel_production_web_v1.js';
+} from '../src/decibel_production_web_helpers_v1.js';
 import { decibel_runtime_supervisor_v1 } from '../src/decibel_runtime_supervisor_v1.js';
 import { decibel_raw_ws_bbo_store_v1 } from '../src/decibel_adverse_selection_evidence_v1.js';
 import {

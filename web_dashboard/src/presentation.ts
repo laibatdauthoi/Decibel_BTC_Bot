@@ -9,6 +9,9 @@ import {
   type decibel_condition_source_v1,
   type decibel_runtime_condition_kind_v1,
 } from '../../src/decibel_runtime_condition_v1';
+/** Telemetry, session and account evidence older than this is shown as stale. */
+export const DASHBOARD_FRESHNESS_MS_V1 = 15_000;
+
 export type dashboard_view_v1 = 'OVERVIEW' | 'ACTIVITY' | 'SETTINGS';
 
 export type session_volume_sample_v1 = Readonly<{
@@ -97,7 +100,8 @@ function assessSessionEtaV1(
     )
   )
     return unavailable('INVALID SESSION VOLUME EVIDENCE');
-  if (input.now - last.observedAt > 15000) return unavailable('SESSION VOLUME DATA STALE');
+  if (input.now - last.observedAt > DASHBOARD_FRESHNESS_MS_V1)
+    return unavailable('SESSION VOLUME DATA STALE');
   if (input.now - first.observedAt > 300000) return unavailable('VOLUME WINDOW EXPIRED');
   const coverageMs = last.observedAt - first.observedAt;
   const advances = samples.filter((s, i) => i > 0 && s.volumeUsd > samples[i - 1].volumeUsd);

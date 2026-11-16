@@ -1099,7 +1099,8 @@ it('removes the estimated row while preserving executable ENTRY SIZE', () => {
   expect(source).not.toContain('ESTIMATED NEXT SESSION LIMIT');
   expect(source).not.toContain('Policy estimate only; does not authorize orders.');
   expect(source).toContain('value: result.nextSessionProjection.entrySizeUsd ?? null');
-  expect(readFileSync(resolve('src/run_decibel_production_web_v1.ts'), 'utf8')).toContain(
+  // The projection helpers live in decibel_production_web_helpers_v1 since 2026-11-16.
+  expect(readFileSync(resolve('src/decibel_production_web_helpers_v1.ts'), 'utf8')).toContain(
     'estimateDecibelNextSessionPositionLimitV1',
   );
 });

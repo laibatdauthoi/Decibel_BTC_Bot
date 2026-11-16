@@ -27,6 +27,13 @@ export function assertDecibelProductionNodeRuntimeV1(version: string): void {
     );
 }
 
+/** Runtime forensics and logs directory: DECIBEL_PRODUCTION_FORENSICS_PATH or the default. */
+export function resolveDecibelProductionForensicsPathV1(
+  environment: Readonly<Record<string, string | undefined>>,
+): string {
+  return environment.DECIBEL_PRODUCTION_FORENSICS_PATH ?? 'data/production_runtime';
+}
+
 export function resolveDecibelProductionNode22ExecutableV1(environment: NodeJS.ProcessEnv): string {
   const configured = environment.DECIBEL_NODE22_EXECUTABLE?.trim();
   const executable =

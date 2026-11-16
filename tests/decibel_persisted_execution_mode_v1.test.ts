@@ -8,7 +8,7 @@ import {
   assertDecibelPersistedExecutionModeV1,
   loadDecibelPersistedExecutionModeV1,
 } from '../src/decibel_persisted_execution_mode_v1.js';
-import { handleDecibelExecutionModeRequestV1 } from '../src/run_decibel_production_web_v1.js';
+import { handleDecibelExecutionModeRequestV1 } from '../src/decibel_production_web_helpers_v1.js';
 
 function writeEnvironment(path: string, dryRun = true): void {
   writeFileSync(

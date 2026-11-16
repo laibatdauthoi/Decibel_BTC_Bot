@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateSettingsCapitalMarginV1 } from '../src/settings_capital_margin_v1.js';
-import { handleDecibelOperatorSettingsRequestV1 } from '../src/run_decibel_production_web_v1.js';
+import { handleDecibelOperatorSettingsRequestV1 } from '../src/decibel_production_web_helpers_v1.js';
 import { decibel_operator_settings_store_v1 } from '../src/decibel_operator_settings_v1.js';
 import { mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';

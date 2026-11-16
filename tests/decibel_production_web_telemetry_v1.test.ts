@@ -7,7 +7,7 @@ import { mergeDecibelVenueReconciliationSnapshotV1 } from '../src/decibel_venue_
 import {
   reconcileBeforeDecibelAuthenticatedPublicationV1,
   convergeDecibelStartupRecoveryV1,
-} from '../src/run_decibel_production_web_v1.js';
+} from '../src/decibel_production_web_helpers_v1.js';
 import { decibel_production_session_controller_v1 } from '../src/decibel_production_session_controller_v1.js';
 import { decibel_production_session_store_v1 } from '../src/decibel_production_session_v1.js';
 import {
@@ -15,13 +15,13 @@ import {
   deriveDecibelSessionTradingLimitsV1,
   validateDecibelCapitalAllocationV1,
 } from '../src/decibel_operator_settings_v1.js';
-import { finalizeDecibelVerifiedSessionV1 } from '../src/run_decibel_production_web_v1.js';
+import { finalizeDecibelVerifiedSessionV1 } from '../src/decibel_production_web_helpers_v1.js';
 import { formatSessionStartResponseV1 } from '../web_dashboard/src/presentation.js';
 import { wrapDecibelProductionLiveStateSourceV1 } from '../src/decibel_production_live_state_source_adapter_v1.js';
 import {
   projectDecibelNextSessionPositionLimitV1,
   estimateDecibelNextSessionPositionLimitV1,
-} from '../src/run_decibel_production_web_v1.js';
+} from '../src/decibel_production_web_helpers_v1.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

@@ -1,4 +1,5 @@
 import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
+import { clampNumberV1 as clamp } from './decibel_math_v1.js';
 /**
  * Volatility-scaled distances for take-profit and re-entry.
  *
@@ -25,9 +26,6 @@ export const DECIBEL_REENTRY_DISTANCE_MIN_BPS_V1 =
   DECIBEL_STRATEGY_POLICY_V1.entry.reentryDistance.minBps;
 export const DECIBEL_REENTRY_DISTANCE_MAX_BPS_V1 =
   DECIBEL_STRATEGY_POLICY_V1.entry.reentryDistance.maxBps;
-
-const clamp = (value: number, minimum: number, maximum: number) =>
-  Math.min(maximum, Math.max(minimum, value));
 
 /** Midpoint range over the window, or null when history does not cover enough of it. */
 export function calculateDecibelMidpointRangeBpsV1(

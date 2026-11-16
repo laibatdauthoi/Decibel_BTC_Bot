@@ -34,6 +34,7 @@ import '@fontsource/fredoka/latin-600.css';
 import '@fontsource/fredoka/latin-700.css';
 
 import {
+  DASHBOARD_FRESHNESS_MS_V1,
   appendSessionVolumeSampleV1,
   formatSettingsSessionEtaV1,
   type session_volume_sample_v1,
@@ -339,20 +340,25 @@ export const OverviewView = (
   const { openShare, preview } = useSessionSharePreviewV1();
   const t = props.telemetry;
   const frameAge = Math.max(0, props.now - t.generatedAt);
-  const frameFresh = props.connected && frameAge <= 15000;
+  const frameFresh = props.connected && frameAge <= DASHBOARD_FRESHNESS_MS_V1;
   const marketFresh =
-    frameFresh && t.market.bookAgeMs !== null && t.market.bookAgeMs + frameAge <= 15000;
+    frameFresh &&
+    t.market.bookAgeMs !== null &&
+    t.market.bookAgeMs + frameAge <= DASHBOARD_FRESHNESS_MS_V1;
   const accountFresh =
     frameFresh &&
     t.runtime.readiness.accountReady &&
     t.runtime.authenticatedStateAgeMs !== null &&
-    t.runtime.authenticatedStateAgeMs + frameAge <= 15000;
+    t.runtime.authenticatedStateAgeMs + frameAge <= DASHBOARD_FRESHNESS_MS_V1;
   const sessionFresh =
     props.session !== null &&
     (props.sessionObservedAt === undefined ||
-      (props.sessionObservedAt !== null && props.now - props.sessionObservedAt <= 15000));
+      (props.sessionObservedAt !== null &&
+        props.now - props.sessionObservedAt <= DASHBOARD_FRESHNESS_MS_V1));
   const accountingFresh =
-    frameFresh && t.lastSuccessfulCycleAt !== null && props.now - t.lastSuccessfulCycleAt <= 15000;
+    frameFresh &&
+    t.lastSuccessfulCycleAt !== null &&
+    props.now - t.lastSuccessfulCycleAt <= DASHBOARD_FRESHNESS_MS_V1;
   const active = sessionFresh ? props.session?.activeSession : null;
   const e = t.overviewEvidence;
   const activeSession = active != null && !['ENDED', 'INTERRUPTED'].includes(active.status);
@@ -1760,9 +1766,9 @@ const App = () => {
   const riskEvidence = telemetry.overviewEvidence;
   const lossUtilization =
     !connected ||
-    now - telemetry.generatedAt > 15000 ||
+    now - telemetry.generatedAt > DASHBOARD_FRESHNESS_MS_V1 ||
     telemetry.lastSuccessfulCycleAt === null ||
-    now - telemetry.lastSuccessfulCycleAt > 15000 ||
+    now - telemetry.lastSuccessfulCycleAt > DASHBOARD_FRESHNESS_MS_V1 ||
     !session?.activeSession ||
     riskEvidence?.sessionId !== session.activeSession.sessionId ||
     riskEvidence?.sessionId !== telemetry.runtime.executionSessionId ||
@@ -1880,7 +1886,7 @@ const App = () => {
                 telemetry.account.availableMarginReason === null &&
                 telemetry.runtime.authenticatedStateAgeMs +
                   Math.max(0, now - telemetry.generatedAt) <=
-                  15000
+                  DASHBOARD_FRESHNESS_MS_V1
               ? 'fresh'
               : 'stale'
         }

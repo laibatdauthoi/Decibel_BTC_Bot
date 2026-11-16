@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { DECIBEL_MARKET_MAKER_V1 } from './decibel_market_state_v1.js';
+import { clampNumberV1 as clamp } from './decibel_math_v1.js';
 
 export const DECIBEL_INVENTORY_CONTROLLER_VERSION_V1 = 'DECIBEL_INVENTORY_CONTROLLER_V1' as const;
 
@@ -79,10 +80,6 @@ function getConfigurationId(configuration: decibel_inventory_configuration_v1): 
     configuration.minimumInventoryIncreasingSizeMultiplier,
   ]);
   return `decibel_inventory_configuration_${createHash('sha256').update(canonical).digest('hex')}`;
-}
-
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, value));
 }
 
 function getInventoryZone(

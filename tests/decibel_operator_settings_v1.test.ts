@@ -14,7 +14,7 @@ import {
   diffDecibelOperatorSettingsV1,
   parseDecibelOperatorSettingsValuesV1,
 } from '../src/decibel_operator_settings_v1.js';
-import { handleDecibelOperatorSettingsRequestV1 } from '../src/run_decibel_production_web_v1.js';
+import { handleDecibelOperatorSettingsRequestV1 } from '../src/decibel_production_web_helpers_v1.js';
 
 const baseline = Object.freeze({
   capitalToUseUsd: 500,

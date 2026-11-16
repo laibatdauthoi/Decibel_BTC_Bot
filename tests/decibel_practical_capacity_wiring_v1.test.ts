@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { calculateDecibelDynamicQuoteSizeV1 } from '../src/decibel_dynamic_quote_size_v1.js';
 import { deriveDecibelSessionTradingLimitsV1 } from '../src/decibel_operator_settings_v1.js';
-import { projectDecibelNextSessionPositionLimitV1 } from '../src/run_decibel_production_web_v1.js';
+import { projectDecibelNextSessionPositionLimitV1 } from '../src/decibel_production_web_helpers_v1.js';
 import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_orchestrator_v1.js';
 import type { decibel_capacity_inputs_v1 } from '../src/decibel_risk_capacity_v1.js';
 const observation = (now = Date.now()): decibel_capacity_inputs_v1 => ({
