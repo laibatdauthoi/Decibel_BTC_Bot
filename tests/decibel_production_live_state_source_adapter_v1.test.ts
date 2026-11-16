@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { wrapDecibelProductionLiveStateSourceV1 } from '../src/decibel_production_live_state_source_adapter_v1.js';
-import type { DecibelProductionLiveStateSourceV1 } from '../src/decibel_production_live_orchestrator_v1.js';
+import type { DecibelProductionLiveStateSourceV1 } from '../src/decibel_production_live_types_v1.js';
 
 const base = (): DecibelProductionLiveStateSourceV1 => ({
   readAuthenticatedSnapshot: vi.fn(),

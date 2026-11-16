@@ -109,10 +109,12 @@ import {
   parseDecibelProductionLiveConfigurationV1,
   runDecibelProductionLiveLoopV1,
   selectDecibelInventoryCrossingSafetyCancelV1,
-  type DecibelProductionLiveStateSourceV1,
-  type decibel_market_regime_bootstrap_v1,
-  type decibel_production_live_snapshot_v1,
 } from '../src/decibel_production_live_orchestrator_v1.js';
+import type {
+  DecibelProductionLiveStateSourceV1,
+  decibel_market_regime_bootstrap_v1,
+  decibel_production_live_snapshot_v1,
+} from '../src/decibel_production_live_types_v1.js';
 import { wrapDecibelProductionLiveStateSourceV1 } from '../src/decibel_production_live_state_source_adapter_v1.js';
 import type { DecibelProductionExecutionExecutorV1 } from '../src/decibel_production_executor_handoff_v1.js';
 import { selectNewestDecibelRuntimeSnapshotV1 } from '../src/decibel_runtime_snapshot_owner_v1.js';

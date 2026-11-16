@@ -1,4 +1,4 @@
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 
 /** Receipt collection can outlive account freshness. Assemble the projection
  * after that await using the latest published account and market components. */

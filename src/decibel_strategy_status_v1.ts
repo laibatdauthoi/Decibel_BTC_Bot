@@ -9,7 +9,7 @@ import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
 import { assessDecibelSnapshotDCAV1, countDecibelOpeningOrdersV1 } from './decibel_dca_v1.js';
 import { planDecibelPatientTPV1 } from './decibel_exit_economics_v1.js';
 import { getDecibelEntryVolatilityPauseReasonV1 } from './decibel_volatility_targets_v1.js';
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 
 export type decibel_strategy_rule_name_v1 =
   | 'ENTRY_CANDLE_FILTER'

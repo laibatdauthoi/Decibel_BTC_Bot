@@ -29,10 +29,10 @@ import { decibel_execution_lifecycle_journal_v1 } from './decibel_execution_life
 import { execution_preflight_rejection_v1 } from './decibel_execution_intent_v1.js';
 import { decibel_production_session_controller_v1 } from './decibel_production_session_controller_v1.js';
 import { reconcileDecibelAcknowledgedTerminalOrdersV1 } from './decibel_production_web_telemetry_v1.js';
-import {
-  type DecibelProductionLiveStateSourceV1,
-  type decibel_production_live_snapshot_v1,
-} from './decibel_production_live_orchestrator_v1.js';
+import type {
+  DecibelProductionLiveStateSourceV1,
+  decibel_production_live_snapshot_v1,
+} from './decibel_production_live_types_v1.js';
 import { type decibel_raw_ws_bbo_store_v1 } from './decibel_adverse_selection_evidence_v1.js';
 import { refreshDecibelProductionEconomicEvidenceV1 } from './decibel_production_economic_refresh_v1.js';
 import { decibel_runtime_supervisor_v1 } from './decibel_runtime_supervisor_v1.js';

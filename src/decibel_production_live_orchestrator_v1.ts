@@ -49,8 +49,6 @@ import {
   evaluateTradingDecision,
   type trading_decision_v1,
 } from './decibel_trading_decision_v1.js';
-import type { assembleDecibelCapacityCertificateV1 } from './decibel_capacity_producers_v1.js';
-import type { decibel_capacity_evidence_v1 } from './decibel_risk_capacity_v1.js';
 import { getDecibelHeldPositionCapBaseV1 } from './decibel_risk_capacity_v1.js';
 import {
   calculateDecibelDynamicQuoteSizeV1,
@@ -71,8 +69,6 @@ import {
   calculateDecibelExitCoverageV1,
   evaluateDecibelAuthenticatedPassiveRecyclingV1,
   type DecibelAuthenticatedPassiveRecyclingEvaluationV1,
-  type decibel_authenticated_passive_recycling_input_v1,
-  type decibel_authenticated_strategy_order_v1,
   type decibel_recycling_action_v1,
 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import {
@@ -101,13 +97,11 @@ import {
   decibel_production_executor_gate_v1,
   type DecibelProductionExecutionExecutorV1,
 } from './decibel_production_executor_handoff_v1.js';
-import type { decibel_market_identity_diagnostic_v1 } from './decibel_btc_market_activity_scope_v1.js';
 import {
   classifyDecibelOperationalMarketRegimeV1,
   type decibel_market_regime_observation_v1,
   type decibel_market_regime_result_v1,
 } from './decibel_market_regime_v1.js';
-import type { decibel_raw_ws_bbo_observation_v1 } from './decibel_adverse_selection_evidence_v1.js';
 import { DECIBEL_PRODUCTION_LIFECYCLE_COST_BUDGET_BPS_V1 } from './decibel_smart_ladder_v1.js';
 import { resolveDecibelAuthoritativeOrderEvidenceV1 } from './decibel_authoritative_order_reconciliation_v1.js';
 
@@ -125,7 +119,6 @@ import {
   adaptCandidateDistances,
   buildDecibelCanonicalOrderKeyV1,
   decibel_tp_price_review_v1,
-  decibel_inventory_exit_decision_v1,
   coordinateDecibelInventoryExitV1,
   evaluateDecibelTPPriceSuitabilityV1,
   evaluateDecibelReplacementDecisionV1,
@@ -167,355 +160,16 @@ export {
   type decibel_tp_price_review_v1,
 } from './decibel_production_order_decisions_v1.js';
 
-export const DECIBEL_PRODUCTION_LIVE_ORCHESTRATOR_V1 =
-  'DECIBEL_PRODUCTION_LIVE_ORCHESTRATOR_V1' as const;
+import { buildDecibelOrderDecisionTraceV1 } from './decibel_order_decision_trace_v1.js';
+import { DECIBEL_PRODUCTION_LIVE_ORCHESTRATOR_V1 } from './decibel_production_live_types_v1.js';
+import type {
+  decibel_production_live_snapshot_v1,
+  DecibelProductionLiveStateSourceV1,
+  decibel_production_live_cycle_result_v1,
+  decibel_market_regime_bootstrap_v1,
+} from './decibel_production_live_types_v1.js';
+
 export const DECIBEL_PRODUCTION_REPRICE_POLICY_V1 = 'BEHIND_5_TICKS' as const;
-
-export type decibel_production_live_snapshot_v1 = Readonly<{
-  tpAdverseProgress?: import('./decibel_execution_intent_v1.js').tp_adverse_progress_v1 | null;
-  /** Midpoint range over the last 5 minutes (bps); null without enough history. */
-  priceRangeBps?: number | null;
-  /** While flat: why each side may not open now (entry candle filter), or null. */
-  entryCandleBlockers?: Readonly<{ BUY: string | null; SELL: string | null }> | null;
-  /** Set while the gas wallet is below the entry reserve (decibel_gas_reserve_v1). */
-  executionGasBlocker?: string | null;
-  /** Candle rules' market structure (decibel_market_structure_v1), built once per cycle. */
-  marketStructure?: import('./decibel_market_structure_v1.js').decibel_market_structure_v1;
-  venueReadWindow?: Readonly<{
-    account: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
-    history?: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
-  }>;
-  tradingDecision?: trading_decision_v1;
-  input: decibel_authenticated_passive_recycling_input_v1;
-  sourceStateHash: string;
-  minimumNotionalUsd: number;
-  maximumNotionalUsd: number;
-  /** Unallocated authenticated margin, separate from the entry allocation. */
-  authenticatedAvailableMarginUsd?: number;
-  strategyAllocationRemainingUsd?: number;
-  /** Verified venue/order ceiling for strict inventory reduction, never entry headroom. */
-  maximumReductionNotionalUsd?: number;
-  /** The position's full-size catastrophe stop (decibel_catastrophe_stop_v1), or null. */
-  catastropheStop?:
-    import('./decibel_catastrophe_stop_v1.js').decibel_catastrophe_stop_state_v1 | null;
-  reductionCapacity?: Readonly<{
-    maximumQuantityBtc: number;
-    venueMaximumOrderNotionalUsd: number | null;
-    observedAt: number;
-  }>;
-  availableMarginUsd: number;
-  maximumEffectiveLeverage: number;
-  capacityEvidence?: decibel_capacity_evidence_v1;
-  practicalCapacityInputs?: import('./decibel_risk_capacity_v1.js').decibel_capacity_inputs_v1;
-  capacityModelRequired?: boolean;
-  capacityProduction?: ReturnType<typeof assembleDecibelCapacityCertificateV1>;
-  sessionConfiguration?: Readonly<{
-    preferredEntrySizeUsd?: number;
-    entryCycleBlocker?: string | null;
-    revision: number;
-    capitalToUseUsd: number;
-    maxLossUsd: number;
-    targetMakerVolumeUsd: number;
-    maxPositionUsd: number;
-    exposureLimits?: Readonly<{
-      capacityBlocker?: string | null;
-      capacityDiagnostics?: unknown;
-      riskCapacityUsd?: number;
-      configuredMaximumPositionUsd: number;
-      effectivePositionLimitUsd: number;
-      currentExposureUsd: number;
-      pendingExposureUsd: number;
-      availableHeadroomUsd: number;
-    }>;
-    marginUsedUsd: number;
-    makerVolumeUsd: number;
-    takerVolumeUsd?: number;
-    totalExecutedVolumeUsd?: number;
-    targetVolumeUsd?: number;
-    pnlUsd: number | null;
-    exitAccounting?: Readonly<{
-      inventoryBase: number;
-      entryBasis: number;
-      realizedPnlAfterFeesUsd: number;
-    }> | null;
-    riskBlocker: string | null;
-  }>;
-  economicInputs?: Readonly<{
-    makerFeeBps: number | null;
-    makerFeeSource:
-      | 'CONFIG'
-      | 'DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES'
-      | 'DECIBEL_AUTHENTICATED_STRATEGY_MAKER_FILL_HISTORY'
-      | 'UNKNOWN';
-    estimatedGasCostUsd: number | null;
-    estimatedGasCostSource: 'CONFIG' | 'HISTORICAL_SUCCESSFUL_TX_P95' | 'UNKNOWN';
-    adverseSelectionBufferBps: number | null;
-    adverseSelectionSource:
-      'CONFIG' | 'SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95' | 'GLOBAL_FALLBACK' | 'UNKNOWN';
-    candidateAdverseSelection?: readonly Readonly<{
-      side: 'BUY' | 'SELL';
-      distanceBps: number;
-      p95AdverseSelectionBps: number;
-      sampleCount: number;
-      observedAt: number;
-    }>[];
-    safetyMarginBps: number;
-  }>;
-  quoteSizing?: Readonly<{
-    BUY: decibel_quote_size_assessment_v1 | null;
-    SELL: decibel_quote_size_assessment_v1 | null;
-  }>;
-  warnings?: readonly string[];
-  halfSpreadBps?: number;
-  maximumAbsPositionBase?: number;
-  accountMetrics?: Readonly<{
-    collateralUsd: number;
-    totalMarginUsd: number;
-    unrealizedPnlUsd: number | null;
-    masterAptGas: number | null;
-  }>;
-  authenticatedPositions?: readonly Readonly<{
-    market: string;
-    size: number;
-    source: 'BOT' | 'EXTERNAL' | 'UNKNOWN';
-    entryPrice?: number | null;
-  }>[];
-  terminalOrderEvidence?: readonly Readonly<{
-    venueOrderId: string;
-    clientOrderId?: string | null;
-    state: 'FILLED' | 'CANCELLED' | 'EXPIRED' | 'REJECTED';
-    originalQuantity: number | null;
-    remainingQuantity: number | null;
-  }>[];
-  authenticatedFlatNeutralization?: Readonly<{
-    checkpointBodyHashSha256: string;
-    resyncTimestamp: number;
-    outOfBandFillIds: readonly string[];
-  }>;
-  marketScopeDiagnostics?: Readonly<{
-    rawPositionMarketIdentities: readonly decibel_market_identity_diagnostic_v1[];
-    rawOpenOrderMarketIdentities: readonly decibel_market_identity_diagnostic_v1[];
-    rawFillMarketIdentities: readonly decibel_market_identity_diagnostic_v1[];
-    rawTwapMarketIdentities: readonly decibel_market_identity_diagnostic_v1[];
-    rawTpSlMarketIdentities: readonly decibel_market_identity_diagnostic_v1[];
-    historicalOutOfBandBTCFillCount: number;
-    activeTwapCount: number;
-    activeTpSlCount: number;
-    activeBulkOrderCount: number;
-  }>;
-}>;
-
-export interface DecibelProductionLiveStateSourceV1 {
-  /** Read-only preview inputs. Never consumed by ACTIVE execution or sizing. */
-  readNextSessionCapacityInputs?():
-    import('./decibel_risk_capacity_v1.js').decibel_capacity_inputs_v1 | null;
-  assertAuthenticatedTransport?(): Promise<Readonly<{ transportId: string; baseUrl: string }>>;
-  readAuthenticatedTransportDiagnostics?(): Promise<Readonly<Record<string, unknown>>>;
-  readAuthenticatedEvidenceDiagnostics?(): Readonly<Record<string, unknown>>;
-  readCapacityProduction?(
-    input: Readonly<{
-      sessionId: string;
-      probeNotionalUsd: number;
-      manifest: readonly { hash: string | null }[] | null;
-    }>,
-  ): Promise<ReturnType<typeof assembleDecibelCapacityCertificateV1>>;
-  readAuthenticatedSnapshot(signal?: AbortSignal): Promise<decibel_production_live_snapshot_v1>;
-  readAuthenticatedAccountState?(signal?: AbortSignal): Promise<
-    Readonly<{
-      readWindow?: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
-      observedAt: number;
-      availableMarginUsd?: number;
-      marketMetadata?: decibel_production_live_snapshot_v1['input']['metadata'];
-      accountMetrics: NonNullable<decibel_production_live_snapshot_v1['accountMetrics']>;
-      authenticatedPositions: NonNullable<
-        decibel_production_live_snapshot_v1['authenticatedPositions']
-      >;
-      actualInventoryBase: number;
-      openOrders: decibel_production_live_snapshot_v1['input']['openOrders'];
-      catastropheStop?: decibel_production_live_snapshot_v1['catastropheStop'];
-      activeTpSlCount?: number;
-    }>
-  >;
-  /** Closed venue 1-minute candles (decibel_exchange_candles_v1); optional. */
-  readExchangeCandles1m?(
-    startMs: number,
-    endMs: number,
-  ): Promise<readonly import('./decibel_exchange_candles_v1.js').decibel_exchange_candle_v1[]>;
-  readAuthenticatedFillLedger?(
-    startedAt?: number,
-    signal?: AbortSignal,
-  ): Promise<
-    Readonly<{
-      readWindow?: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
-      observedAt: number;
-      ledger: decibel_production_live_snapshot_v1['input']['actualFillLedger'];
-      terminalOrderEvidence?: decibel_production_live_snapshot_v1['terminalOrderEvidence'];
-    }>
-  >;
-  validateSubmission?(
-    intent: execution_intent_v1,
-  ):
-    | Promise<
-        void | import('./decibel_execution_lifecycle_v1.js').execution_submission_validation_v1
-      >
-    | void
-    | import('./decibel_execution_lifecycle_v1.js').execution_submission_validation_v1;
-  readAuthenticatedSnapshotAfterMutation?(): Promise<decibel_production_live_snapshot_v1>;
-  readAuthenticatedPosition?(): Promise<
-    Readonly<{ positionBase: number; observedAt: number; source: 'AUTHENTICATED_POSITION_READ' }>
-  >;
-  readOrderIdentityEvidence?(
-    input: Readonly<{
-      venueOrderId: string;
-      clientOrderId: string;
-      createdAt: number;
-      transactionHash: string | null;
-    }>,
-  ): Promise<
-    Readonly<{
-      observedAt: number;
-      openOrders: readonly unknown[];
-      terminalOrders: readonly Readonly<{
-        venueOrderId: string;
-        clientOrderId: string;
-        state: 'FILLED' | 'CANCELLED' | 'EXPIRED' | 'REJECTED';
-        side?: 'BUY' | 'SELL';
-        originalQuantity: number | null;
-        remainingQuantity: number | null;
-      }>[];
-      fills: readonly Readonly<{
-        venueFillId: string;
-        quantity: number;
-        price: number;
-        transactionTimestamp: number;
-        transactionVersion?: string;
-      }>[];
-      transactionState: 'COMMITTED' | 'NOT_FOUND' | null;
-    }>
-  >;
-  readPublicMarketPrice?(): Promise<number>;
-  readPublicMarketState?(): Promise<
-    Readonly<{
-      observedAt: number;
-      venueTimestamp?: number;
-      depth?: NonNullable<decibel_authenticated_passive_recycling_input_v1['book']['depth']>;
-      bestBid: number;
-      bestAsk: number;
-      wsConnectionState?: 'CONNECTED';
-      wsSubscriptionState?: 'SUBSCRIBED';
-      lastWsMessageAgeMs?: number;
-      lastValidBboAgeMs?: number;
-      wsReconnectCount?: number;
-      wsLastDisconnectReason?: string | null;
-    }>
-  >;
-  readMarketDataDiagnostics?(): Readonly<{
-    wsConnectionState: 'INIT' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'STALLED';
-    wsSubscriptionState: 'UNSUBSCRIBED' | 'SUBSCRIBING' | 'SUBSCRIBED';
-    lastWsMessageAgeMs: number | null;
-    lastValidBboAgeMs: number | null;
-    wsReconnectCount: number;
-    wsLastDisconnectReason: string | null;
-  }>;
-  reconcileIntent(
-    intentId: string,
-    snapshot: decibel_production_live_snapshot_v1,
-    venueOrderId?: string | null,
-    identity?: Readonly<{
-      clientOrderId: string;
-      createdAt: number;
-      transactionHash: string | null;
-      requestedQuantity?: number;
-      side?: 'BUY' | 'SELL';
-    }>,
-  ): Promise<reconciliation_state_v1>;
-  revalidateCancelTarget?(
-    intent: execution_intent_v1,
-  ): Promise<reconciliation_state_v1 | 'UNRESOLVED'>;
-  verifyTimedOutIntent?(
-    intent: execution_intent_v1,
-    venueOrderId: string | null,
-    telemetry: Readonly<{ transactionHash: string; expirationTimestampMs: number }> | null,
-  ): Promise<
-    | Readonly<{ state: 'ORDER_OPEN'; openOrder: decibel_authenticated_strategy_order_v1 }>
-    | Readonly<{ state: 'INTENT_FAILED_TIMEOUT' }>
-    | Readonly<{ state: 'DROPPED_EXPIRED' }>
-    | Readonly<{ state: 'UNRESOLVED' }>
-  >;
-  close?(): Promise<void> | void;
-}
-
-export type decibel_production_live_cycle_result_v1 = Readonly<{
-  orderDecisionTrace?: ReturnType<typeof buildDecibelOrderDecisionTraceV1>;
-  version: typeof DECIBEL_PRODUCTION_LIVE_ORCHESTRATOR_V1;
-  tradingDecision: trading_decision_v1;
-  action:
-    | 'RECONCILE_ONLY'
-    | 'HOLD'
-    | 'BLOCKED'
-    | 'DRY_RUN_PREPARED'
-    | 'DUPLICATE_SUPPRESSED'
-    | 'RECONCILIATION_REQUIRED'
-    | 'ACKNOWLEDGED'
-    | 'REJECTED';
-  intentId: string | null;
-  blocker: string | null;
-  evaluation: DecibelAuthenticatedPassiveRecyclingEvaluationV1 | null;
-  controlSnapshot: Readonly<{
-    observedAt: number;
-    sourceStateHash: string | null;
-    strategyState: DecibelAuthenticatedPassiveRecyclingEvaluationV1['operatingState'];
-    bidAdmission: 'READY' | 'BLOCKED' | 'UNKNOWN';
-    askAdmission: 'READY' | 'BLOCKED' | 'UNKNOWN';
-    exactReason: string;
-    restingAgeMs: number | null;
-    priceDriftTicks: number | null;
-    cancelReason: string | null;
-    gates: readonly Readonly<{
-      gate: string;
-      status: 'READY' | 'BLOCKED' | 'UNKNOWN';
-      numericInputs: Readonly<Record<string, number | null>>;
-      reason: string;
-      persistence: 'TRANSIENT' | 'PERSISTENT';
-      clearCondition: string;
-    }>[];
-  }>;
-  mutationInvocations: number;
-  latency?: Readonly<{
-    cycleMs: number;
-    authenticatedReadMs: number;
-    marketToDecisionMs: number | null;
-    fillToOppositeDecisionMs: number | null;
-    fillToExitCoverageMs: number | null;
-    decisionToExecutorSubmissionMs: number | null;
-    executorSubmissionToAckMs: number | null;
-    cancelToReplacementReadyMs: number | null;
-  }>;
-  tpPricing?: decibel_tp_price_review_v1 | null;
-  inventoryExit?: decibel_inventory_exit_decision_v1 | null;
-  exitCoverageWorkflow?: ReturnType<typeof deriveDecibelExitCoverageWorkflowV1> | null;
-  orderDecisions?: readonly Readonly<{
-    ORDER_ID: string;
-    ORDER_ROLE: string;
-    ORDER_AGE_MS: number | null;
-    RESTING_PRICE: number;
-    CANDIDATE_PRICE: number | null;
-    DELTA_TICKS: number | null;
-    EVIDENCE_VERSION: string;
-    PLAN_DECISION: string;
-    RISK_VALIDATION_DECISION: string;
-    FINAL_KEEP_CANCEL_REPLACE_REASON: string;
-    REPLACEMENT_NET_BENEFIT: number | null;
-    ACK_RECONCILIATION_STATE: string;
-  }>[];
-  marketScopeDiagnostics?: decibel_production_live_snapshot_v1['marketScopeDiagnostics'];
-}>;
-
-export type decibel_market_regime_bootstrap_v1 = Readonly<{
-  observations: readonly decibel_raw_ws_bbo_observation_v1[];
-  enforceReadiness: boolean;
-  observedAt: number;
-}>;
 
 export function assertDecibelProductionControlLivenessV1(
   result: decibel_production_live_cycle_result_v1,
@@ -1716,281 +1370,12 @@ export class decibel_production_live_orchestrator_v1 {
     );
     if (recoveries.length === 0 && Date.now() < this.mutationBudgetCooldownUntil)
       return this.result('HOLD', null, 'EXECUTION_MUTATION_BUDGET_COOLDOWN', null, 0);
-    let recovery = recoveries[0];
+    const recovery = recoveries[0];
     let snapshot: decibel_production_live_snapshot_v1;
     if (recovery !== undefined) {
-      snapshot = await this.readSnapshot();
-      // OPEN visibility does not resolve a durable uncertainty until its owner
-      // passes reconciliation. Do not let an older ACK starve that owner.
-      recovery =
-        recoveries.find((candidate) => {
-          const status = this.Journal.get(candidate.intentId)?.status;
-          return (
-            status === 'UNRESOLVABLE_ACK' ||
-            status === 'SUBMIT_UNKNOWN' ||
-            status === 'SUBMITTING' ||
-            status === 'RECONCILING'
-          );
-        }) ??
-        recoveries.find(
-          (candidate) => this.Journal.getIntent(candidate.intentId)?.action === 'CANCEL',
-        ) ??
-        recoveries.find((candidate) => {
-          const persisted = this.Journal.get(candidate.intentId);
-          return (
-            persisted !== null &&
-            (persisted.venueOrderId === null ||
-              !snapshot.input.openOrders.some(
-                (order) => order.venueOrderId === persisted.venueOrderId,
-              ))
-          );
-        }) ??
-        recovery;
-      const recoveredIntent = this.Journal.get(recovery.intentId);
-      let reconciliation: reconciliation_state_v1 | undefined;
-      try {
-        reconciliation = await this.Source.reconcileIntent(
-          recovery.intentId,
-          snapshot,
-          recoveredIntent?.venueOrderId,
-          this.getReconciliationIdentity(recovery.intentId),
-        );
-      } catch (error) {
-        if (
-          getErrorChain(error).some(
-            (candidate) =>
-              candidate instanceof Error &&
-              candidate.message === 'PRODUCTION_ACK_AUTHORITATIVE_VISIBILITY_PENDING',
-          )
-        ) {
-          const current = this.Journal.get(recovery.intentId);
-          if (
-            current &&
-            [
-              'ACKNOWLEDGED',
-              'RECONCILING',
-              'SUBMITTING',
-              'SUBMIT_UNKNOWN',
-              'UNRESOLVABLE_ACK',
-            ].includes(current.status)
-          )
-            this.Journal.transition(recovery.intentId, 'RECONCILING', snapshot.input.now);
-          return this.result(
-            'RECONCILE_ONLY',
-            recovery.intentId,
-            'PRODUCTION_ACK_AUTHORITATIVE_VISIBILITY_PENDING',
-            null,
-            0,
-          );
-        }
-        const unresolvableAcknowledgement = getErrorChain(error).some(
-          (candidate) =>
-            candidate instanceof Error &&
-            candidate.message === 'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK',
-        );
-        if (unresolvableAcknowledgement) {
-          if (this.Source.readOrderIdentityEvidence !== undefined) {
-            await reconcileAllDecibelAcknowledgedOrdersV1(this.Journal, this.Source, snapshot);
-            const resolved = this.Journal.get(recovery.intentId)?.status;
-            if (
-              resolved === 'APPLIED' ||
-              resolved === 'CANCELLED_EXTERNALLY' ||
-              resolved === 'EXTERNALLY_NEUTRALIZED'
-            ) {
-              this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
-              return this.result('RECONCILE_ONLY', recovery.intentId, null, null, 0);
-            }
-          }
-          // A lagging snapshot/history projection is not a failed submission.
-          // Use the existing direct authenticated reader before latching UNKNOWN;
-          // only an exact OPEN identity may clear it here, never SDK success/FLAT.
-          const body = this.Journal.getIntent(recovery.intentId);
-          if (body && this.Source.verifyTimedOutIntent) {
-            const direct = await this.Source.verifyTimedOutIntent(
-              body,
-              recoveredIntent?.venueOrderId ?? null,
-              null,
-            );
-            if (direct.state === 'ORDER_OPEN') {
-              const open = direct.openOrder;
-              if (
-                open.clientOrderId !== body.clientOrderId ||
-                (recoveredIntent?.venueOrderId != null &&
-                  open.venueOrderId !== recoveredIntent.venueOrderId) ||
-                open.market !== snapshot.input.market ||
-                body.market !== snapshot.input.metadata.symbol ||
-                open.side !== body.side ||
-                !isAligned(open.price, snapshot.input.metadata.tickSize) ||
-                Math.round(open.price / snapshot.input.metadata.tickSize) !== body.priceTicks ||
-                !Number.isFinite(open.quantity) ||
-                open.quantity <= 0 ||
-                open.quantity > body.quantity ||
-                !isAligned(open.quantity, snapshot.input.metadata.lotSize) ||
-                (body.action === 'PLACE' &&
-                  open.reduceOnly !== undefined &&
-                  open.reduceOnly !== body.reduceOnly)
-              )
-                throw new Error('PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT', {
-                  cause: error,
-                });
-              snapshot = Object.freeze({
-                ...snapshot,
-                input: Object.freeze({
-                  ...snapshot.input,
-                  openOrders: Object.freeze([
-                    ...snapshot.input.openOrders.filter(
-                      (o) => o.venueOrderId !== direct.openOrder.venueOrderId,
-                    ),
-                    direct.openOrder,
-                  ]),
-                }),
-                sourceStateHash: hash({
-                  previous: snapshot.sourceStateHash,
-                  direct: direct.openOrder,
-                }),
-              });
-              this.LatestSnapshot = snapshot;
-              this.applyOpenOrderReconciliationProvenance(
-                recovery.intentId,
-                'ORDER_OPEN',
-                snapshot,
-              );
-              this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
-              return this.result('RECONCILE_ONLY', recovery.intentId, null, null, 0);
-            }
-          }
-          this.Journal.markUnresolvableAcknowledgement(recovery.intentId, snapshot.input.now);
-          return this.result(
-            'RECONCILE_ONLY',
-            recovery.intentId,
-            'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK',
-            null,
-            0,
-          );
-        }
-        if (
-          recoveredIntent !== null &&
-          getErrorChain(error).some(
-            (candidate) =>
-              candidate instanceof Error &&
-              candidate.message === 'PRODUCTION_RECONCILIATION_AMBIGUOUS',
-          )
-        ) {
-          const elapsedMs = Math.max(0, snapshot.input.now - recoveredIntent.createdAt);
-          if (
-            elapsedMs >= this.Config.reconciliationConfirmationTimeoutMs &&
-            this.Source.verifyTimedOutIntent !== undefined
-          ) {
-            const recoveredIntentBody = this.Journal.getIntent(recovery.intentId);
-            if (recoveredIntentBody === null)
-              throw new Error('EXECUTION_INTENT_NOT_FOUND', { cause: error });
-            const fallback = await this.Source.verifyTimedOutIntent(
-              recoveredIntentBody,
-              recoveredIntent.venueOrderId,
-              elapsedMs >= this.Config.maximumReconciliationAgeMs
-                ? this.Journal.getSubmissionTelemetry(recovery.intentId)
-                : null,
-            );
-            if (fallback.state !== 'UNRESOLVED') {
-              reconciliation = fallback.state;
-              if (
-                fallback.state === 'INTENT_FAILED_TIMEOUT' ||
-                fallback.state === 'DROPPED_EXPIRED'
-              ) {
-                this.recordAuthenticatedFillsForIntent(recovery.intentId, snapshot);
-                this.Lifecycle.reconcile(recovery.intentId, fallback.state, snapshot.input.now);
-                this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
-                return this.result(
-                  'RECONCILE_ONLY',
-                  recovery.intentId,
-                  fallback.state === 'DROPPED_EXPIRED'
-                    ? `INTENT_EXPIRED_DROPPED: Cleared phantom intent ${recovery.intentId} after max age exceeded`
-                    : null,
-                  null,
-                  0,
-                );
-              }
-              snapshot = Object.freeze({
-                ...snapshot,
-                input: Object.freeze({
-                  ...snapshot.input,
-                  openOrders: Object.freeze([
-                    ...snapshot.input.openOrders.filter(
-                      (order) => order.venueOrderId !== fallback.openOrder.venueOrderId,
-                    ),
-                    fallback.openOrder,
-                  ]),
-                }),
-                sourceStateHash: hash({
-                  priorSourceStateHash: snapshot.sourceStateHash,
-                  directlyVerifiedOpenOrder: fallback.openOrder,
-                }),
-              });
-              this.LatestSnapshot = snapshot;
-              this.recordAuthenticatedFillsForIntent(recovery.intentId, snapshot);
-              this.applyOpenOrderReconciliationProvenance(
-                recovery.intentId,
-                reconciliation,
-                snapshot,
-              );
-              this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
-              return this.result('HOLD', recovery.intentId, null, null, 0);
-            } else {
-              return this.result(
-                'RECONCILE_ONLY',
-                recovery.intentId,
-                getErrorChain(error).some(
-                  (candidate) =>
-                    candidate instanceof Error &&
-                    candidate.message === 'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK',
-                )
-                  ? 'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK'
-                  : 'PRODUCTION_RECONCILIATION_CONFIRMATION_TIMEOUT',
-                null,
-                0,
-              );
-            }
-          } else {
-            return this.result(
-              'RECONCILE_ONLY',
-              recovery.intentId,
-              elapsedMs >= this.Config.reconciliationConfirmationTimeoutMs
-                ? 'PRODUCTION_RECONCILIATION_CONFIRMATION_TIMEOUT'
-                : 'PRODUCTION_RECONCILIATION_CONFIRMATION_PENDING',
-              null,
-              0,
-            );
-          }
-        }
-        if (reconciliation === undefined) throw error;
-      }
-      if (reconciliation === undefined) throw new Error('PRODUCTION_RECONCILIATION_AMBIGUOUS');
-      if (
-        reconciliation === 'AUTHENTICATED_FLAT_CHECKPOINT_NEUTRALIZED' &&
-        (recoveredIntent === null ||
-          snapshot.authenticatedFlatNeutralization === undefined ||
-          snapshot.authenticatedFlatNeutralization.resyncTimestamp < recoveredIntent.createdAt)
-      )
-        throw new Error('PRODUCTION_RECONCILIATION_AMBIGUOUS');
-      this.recordAuthenticatedFillsForIntent(recovery.intentId, snapshot);
-      this.applyOpenOrderReconciliationProvenance(recovery.intentId, reconciliation, snapshot);
-      this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
-      if (
-        this.Journal.getIntent(recovery.intentId)?.action === 'CANCEL' &&
-        (reconciliation === 'ORDER_OPEN' || reconciliation === 'PARTIAL_FILL')
-      )
-        return this.result(
-          'RECONCILE_ONLY',
-          recovery.intentId,
-          'PRODUCTION_RECONCILIATION_CANCEL_FINALITY_PENDING',
-          null,
-          0,
-        );
-      // A partial fill with a verified live residual remains an owned OPEN
-      // order. Continue through SESSION_UNWIND so the residual can be cancelled;
-      // returning RECONCILE_ONLY here forever stranded End Session.
-      if (reconciliation !== 'ORDER_OPEN' && reconciliation !== 'PARTIAL_FILL')
-        return this.result('RECONCILE_ONLY', recovery.intentId, null, null, 0);
+      const recovered = await this.reconcileCycleRecovery(recovery, recoveries);
+      if ('cycleResult' in recovered) return recovered.cycleResult;
+      snapshot = recovered.snapshot;
     } else {
       snapshot = await this.readSnapshot();
       // A separate authenticated telemetry reconciler may have terminalized the prior intent.
@@ -1998,190 +1383,12 @@ export class decibel_production_live_orchestrator_v1 {
       // release only the canary sequencing latch. Unknown submissions remain non-terminal.
       this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
     }
-    const terminalIdentityKeys = new Set<string>();
-    for (const terminal of snapshot.terminalOrderEvidence ?? []) {
-      if (terminal.clientOrderId === null || terminal.clientOrderId === undefined) continue;
-      const open = snapshot.input.openOrders.find(
-        (candidate) =>
-          candidate.venueOrderId === terminal.venueOrderId &&
-          candidate.clientOrderId === terminal.clientOrderId,
-      );
-      if (open === undefined) continue;
-      const identityKey = `${terminal.venueOrderId}:${terminal.clientOrderId}`;
-      const owner = this.Journal.findPlaceByExactIdentity(
-        terminal.venueOrderId,
-        terminal.clientOrderId,
-      );
-      if (owner === null) continue;
-      const intent = this.Journal.getIntent(owner.intentId);
-      if (intent === null) {
-        this.Journal.recordIdentityConflict(owner.intentId, snapshot.input.now);
-        return this.result(
-          'RECONCILE_ONLY',
-          owner.intentId,
-          'PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT',
-          null,
-          0,
-        );
-      }
-      const canonical = resolveDecibelAuthoritativeOrderEvidenceV1({
-        identity: {
-          market: 'BTC/USD',
-          venueOrderId: terminal.venueOrderId,
-          clientOrderId: terminal.clientOrderId,
-          intentId: owner.intentId,
-          side: intent.side,
-          originalQuantity: intent.quantity,
-        },
-        observations: [
-          {
-            source: 'AUTHENTICATED_OPEN_ORDERS',
-            sourceTimestamp: null,
-            observedAt: snapshot.input.now,
-            market: 'BTC/USD',
-            venueOrderId: open.venueOrderId,
-            clientOrderId: open.clientOrderId,
-            side: open.side,
-            originalQuantity: null,
-            remainingQuantity: open.quantity,
-            terminalStatus: null,
-          },
-          {
-            source: 'AUTHENTICATED_TERMINAL_ORDER_HISTORY',
-            sourceTimestamp: null,
-            observedAt: snapshot.input.now,
-            market: 'BTC/USD',
-            venueOrderId: terminal.venueOrderId,
-            clientOrderId: terminal.clientOrderId,
-            side: intent.side,
-            originalQuantity: terminal.originalQuantity,
-            remainingQuantity: terminal.remainingQuantity,
-            terminalStatus: terminal.state,
-          },
-        ],
-        fills: snapshot.input.actualFillLedger.fills
-          .filter((fill) => fill.venueOrderId === terminal.venueOrderId)
-          .map((fill) => ({
-            source: 'AUTHENTICATED_OWN_FILL_STREAM',
-            observedAt: fill.receivedAt.getTime(),
-            venueTimestamp: fill.venueTimestamp?.getTime() ?? null,
-            market: 'BTC/USD',
-            venueOrderId: fill.venueOrderId,
-            clientOrderId: terminal.clientOrderId!,
-            fillId: fill.venueFillId,
-            quantity: fill.executedBaseQuantity,
-            price: fill.executedPrice,
-          })),
-      });
-      if (canonical.state === 'CONFLICT') {
-        this.Journal.recordIdentityConflict(owner.intentId, snapshot.input.now);
-        return this.result(
-          'RECONCILE_ONLY',
-          owner.intentId,
-          'PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT',
-          null,
-          0,
-        );
-      }
-      if (canonical.state === 'PARTIAL_FILL') {
-        this.applyOpenOrderReconciliationProvenance(owner.intentId, 'PARTIAL_FILL', snapshot);
-        continue;
-      }
-      if (canonical.state !== 'FULL_FILL' && canonical.state !== 'CANCELLED') continue;
-      terminalIdentityKeys.add(identityKey);
-      const filled = canonical.state === 'FULL_FILL';
-      const priorProvenance = this.Journal.getLatestReconciliationProvenance(owner.intentId);
-      this.Journal.applyAuthoritativeReconciliation({
-        intentId: owner.intentId,
-        reconciliationState: filled ? 'FULL_FILL' : 'CANCELLED_EXTERNALLY',
-        terminalStatus: filled ? 'APPLIED' : 'CANCELLED_EXTERNALLY',
-        source: 'AUTHENTICATED_TERMINAL_ORDER_HISTORY',
-        matchedIdentifier: `venueOrderId:${terminal.venueOrderId}`,
-        venueStatus: terminal.state,
-        remainingQuantity: terminal.remainingQuantity,
-        transactionHash:
-          priorProvenance?.transactionHash ??
-          this.Journal.getSubmissionTelemetry(owner.intentId)?.transactionHash ??
-          null,
-        venueOrderId: terminal.venueOrderId,
-        clientOrderId: terminal.clientOrderId,
-        observedAt: snapshot.input.now,
-        fills: canonical.fills.map((fill) => ({
-          fillId: fill.fillId,
-          quantity: fill.quantity,
-          price: fill.price,
-          transactionVersion: requireDecibelFillTransactionVersionV1(
-            snapshot.input.actualFillLedger.fills.find(
-              (candidate) =>
-                candidate.venueFillId === fill.fillId &&
-                candidate.venueOrderId === terminal.venueOrderId,
-            )?.transactionVersion,
-          ),
-          ...(fill.venueTimestamp === null ? {} : { transactionTimestamp: fill.venueTimestamp }),
-        })),
-      });
-    }
-    if (terminalIdentityKeys.size > 0) {
-      snapshot = Object.freeze({
-        ...snapshot,
-        input: Object.freeze({
-          ...snapshot.input,
-          openOrders: Object.freeze(
-            snapshot.input.openOrders.filter(
-              (order) =>
-                !terminalIdentityKeys.has(`${order.venueOrderId}:${order.clientOrderId ?? ''}`),
-            ),
-          ),
-        }),
-        sourceStateHash: hash({
-          priorSourceStateHash: snapshot.sourceStateHash,
-          terminalOpenOverlapsRemoved: [...terminalIdentityKeys].sort(),
-        }),
-      });
-      this.LatestSnapshot = snapshot;
-    }
+    const withoutTerminal = this.removeTerminalOpenOverlaps(snapshot);
+    if ('cycleResult' in withoutTerminal) return withoutTerminal.cycleResult;
+    snapshot = withoutTerminal.snapshot;
     this.syncOpenOrderObservations(snapshot);
-    for (const openOrder of snapshot.input.openOrders) {
-      // A strategy-shaped client ID is not ownership evidence. Recovery must
-      // retain an existing durable PLACE identity, never invent one from OPEN.
-      // Existing non-terminal ownership continues through the normal reconciliation path.
-      // Terminal ownership deliberately falls through to the durable identity boundary below.
-      const originalOwner = this.Journal.findPlaceByExactIdentity(
-        openOrder.venueOrderId,
-        openOrder.clientOrderId,
-      );
-      if (originalOwner && ['ACKNOWLEDGED', 'RECONCILING'].includes(originalOwner.status)) continue;
-      const adopted = buildAdoptedOpenOrderIntent(snapshot, this.cycleSequence, openOrder);
-      if (adopted === null)
-        return this.result(
-          'BLOCKED',
-          null,
-          'PRODUCTION_CURRENT_ORDER_OWNERSHIP_UNVERIFIED',
-          null,
-          0,
-        );
-      const adoption = this.Journal.adoptAuthoritativeOpenOrder({
-        intent: adopted,
-        venueOrderId: openOrder.venueOrderId,
-        observedAt: snapshot.input.now,
-        remainingQuantity: openOrder.quantity,
-      });
-      if (adoption.outcome === 'UNOWNED')
-        return this.result(
-          'BLOCKED',
-          null,
-          'PRODUCTION_CURRENT_ORDER_OWNERSHIP_UNVERIFIED',
-          null,
-          0,
-        );
-      if (adoption.outcome === 'ALREADY_OWNED' || adoption.outcome === 'STALE_OPEN_IGNORED')
-        continue;
-      if (adoption.outcome === 'IDENTITY_CONFLICT') {
-        const blocker = 'PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT';
-        this.Journal.recordIdentityConflict(adoption.intentId, snapshot.input.now);
-        return this.result('RECONCILE_ONLY', adoption.intentId, blocker, null, 0);
-      }
-    }
+    const adopted = this.adoptAuthoritativeOpenOrders(snapshot);
+    if ('cycleResult' in adopted) return adopted.cycleResult;
     snapshot = await this.refreshAuthenticatedPosition(snapshot);
     const inventoryCrossingOrder = findDecibelInventoryCrossingOpenOrderV1(snapshot);
     if (inventoryCrossingOrder !== null)
@@ -3038,6 +2245,511 @@ export class decibel_production_live_orchestrator_v1 {
       evaluation,
       outcome.status === 'DUPLICATE_SUPPRESSED' ? 0 : 1,
     );
+  }
+
+  /** Reconciles the oldest recoverable intent before planning (evaluateOnceInternal phase). */
+  private async reconcileCycleRecovery(
+    recovery: ReturnType<decibel_production_live_orchestrator_v1['Lifecycle']['recover']>[number],
+    recoveries: ReturnType<decibel_production_live_orchestrator_v1['Lifecycle']['recover']>,
+  ): Promise<
+    Readonly<
+      | { cycleResult: decibel_production_live_cycle_result_v1 }
+      | { snapshot: decibel_production_live_snapshot_v1 }
+    >
+  > {
+    let snapshot: decibel_production_live_snapshot_v1;
+    snapshot = await this.readSnapshot();
+    // OPEN visibility does not resolve a durable uncertainty until its owner
+    // passes reconciliation. Do not let an older ACK starve that owner.
+    recovery =
+      recoveries.find((candidate) => {
+        const status = this.Journal.get(candidate.intentId)?.status;
+        return (
+          status === 'UNRESOLVABLE_ACK' ||
+          status === 'SUBMIT_UNKNOWN' ||
+          status === 'SUBMITTING' ||
+          status === 'RECONCILING'
+        );
+      }) ??
+      recoveries.find(
+        (candidate) => this.Journal.getIntent(candidate.intentId)?.action === 'CANCEL',
+      ) ??
+      recoveries.find((candidate) => {
+        const persisted = this.Journal.get(candidate.intentId);
+        return (
+          persisted !== null &&
+          (persisted.venueOrderId === null ||
+            !snapshot.input.openOrders.some(
+              (order) => order.venueOrderId === persisted.venueOrderId,
+            ))
+        );
+      }) ??
+      recovery;
+    const recoveredIntent = this.Journal.get(recovery.intentId);
+    let reconciliation: reconciliation_state_v1 | undefined;
+    try {
+      reconciliation = await this.Source.reconcileIntent(
+        recovery.intentId,
+        snapshot,
+        recoveredIntent?.venueOrderId,
+        this.getReconciliationIdentity(recovery.intentId),
+      );
+    } catch (error) {
+      if (
+        getErrorChain(error).some(
+          (candidate) =>
+            candidate instanceof Error &&
+            candidate.message === 'PRODUCTION_ACK_AUTHORITATIVE_VISIBILITY_PENDING',
+        )
+      ) {
+        const current = this.Journal.get(recovery.intentId);
+        if (
+          current &&
+          [
+            'ACKNOWLEDGED',
+            'RECONCILING',
+            'SUBMITTING',
+            'SUBMIT_UNKNOWN',
+            'UNRESOLVABLE_ACK',
+          ].includes(current.status)
+        )
+          this.Journal.transition(recovery.intentId, 'RECONCILING', snapshot.input.now);
+        return {
+          cycleResult: this.result(
+            'RECONCILE_ONLY',
+            recovery.intentId,
+            'PRODUCTION_ACK_AUTHORITATIVE_VISIBILITY_PENDING',
+            null,
+            0,
+          ),
+        };
+      }
+      const unresolvableAcknowledgement = getErrorChain(error).some(
+        (candidate) =>
+          candidate instanceof Error &&
+          candidate.message === 'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK',
+      );
+      if (unresolvableAcknowledgement) {
+        if (this.Source.readOrderIdentityEvidence !== undefined) {
+          await reconcileAllDecibelAcknowledgedOrdersV1(this.Journal, this.Source, snapshot);
+          const resolved = this.Journal.get(recovery.intentId)?.status;
+          if (
+            resolved === 'APPLIED' ||
+            resolved === 'CANCELLED_EXTERNALLY' ||
+            resolved === 'EXTERNALLY_NEUTRALIZED'
+          ) {
+            this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
+            return { cycleResult: this.result('RECONCILE_ONLY', recovery.intentId, null, null, 0) };
+          }
+        }
+        // A lagging snapshot/history projection is not a failed submission.
+        // Use the existing direct authenticated reader before latching UNKNOWN;
+        // only an exact OPEN identity may clear it here, never SDK success/FLAT.
+        const body = this.Journal.getIntent(recovery.intentId);
+        if (body && this.Source.verifyTimedOutIntent) {
+          const direct = await this.Source.verifyTimedOutIntent(
+            body,
+            recoveredIntent?.venueOrderId ?? null,
+            null,
+          );
+          if (direct.state === 'ORDER_OPEN') {
+            const open = direct.openOrder;
+            if (
+              open.clientOrderId !== body.clientOrderId ||
+              (recoveredIntent?.venueOrderId != null &&
+                open.venueOrderId !== recoveredIntent.venueOrderId) ||
+              open.market !== snapshot.input.market ||
+              body.market !== snapshot.input.metadata.symbol ||
+              open.side !== body.side ||
+              !isAligned(open.price, snapshot.input.metadata.tickSize) ||
+              Math.round(open.price / snapshot.input.metadata.tickSize) !== body.priceTicks ||
+              !Number.isFinite(open.quantity) ||
+              open.quantity <= 0 ||
+              open.quantity > body.quantity ||
+              !isAligned(open.quantity, snapshot.input.metadata.lotSize) ||
+              (body.action === 'PLACE' &&
+                open.reduceOnly !== undefined &&
+                open.reduceOnly !== body.reduceOnly)
+            )
+              throw new Error('PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT', {
+                cause: error,
+              });
+            snapshot = Object.freeze({
+              ...snapshot,
+              input: Object.freeze({
+                ...snapshot.input,
+                openOrders: Object.freeze([
+                  ...snapshot.input.openOrders.filter(
+                    (o) => o.venueOrderId !== direct.openOrder.venueOrderId,
+                  ),
+                  direct.openOrder,
+                ]),
+              }),
+              sourceStateHash: hash({
+                previous: snapshot.sourceStateHash,
+                direct: direct.openOrder,
+              }),
+            });
+            this.LatestSnapshot = snapshot;
+            this.applyOpenOrderReconciliationProvenance(recovery.intentId, 'ORDER_OPEN', snapshot);
+            this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
+            return { cycleResult: this.result('RECONCILE_ONLY', recovery.intentId, null, null, 0) };
+          }
+        }
+        this.Journal.markUnresolvableAcknowledgement(recovery.intentId, snapshot.input.now);
+        return {
+          cycleResult: this.result(
+            'RECONCILE_ONLY',
+            recovery.intentId,
+            'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK',
+            null,
+            0,
+          ),
+        };
+      }
+      if (
+        recoveredIntent !== null &&
+        getErrorChain(error).some(
+          (candidate) =>
+            candidate instanceof Error &&
+            candidate.message === 'PRODUCTION_RECONCILIATION_AMBIGUOUS',
+        )
+      ) {
+        const elapsedMs = Math.max(0, snapshot.input.now - recoveredIntent.createdAt);
+        if (
+          elapsedMs >= this.Config.reconciliationConfirmationTimeoutMs &&
+          this.Source.verifyTimedOutIntent !== undefined
+        ) {
+          const recoveredIntentBody = this.Journal.getIntent(recovery.intentId);
+          if (recoveredIntentBody === null)
+            throw new Error('EXECUTION_INTENT_NOT_FOUND', { cause: error });
+          const fallback = await this.Source.verifyTimedOutIntent(
+            recoveredIntentBody,
+            recoveredIntent.venueOrderId,
+            elapsedMs >= this.Config.maximumReconciliationAgeMs
+              ? this.Journal.getSubmissionTelemetry(recovery.intentId)
+              : null,
+          );
+          if (fallback.state !== 'UNRESOLVED') {
+            reconciliation = fallback.state;
+            if (
+              fallback.state === 'INTENT_FAILED_TIMEOUT' ||
+              fallback.state === 'DROPPED_EXPIRED'
+            ) {
+              this.recordAuthenticatedFillsForIntent(recovery.intentId, snapshot);
+              this.Lifecycle.reconcile(recovery.intentId, fallback.state, snapshot.input.now);
+              this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
+              return {
+                cycleResult: this.result(
+                  'RECONCILE_ONLY',
+                  recovery.intentId,
+                  fallback.state === 'DROPPED_EXPIRED'
+                    ? `INTENT_EXPIRED_DROPPED: Cleared phantom intent ${recovery.intentId} after max age exceeded`
+                    : null,
+                  null,
+                  0,
+                ),
+              };
+            }
+            snapshot = Object.freeze({
+              ...snapshot,
+              input: Object.freeze({
+                ...snapshot.input,
+                openOrders: Object.freeze([
+                  ...snapshot.input.openOrders.filter(
+                    (order) => order.venueOrderId !== fallback.openOrder.venueOrderId,
+                  ),
+                  fallback.openOrder,
+                ]),
+              }),
+              sourceStateHash: hash({
+                priorSourceStateHash: snapshot.sourceStateHash,
+                directlyVerifiedOpenOrder: fallback.openOrder,
+              }),
+            });
+            this.LatestSnapshot = snapshot;
+            this.recordAuthenticatedFillsForIntent(recovery.intentId, snapshot);
+            this.applyOpenOrderReconciliationProvenance(
+              recovery.intentId,
+              reconciliation,
+              snapshot,
+            );
+            this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
+            return { cycleResult: this.result('HOLD', recovery.intentId, null, null, 0) };
+          } else {
+            return {
+              cycleResult: this.result(
+                'RECONCILE_ONLY',
+                recovery.intentId,
+                getErrorChain(error).some(
+                  (candidate) =>
+                    candidate instanceof Error &&
+                    candidate.message === 'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK',
+                )
+                  ? 'PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK'
+                  : 'PRODUCTION_RECONCILIATION_CONFIRMATION_TIMEOUT',
+                null,
+                0,
+              ),
+            };
+          }
+        } else {
+          return {
+            cycleResult: this.result(
+              'RECONCILE_ONLY',
+              recovery.intentId,
+              elapsedMs >= this.Config.reconciliationConfirmationTimeoutMs
+                ? 'PRODUCTION_RECONCILIATION_CONFIRMATION_TIMEOUT'
+                : 'PRODUCTION_RECONCILIATION_CONFIRMATION_PENDING',
+              null,
+              0,
+            ),
+          };
+        }
+      }
+      if (reconciliation === undefined) throw error;
+    }
+    if (reconciliation === undefined) throw new Error('PRODUCTION_RECONCILIATION_AMBIGUOUS');
+    if (
+      reconciliation === 'AUTHENTICATED_FLAT_CHECKPOINT_NEUTRALIZED' &&
+      (recoveredIntent === null ||
+        snapshot.authenticatedFlatNeutralization === undefined ||
+        snapshot.authenticatedFlatNeutralization.resyncTimestamp < recoveredIntent.createdAt)
+    )
+      throw new Error('PRODUCTION_RECONCILIATION_AMBIGUOUS');
+    this.recordAuthenticatedFillsForIntent(recovery.intentId, snapshot);
+    this.applyOpenOrderReconciliationProvenance(recovery.intentId, reconciliation, snapshot);
+    this.ExecutorGate.acknowledgeAuthenticatedReconciliation();
+    if (
+      this.Journal.getIntent(recovery.intentId)?.action === 'CANCEL' &&
+      (reconciliation === 'ORDER_OPEN' || reconciliation === 'PARTIAL_FILL')
+    )
+      return {
+        cycleResult: this.result(
+          'RECONCILE_ONLY',
+          recovery.intentId,
+          'PRODUCTION_RECONCILIATION_CANCEL_FINALITY_PENDING',
+          null,
+          0,
+        ),
+      };
+    // A partial fill with a verified live residual remains an owned OPEN
+    // order. Continue through SESSION_UNWIND so the residual can be cancelled;
+    // returning RECONCILE_ONLY here forever stranded End Session.
+    if (reconciliation !== 'ORDER_OPEN' && reconciliation !== 'PARTIAL_FILL')
+      return { cycleResult: this.result('RECONCILE_ONLY', recovery.intentId, null, null, 0) };
+    return { snapshot };
+  }
+
+  /** Drops open orders that exact terminal evidence already closed (evaluateOnceInternal phase). */
+  private removeTerminalOpenOverlaps(
+    snapshot: decibel_production_live_snapshot_v1,
+  ): Readonly<
+    | { cycleResult: decibel_production_live_cycle_result_v1 }
+    | { snapshot: decibel_production_live_snapshot_v1 }
+  > {
+    const terminalIdentityKeys = new Set<string>();
+    for (const terminal of snapshot.terminalOrderEvidence ?? []) {
+      if (terminal.clientOrderId === null || terminal.clientOrderId === undefined) continue;
+      const open = snapshot.input.openOrders.find(
+        (candidate) =>
+          candidate.venueOrderId === terminal.venueOrderId &&
+          candidate.clientOrderId === terminal.clientOrderId,
+      );
+      if (open === undefined) continue;
+      const identityKey = `${terminal.venueOrderId}:${terminal.clientOrderId}`;
+      const owner = this.Journal.findPlaceByExactIdentity(
+        terminal.venueOrderId,
+        terminal.clientOrderId,
+      );
+      if (owner === null) continue;
+      const intent = this.Journal.getIntent(owner.intentId);
+      if (intent === null) {
+        this.Journal.recordIdentityConflict(owner.intentId, snapshot.input.now);
+        return {
+          cycleResult: this.result(
+            'RECONCILE_ONLY',
+            owner.intentId,
+            'PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT',
+            null,
+            0,
+          ),
+        };
+      }
+      const canonical = resolveDecibelAuthoritativeOrderEvidenceV1({
+        identity: {
+          market: 'BTC/USD',
+          venueOrderId: terminal.venueOrderId,
+          clientOrderId: terminal.clientOrderId,
+          intentId: owner.intentId,
+          side: intent.side,
+          originalQuantity: intent.quantity,
+        },
+        observations: [
+          {
+            source: 'AUTHENTICATED_OPEN_ORDERS',
+            sourceTimestamp: null,
+            observedAt: snapshot.input.now,
+            market: 'BTC/USD',
+            venueOrderId: open.venueOrderId,
+            clientOrderId: open.clientOrderId,
+            side: open.side,
+            originalQuantity: null,
+            remainingQuantity: open.quantity,
+            terminalStatus: null,
+          },
+          {
+            source: 'AUTHENTICATED_TERMINAL_ORDER_HISTORY',
+            sourceTimestamp: null,
+            observedAt: snapshot.input.now,
+            market: 'BTC/USD',
+            venueOrderId: terminal.venueOrderId,
+            clientOrderId: terminal.clientOrderId,
+            side: intent.side,
+            originalQuantity: terminal.originalQuantity,
+            remainingQuantity: terminal.remainingQuantity,
+            terminalStatus: terminal.state,
+          },
+        ],
+        fills: snapshot.input.actualFillLedger.fills
+          .filter((fill) => fill.venueOrderId === terminal.venueOrderId)
+          .map((fill) => ({
+            source: 'AUTHENTICATED_OWN_FILL_STREAM',
+            observedAt: fill.receivedAt.getTime(),
+            venueTimestamp: fill.venueTimestamp?.getTime() ?? null,
+            market: 'BTC/USD',
+            venueOrderId: fill.venueOrderId,
+            clientOrderId: terminal.clientOrderId!,
+            fillId: fill.venueFillId,
+            quantity: fill.executedBaseQuantity,
+            price: fill.executedPrice,
+          })),
+      });
+      if (canonical.state === 'CONFLICT') {
+        this.Journal.recordIdentityConflict(owner.intentId, snapshot.input.now);
+        return {
+          cycleResult: this.result(
+            'RECONCILE_ONLY',
+            owner.intentId,
+            'PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT',
+            null,
+            0,
+          ),
+        };
+      }
+      if (canonical.state === 'PARTIAL_FILL') {
+        this.applyOpenOrderReconciliationProvenance(owner.intentId, 'PARTIAL_FILL', snapshot);
+        continue;
+      }
+      if (canonical.state !== 'FULL_FILL' && canonical.state !== 'CANCELLED') continue;
+      terminalIdentityKeys.add(identityKey);
+      const filled = canonical.state === 'FULL_FILL';
+      const priorProvenance = this.Journal.getLatestReconciliationProvenance(owner.intentId);
+      this.Journal.applyAuthoritativeReconciliation({
+        intentId: owner.intentId,
+        reconciliationState: filled ? 'FULL_FILL' : 'CANCELLED_EXTERNALLY',
+        terminalStatus: filled ? 'APPLIED' : 'CANCELLED_EXTERNALLY',
+        source: 'AUTHENTICATED_TERMINAL_ORDER_HISTORY',
+        matchedIdentifier: `venueOrderId:${terminal.venueOrderId}`,
+        venueStatus: terminal.state,
+        remainingQuantity: terminal.remainingQuantity,
+        transactionHash:
+          priorProvenance?.transactionHash ??
+          this.Journal.getSubmissionTelemetry(owner.intentId)?.transactionHash ??
+          null,
+        venueOrderId: terminal.venueOrderId,
+        clientOrderId: terminal.clientOrderId,
+        observedAt: snapshot.input.now,
+        fills: canonical.fills.map((fill) => ({
+          fillId: fill.fillId,
+          quantity: fill.quantity,
+          price: fill.price,
+          transactionVersion: requireDecibelFillTransactionVersionV1(
+            snapshot.input.actualFillLedger.fills.find(
+              (candidate) =>
+                candidate.venueFillId === fill.fillId &&
+                candidate.venueOrderId === terminal.venueOrderId,
+            )?.transactionVersion,
+          ),
+          ...(fill.venueTimestamp === null ? {} : { transactionTimestamp: fill.venueTimestamp }),
+        })),
+      });
+    }
+    if (terminalIdentityKeys.size > 0) {
+      snapshot = Object.freeze({
+        ...snapshot,
+        input: Object.freeze({
+          ...snapshot.input,
+          openOrders: Object.freeze(
+            snapshot.input.openOrders.filter(
+              (order) =>
+                !terminalIdentityKeys.has(`${order.venueOrderId}:${order.clientOrderId ?? ''}`),
+            ),
+          ),
+        }),
+        sourceStateHash: hash({
+          priorSourceStateHash: snapshot.sourceStateHash,
+          terminalOpenOverlapsRemoved: [...terminalIdentityKeys].sort(),
+        }),
+      });
+      this.LatestSnapshot = snapshot;
+    }
+    return { snapshot };
+  }
+
+  /** Adopts authoritative open orders the journal does not own yet (evaluateOnceInternal phase). */
+  private adoptAuthoritativeOpenOrders(
+    snapshot: decibel_production_live_snapshot_v1,
+  ): Readonly<
+    | { cycleResult: decibel_production_live_cycle_result_v1 }
+    | { snapshot: decibel_production_live_snapshot_v1 }
+  > {
+    for (const openOrder of snapshot.input.openOrders) {
+      // A strategy-shaped client ID is not ownership evidence. Recovery must
+      // retain an existing durable PLACE identity, never invent one from OPEN.
+      // Existing non-terminal ownership continues through the normal reconciliation path.
+      // Terminal ownership deliberately falls through to the durable identity boundary below.
+      const originalOwner = this.Journal.findPlaceByExactIdentity(
+        openOrder.venueOrderId,
+        openOrder.clientOrderId,
+      );
+      if (originalOwner && ['ACKNOWLEDGED', 'RECONCILING'].includes(originalOwner.status)) continue;
+      const adopted = buildAdoptedOpenOrderIntent(snapshot, this.cycleSequence, openOrder);
+      if (adopted === null)
+        return {
+          cycleResult: this.result(
+            'BLOCKED',
+            null,
+            'PRODUCTION_CURRENT_ORDER_OWNERSHIP_UNVERIFIED',
+            null,
+            0,
+          ),
+        };
+      const adoption = this.Journal.adoptAuthoritativeOpenOrder({
+        intent: adopted,
+        venueOrderId: openOrder.venueOrderId,
+        observedAt: snapshot.input.now,
+        remainingQuantity: openOrder.quantity,
+      });
+      if (adoption.outcome === 'UNOWNED')
+        return {
+          cycleResult: this.result(
+            'BLOCKED',
+            null,
+            'PRODUCTION_CURRENT_ORDER_OWNERSHIP_UNVERIFIED',
+            null,
+            0,
+          ),
+        };
+      if (adoption.outcome === 'ALREADY_OWNED' || adoption.outcome === 'STALE_OPEN_IGNORED')
+        continue;
+      if (adoption.outcome === 'IDENTITY_CONFLICT') {
+        const blocker = 'PRODUCTION_RECONCILIATION_ORDER_IDENTITY_CONFLICT';
+        this.Journal.recordIdentityConflict(adoption.intentId, snapshot.input.now);
+        return { cycleResult: this.result('RECONCILE_ONLY', adoption.intentId, blocker, null, 0) };
+      }
+    }
+    return { snapshot };
   }
 
   private getReconciliationIdentity(intentId: string) {
@@ -4372,4 +4084,3 @@ export async function runDecibelProductionLiveLoopV1(input: {
     await input.orchestrator.close();
   }
 }
-import { buildDecibelOrderDecisionTraceV1 } from './decibel_order_decision_trace_v1.js';

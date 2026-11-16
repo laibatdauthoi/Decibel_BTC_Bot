@@ -32,11 +32,11 @@ import {
   type decibel_runtime_condition_kind_v1,
 } from './decibel_runtime_condition_v1.js';
 import type { decibel_execution_lifecycle_journal_v1 } from './decibel_execution_lifecycle_journal_v1.js';
+import type { decibel_production_live_configuration_v1 } from './decibel_production_live_orchestrator_v1.js';
 import type {
   DecibelProductionLiveStateSourceV1,
-  decibel_production_live_configuration_v1,
   decibel_production_live_snapshot_v1,
-} from './decibel_production_live_orchestrator_v1.js';
+} from './decibel_production_live_types_v1.js';
 import { isDecibelUnresolvedIntentStatusV1 } from './decibel_lifecycle_statuses_v1.js';
 
 export const DECIBEL_PRODUCTION_WEB_TELEMETRY_V1 = 'DECIBEL_PRODUCTION_WEB_TELEMETRY_V1' as const;

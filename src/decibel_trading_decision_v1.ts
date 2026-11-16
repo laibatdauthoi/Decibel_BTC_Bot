@@ -11,7 +11,7 @@ import {
   isDecibelEntryOnlyReasonV1,
 } from './decibel_runtime_condition_v1.js';
 import { calculateDecibelSidePositionBudgetBtcV1 } from './decibel_dynamic_quote_size_v1.js';
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 import type { DecibelAuthenticatedPassiveRecyclingEvaluationV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import {
   evaluateDecibelLifecycleCostAdmissionV1,

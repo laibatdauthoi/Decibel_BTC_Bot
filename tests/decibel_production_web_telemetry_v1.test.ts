@@ -48,8 +48,8 @@ import {
 import {
   decibel_production_live_orchestrator_v1,
   parseDecibelProductionLiveConfigurationV1,
-  type decibel_production_live_snapshot_v1,
 } from '../src/decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_types_v1.js';
 import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from '../src/decibel_btc_market_v1.js';
 import {
   decibel_runtime_supervisor_v1,

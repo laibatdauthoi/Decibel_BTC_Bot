@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { projectDecibelStrategyStatusV1 } from '../src/decibel_strategy_status_v1.js';
 import { createDecibelMarketStructureV1 } from '../src/decibel_market_structure_v1.js';
-import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_types_v1.js';
 
 const now = 1_800_000_000_000;
 // Only the fields the status projection reads; the position rules are exercised elsewhere.

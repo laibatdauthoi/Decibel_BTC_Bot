@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type {
   DecibelProductionLiveStateSourceV1,
   decibel_production_live_snapshot_v1,
-} from './decibel_production_live_orchestrator_v1.js';
+} from './decibel_production_live_types_v1.js';
 
 export type decibel_venue_read_window_v1 = Readonly<{ startedAt: number; completedAt: number }>;
 type account_state = Awaited<

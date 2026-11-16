@@ -60,7 +60,7 @@ import { DECIBEL_BTC_USD_MARKET_ADDRESS_V1 } from './decibel_btc_market_v1.js';
 import type {
   DecibelProductionLiveStateSourceV1,
   decibel_production_live_snapshot_v1,
-} from './decibel_production_live_orchestrator_v1.js';
+} from './decibel_production_live_types_v1.js';
 import type { reconciliation_state_v1 } from './decibel_execution_lifecycle_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
 import { createDecibelBoundedFetchClientV1 } from './decibel_bounded_fetch_client_v1.js';

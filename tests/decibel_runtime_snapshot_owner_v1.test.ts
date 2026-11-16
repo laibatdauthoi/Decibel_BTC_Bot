@@ -3,7 +3,7 @@ import {
   carryDecibelCycleDerivedFieldsV1,
   publishDecibelRuntimeSnapshotV1,
 } from '../src/decibel_runtime_snapshot_owner_v1.js';
-import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from '../src/decibel_production_live_types_v1.js';
 
 // Only the fields the selection reads.
 const snapshot = (now: number, extra: Record<string, unknown> = {}) =>

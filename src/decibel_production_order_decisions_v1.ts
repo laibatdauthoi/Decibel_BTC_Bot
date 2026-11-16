@@ -31,7 +31,7 @@ import {
   type execution_intent_v1,
 } from './decibel_execution_intent_v1.js';
 import { DECIBEL_PRODUCTION_CANDIDATE_DISTANCE_BPS_V1 } from './decibel_smart_ladder_v1.js';
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 
 /** sha256 of the JSON form; used for decision and intent hashes. */
 export function hashDecibelProductionValueV1(value: unknown): string {

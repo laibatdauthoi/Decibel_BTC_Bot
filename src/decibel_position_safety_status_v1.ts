@@ -1,5 +1,5 @@
 import { calculateDecibelExitCoverageV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 
 /** Evidence and availability only; this projection never authorizes execution. */
 export function deriveDecibelPositionSafetyStatusV1(

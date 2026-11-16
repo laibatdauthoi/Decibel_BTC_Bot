@@ -1,4 +1,4 @@
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 import type { decibel_recycling_action_v1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import type { trading_decision_v1 } from './decibel_trading_decision_v1.js';
 import type { execution_submission_validation_v1 } from './decibel_execution_lifecycle_v1.js';

@@ -1,5 +1,5 @@
 import { DECIBEL_STRATEGY_POLICY_V1 } from './decibel_strategy_policy_v1.js';
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 
 /**
  * DCA additions (re-added 2026-11-13 at the user's request).

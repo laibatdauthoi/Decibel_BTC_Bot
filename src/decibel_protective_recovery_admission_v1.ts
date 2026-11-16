@@ -1,6 +1,6 @@
 import type { decibel_execution_lifecycle_journal_v1 } from './decibel_execution_lifecycle_journal_v1.js';
 import type { execution_intent_v1 } from './decibel_execution_intent_v1.js';
-import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
+import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_types_v1.js';
 import { resolveDecibelAuthoritativeOrderEvidenceV1 } from './decibel_authoritative_order_reconciliation_v1.js';
 
 /** Resolve the original PLACE, never a newer CANCEL or a client-ID prefix. */

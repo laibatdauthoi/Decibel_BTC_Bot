@@ -120,9 +120,11 @@ import {
   decibel_production_live_orchestrator_v1,
   isDecibelHttpRateLimitErrorV1,
   isTransientDecibelAuthenticatedReadErrorV1,
-  type DecibelProductionLiveStateSourceV1,
-  type decibel_production_live_snapshot_v1,
 } from './decibel_production_live_orchestrator_v1.js';
+import type {
+  DecibelProductionLiveStateSourceV1,
+  decibel_production_live_snapshot_v1,
+} from './decibel_production_live_types_v1.js';
 import { hydrateDecibelProductionRawWsBboStoreV1 } from './decibel_adverse_selection_evidence_v1.js';
 import { createDecibelProductionLiveStateSourceV1 } from './decibel_production_live_state_source_v1.js';
 import { validateDecibelProductionEconomicEvidenceV1 } from './decibel_production_live_state_source_v1.js';
