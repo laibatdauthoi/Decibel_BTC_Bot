@@ -92,6 +92,7 @@ import {
 } from './decibel_execution_intent_v1.js';
 import {
   synchronizeDecibelSessionAccountingV1,
+  requestDecibelSessionMaxLossUnwindV1,
   requestDecibelSessionTargetUnwindV1,
   isDecibelTargetUnwindReasonV1,
   selectDecibelSubmissionSessionStateV1,
@@ -1096,11 +1097,12 @@ export async function runDecibelProductionWebV1(
           makerVolumeUsd: authenticated.sessionConfiguration?.makerVolumeUsd ?? 0,
           totalExecutedVolumeUsd: authenticated.sessionConfiguration?.totalExecutedVolumeUsd ?? 0,
         });
-        if (
-          SessionController.ownsActiveRuntime() &&
-          authenticated.sessionConfiguration?.riskBlocker === 'SESSION_MAX_LOSS_REACHED'
-        )
-          SessionController.requestUnwind(session.sessionId, 'MAX_LOSS_REACHED');
+        requestDecibelSessionMaxLossUnwindV1(
+          SessionController,
+          RuntimeOrchestrator,
+          session.sessionId,
+          authenticated.sessionConfiguration?.riskBlocker,
+        );
       },
     );
     const RuntimeExecutor = await loadDecibelProductionExecutorV1(

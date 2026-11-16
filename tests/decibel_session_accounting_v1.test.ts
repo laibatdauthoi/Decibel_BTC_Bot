@@ -19,6 +19,7 @@ import {
 import {
   selectDecibelSubmissionSessionStateV1,
   synchronizeDecibelSessionAccountingV1,
+  requestDecibelSessionMaxLossUnwindV1,
   requestDecibelSessionTargetUnwindV1,
   getDecibelSessionTargetTerminalReasonV1,
   isDecibelTargetUnwindReasonV1,
@@ -116,6 +117,82 @@ async function createFixture(target = 50) {
     stop,
   };
 }
+
+describe('Session Max Loss unwind', () => {
+  const makeLoop = () => {
+    let requested = false;
+    const requestSessionUnwind = vi.fn(() => {
+      requested = true;
+    });
+    return { isSessionUnwindRequested: () => requested, requestSessionUnwind };
+  };
+
+  it('latches the live loop into the canonical unwind, not only the durable session', async () => {
+    const f = await createFixture();
+    const Loop = makeLoop();
+    expect(
+      requestDecibelSessionMaxLossUnwindV1(f.Controller, Loop, f.session.sessionId, null),
+    ).toBe(false);
+    expect(Loop.requestSessionUnwind).not.toHaveBeenCalled();
+    expect(f.Sessions.getActive()?.status).toBe('RUNNING');
+    for (let i = 0; i < 3; i++)
+      expect(
+        requestDecibelSessionMaxLossUnwindV1(
+          f.Controller,
+          Loop,
+          f.session.sessionId,
+          'SESSION_MAX_LOSS_REACHED',
+        ),
+      ).toBe(true);
+    expect(f.Sessions.getActive()).toMatchObject({
+      status: 'STOPPING',
+      unwindReason: 'MAX_LOSS_REACHED',
+    });
+    // Requested once: repeating it every cycle must not reset unwind completion.
+    expect(Loop.requestSessionUnwind).toHaveBeenCalledTimes(1);
+    expect(f.stop).not.toHaveBeenCalled();
+  });
+
+  it('overrides a target drain that was already requested', async () => {
+    const f = await createFixture(50);
+    const reached = applyDecibelActualFillTruthV1(f.empty, f.fill('target', 50));
+    const metrics = synchronizeDecibelSessionAccountingV1(
+      f.Journal,
+      reached,
+      f.session.sessionId,
+      100_000,
+    );
+    expect(requestDecibelSessionTargetUnwindV1(f.Controller, f.session.sessionId, metrics)).toBe(
+      true,
+    );
+    const Loop = makeLoop();
+    expect(
+      requestDecibelSessionMaxLossUnwindV1(
+        f.Controller,
+        Loop,
+        f.session.sessionId,
+        'SESSION_MAX_LOSS_REACHED',
+      ),
+    ).toBe(true);
+    expect(f.Sessions.getActive()?.unwindReason).toBe('MAX_LOSS_REACHED');
+    expect(Loop.requestSessionUnwind).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing for another session', async () => {
+    const f = await createFixture();
+    const Loop = makeLoop();
+    expect(
+      requestDecibelSessionMaxLossUnwindV1(
+        f.Controller,
+        Loop,
+        'session-other',
+        'SESSION_MAX_LOSS_REACHED',
+      ),
+    ).toBe(false);
+    expect(Loop.requestSessionUnwind).not.toHaveBeenCalled();
+    expect(f.Sessions.getActive()?.status).toBe('RUNNING');
+  });
+});
 
 describe('Fixed session maker target', () => {
   it.each([50, 51])(

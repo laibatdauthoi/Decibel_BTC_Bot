@@ -155,6 +155,32 @@ export function selectDecibelSubmissionSessionStateV1(
     : status;
 }
 
+/**
+ * Max Loss latches the canonical reduce-only unwind in both places that need it: the durable
+ * session (STOPPING / MAX_LOSS_REACHED) and the live loop. Before 2026-11-16 only the session
+ * was marked, so a Max Loss reached mid-session left the loop in normal mode, where Max Loss
+ * blocks every order, and the position stayed open with no orders until a restart.
+ */
+export function requestDecibelSessionMaxLossUnwindV1(
+  Controller: Pick<
+    decibel_production_session_controller_v1,
+    'getState' | 'ownsActiveRuntime' | 'requestUnwind'
+  >,
+  Orchestrator: Readonly<{
+    isSessionUnwindRequested: () => boolean;
+    requestSessionUnwind: () => void;
+  }>,
+  sessionId: string,
+  riskBlocker: string | null | undefined,
+): boolean {
+  if (riskBlocker !== 'SESSION_MAX_LOSS_REACHED') return false;
+  if (!Controller.ownsActiveRuntime()) return false;
+  if (Controller.getState().activeSession?.sessionId !== sessionId) return false;
+  Controller.requestUnwind(sessionId, 'MAX_LOSS_REACHED');
+  if (!Orchestrator.isSessionUnwindRequested()) Orchestrator.requestSessionUnwind();
+  return true;
+}
+
 export function requestDecibelSessionTargetUnwindV1(
   Controller: decibel_production_session_controller_v1,
   sessionId: string,

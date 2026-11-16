@@ -3027,6 +3027,10 @@ export class decibel_production_live_orchestrator_v1 {
     this.sessionDrainRequested = false;
   }
 
+  public isSessionUnwindRequested(): boolean {
+    return this.sessionUnwindRequested;
+  }
+
   /** Target reached: stop new exposure, keep reduce-only TP, complete when flat. */
   public requestSessionDrain(): void {
     if (this.sessionUnwindRequested) return;
