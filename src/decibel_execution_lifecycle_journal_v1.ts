@@ -8,6 +8,10 @@ import type {
   execution_intent_status_v1,
   execution_intent_v1,
 } from './decibel_execution_intent_v1.js';
+import {
+  DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1,
+  isDecibelTerminalIntentStatusV1,
+} from './decibel_lifecycle_statuses_v1.js';
 
 type false_flat_checkpoint_open_recovery_input_v1 = Readonly<{
   recoveryId: string;
@@ -124,9 +128,9 @@ export class decibel_execution_lifecycle_journal_v1 {
       CREATE INDEX IF NOT EXISTS lifecycle_blockers_intent_id_id ON lifecycle_blockers(intent_id,id DESC);
       -- execution_intents grows without bound; without these indexes the per-cycle lookups
       -- below were full scans (35-67 ms each, ~0.8 s of synchronous work per cycle at 37k
-      -- intents). Each index matches the exact expression used by the queries. The
-      -- terminal-status list must stay identical to the NOT IN lists in the queries.
-      CREATE INDEX IF NOT EXISTS execution_intents_nonterminal_created ON execution_intents(created_at,intent_id) WHERE status NOT IN ('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY','FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED');
+      -- intents). Each index matches the exact expression used by the queries: both use
+      -- DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1 (decibel_lifecycle_statuses_v1).
+      CREATE INDEX IF NOT EXISTS execution_intents_nonterminal_created ON execution_intents(created_at,intent_id) WHERE status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1};
       CREATE INDEX IF NOT EXISTS execution_intents_venue_order ON execution_intents(venue_order_id);
       CREATE INDEX IF NOT EXISTS execution_intents_status ON execution_intents(status);
       CREATE INDEX IF NOT EXISTS execution_intents_session ON execution_intents(json_extract(body_json,'$.sessionId'));
@@ -194,7 +198,7 @@ export class decibel_execution_lifecycle_journal_v1 {
       )
         throw new Error('PROTECTIVE_IDENTITY_CONFLICT_CHANGED');
       const activeRows = this.Database.prepare(
-        "SELECT intent_id intentId,status,venue_order_id venueOrderId,body_json bodyJson FROM execution_intents WHERE status NOT IN ('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY','FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED') ORDER BY created_at,intent_id",
+        `SELECT intent_id intentId,status,venue_order_id venueOrderId,body_json bodyJson FROM execution_intents WHERE status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1} ORDER BY created_at,intent_id`,
       ).all() as Array<{
         intentId: string;
         status: execution_intent_status_v1;
@@ -332,16 +336,7 @@ export class decibel_execution_lifecycle_journal_v1 {
           );
         });
         const owner = exact ?? rows[0]!;
-        const terminal = [
-          'APPLIED',
-          'EXTERNALLY_NEUTRALIZED',
-          'CANCELLED_EXTERNALLY',
-          'FAILED_TIMEOUT',
-          'FAILED_DROPPED',
-          'FAILED_DROPPED_LEGACY',
-          'REJECTED',
-          'SUPERSEDED',
-        ].includes(owner.status);
+        const terminal = isDecibelTerminalIntentStatusV1(owner.status);
         if (rows.length === 1 && exact !== undefined && !terminal)
           return { outcome: 'ALREADY_OWNED' as const, intentId: owner.intentId };
         if (rows.length === 1 && exact !== undefined && terminal) {
@@ -2042,7 +2037,7 @@ export class decibel_execution_lifecycle_journal_v1 {
   }
   nonTerminal() {
     return this.Database.prepare(
-      "SELECT intent_id intentId,status,venue_order_id venueOrderId FROM execution_intents WHERE status NOT IN ('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY','FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED') ORDER BY created_at,intent_id",
+      `SELECT intent_id intentId,status,venue_order_id venueOrderId FROM execution_intents WHERE status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1} ORDER BY created_at,intent_id`,
     ).all() as Array<{
       intentId: string;
       status: execution_intent_status_v1;
@@ -2095,7 +2090,7 @@ export class decibel_execution_lifecycle_journal_v1 {
        FROM execution_intents
        WHERE json_extract(body_json,'$.action')='PLACE'
          AND json_extract(body_json,'$.side')=?
-         AND status NOT IN ('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY','FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED')
+         AND status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1}
        ORDER BY created_at,intent_id LIMIT 1`,
     ).get(side) as
       | { intentId: string; status: execution_intent_status_v1; venueOrderId: string | null }
@@ -2108,7 +2103,7 @@ export class decibel_execution_lifecycle_journal_v1 {
     venueOrderId: string;
   }> | null {
     const row = this.Database.prepare(
-      "SELECT intent_id intentId,status,venue_order_id venueOrderId FROM execution_intents WHERE venue_order_id=? AND status NOT IN ('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY','FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED') ORDER BY created_at DESC LIMIT 1",
+      `SELECT intent_id intentId,status,venue_order_id venueOrderId FROM execution_intents WHERE venue_order_id=? AND status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1} ORDER BY created_at DESC LIMIT 1`,
     ).get(venueOrderId) as
       { intentId: string; status: execution_intent_status_v1; venueOrderId: string } | undefined;
     return row === undefined ? null : Object.freeze(row);

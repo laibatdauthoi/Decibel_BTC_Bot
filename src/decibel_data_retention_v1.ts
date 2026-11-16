@@ -1,5 +1,9 @@
 import type Database from 'better-sqlite3';
 import { archiveDecibelSessionRowsV1 } from './decibel_lifetime_totals_v1.js';
+import {
+  DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1,
+  isDecibelActiveSessionStatusV1,
+} from './decibel_lifecycle_statuses_v1.js';
 
 /**
  * Keep-N retention for the session store and the execution journal's decision snapshots.
@@ -9,10 +13,7 @@ import { archiveDecibelSessionRowsV1 } from './decibel_lifetime_totals_v1.js';
  * back duplicate-submission protection and reconciliation.
  */
 export const DECIBEL_SESSION_RETENTION_COUNT_V1 = 30;
-const ACTIVE_STATUSES = new Set(['STARTING', 'RUNNING', 'STOPPING']);
 const TERMINAL_STATUSES = new Set(['ENDED', 'INTERRUPTED']);
-const TERMINAL_INTENT_STATUSES =
-  "('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY','FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED')";
 
 export type decibel_retention_session_v1 = Readonly<{
   sessionId: string;
@@ -46,7 +47,10 @@ export function planDecibelDataRetentionV1(
     .filter((session) => TERMINAL_STATUSES.has(session.status))
     .sort((a, b) => at(b) - at(a));
   for (const session of input.sessions) {
-    if (ACTIVE_STATUSES.has(session.status) || input.sessionsWithOpenIntents.has(session.sessionId))
+    if (
+      isDecibelActiveSessionStatusV1(session.status) ||
+      input.sessionsWithOpenIntents.has(session.sessionId)
+    )
       kept.add(session.sessionId);
   }
   for (const [index, session] of terminal.entries()) {
@@ -102,7 +106,7 @@ export function readDecibelRetentionInputsV1(
       : new Set<string>(),
     sessionsWithOpenIntents: hasIntents
       ? ids(
-          `SELECT DISTINCT json_extract(body_json,'$.sessionId') sessionId FROM execution_intents WHERE status NOT IN ${TERMINAL_INTENT_STATUSES}`,
+          `SELECT DISTINCT json_extract(body_json,'$.sessionId') sessionId FROM execution_intents WHERE status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1}`,
         )
       : new Set<string>(),
   });

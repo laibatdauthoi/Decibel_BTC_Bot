@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { DECIBEL_STRATEGY_POLICY_V1 } from '../src/decibel_strategy_policy_v1.js';
 import {
   DECIBEL_RECONCILING_ESCALATION_MS_V1,
   classifyDecibelRuntimeConditionV1,
   describeDecibelRuntimeConditionV1,
   escalateDecibelRuntimeConditionV1,
+  getDecibelConditionSourceV1,
   isDecibelEntryCapacityOnlyReasonV1,
   isDecibelEntryOnlyReasonV1,
   normalizeDecibelConditionCodeV1,
@@ -87,5 +89,34 @@ describe('decibel runtime condition v1', () => {
     expect(isDecibelEntryCapacityOnlyReasonV1('CAPACITY_POST_FILL_MARGIN_UNSAFE')).toBe(true);
     expect(isDecibelEntryCapacityOnlyReasonV1('ENTRY_VOLATILITY_PAUSE')).toBe(true);
     expect(isDecibelEntryCapacityOnlyReasonV1('SESSION_MAX_LOSS_REACHED')).toBe(false);
+  });
+  it('gives the dashboard label and the kind from one classifier', () => {
+    expect(getDecibelConditionSourceV1('PRODUCTION_AUTHENTICATED_STATE_STALE')).toEqual({
+      classification: 'AUTHENTICATED_ACCOUNT_STALE',
+      source: 'ACCOUNT',
+    });
+    expect(classifyDecibelRuntimeConditionV1('PRODUCTION_AUTHENTICATED_STATE_STALE')).toBe(
+      'DEGRADED',
+    );
+    expect(
+      classifyDecibelRuntimeConditionV1('ADVERSE_SELECTION_EVIDENCE_INSUFFICIENT:REGIME=17/30'),
+    ).toBe('DEGRADED');
+    expect(
+      classifyDecibelRuntimeConditionV1('EXECUTION_AUTHORITATIVE_RECONCILIATION_CONFLICT'),
+    ).toBe('FAULT');
+    // Start-up warming is a normal wait, not stale evidence.
+    expect(getDecibelConditionSourceV1('PRODUCTION_ECONOMIC_INITIALIZATION_REQUIRED')).toBeNull();
+    expect(getDecibelConditionSourceV1('CAPACITY_VENUE_MARGIN_RULES_STALE')).toMatchObject({
+      source: 'VENUE DATA',
+    });
+  });
+
+  it('takes the numbers in its messages from the strategy policy', () => {
+    expect(describeDecibelRuntimeConditionV1('ENTRY_GAS_BALANCE_LOW')).toContain(
+      `(${DECIBEL_STRATEGY_POLICY_V1.gas.entryReserveApt} APT)`,
+    );
+    expect(describeDecibelRuntimeConditionV1('ENTRY_VOLATILITY_PAUSE')).toContain(
+      `above ${DECIBEL_STRATEGY_POLICY_V1.entry.volatilityPauseBps} bps`,
+    );
   });
 });

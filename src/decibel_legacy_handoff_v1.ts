@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 
 import Database from 'better-sqlite3';
 import { z } from 'zod';
+import { DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1 } from './decibel_lifecycle_statuses_v1.js';
 
 export const DECIBEL_LEGACY_HANDOFF_MAX_AGE_MS_V1 = 5_000;
 
@@ -125,8 +126,7 @@ export function countDecibelLegacyUnresolvedIntentsV1(journalPath: string): numb
   try {
     const row = Journal.prepare(
       `SELECT COUNT(*) AS count FROM execution_intents
-       WHERE status NOT IN ('APPLIED','EXTERNALLY_NEUTRALIZED','CANCELLED_EXTERNALLY',
-       'FAILED_TIMEOUT','FAILED_DROPPED','FAILED_DROPPED_LEGACY','REJECTED','SUPERSEDED')`,
+       WHERE status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1}`,
     ).get() as { count: number };
     return row.count;
   } finally {

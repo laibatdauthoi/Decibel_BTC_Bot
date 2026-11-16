@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import { z } from 'zod';
 
 import type { decibel_operator_settings_v1 } from './decibel_operator_settings_v1.js';
+import { DECIBEL_ACTIVE_SESSION_STATUSES_V1 } from './decibel_lifecycle_statuses_v1.js';
 
 export const DECIBEL_PRODUCTION_SESSION_V1 = 'DECIBEL_PRODUCTION_SESSION_V1' as const;
 export const DECIBEL_PRODUCTION_SESSION_HEARTBEAT_STALE_MS_V1 = 30_000;
@@ -73,7 +74,7 @@ const ConfigSnapshotSchema = z
     targetMakerVolumeUsd: value.targetMakerVolumeUsd,
   }));
 
-const activeStatuses = ['STARTING', 'RUNNING', 'STOPPING'] as const;
+const activeStatuses = DECIBEL_ACTIVE_SESSION_STATUSES_V1;
 
 function mapRow(row: Record<string, unknown>): decibel_production_session_record_v1 {
   if (row.target_semantics_version !== 1 && row.target_semantics_version !== 2)

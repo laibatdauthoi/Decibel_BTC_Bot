@@ -1,3 +1,14 @@
+import {
+  DECIBEL_ACTIVE_SESSION_STATUSES_V1,
+  isDecibelActiveSessionStatusV1,
+  isDecibelUnresolvedIntentStatusV1,
+} from '../../src/decibel_lifecycle_statuses_v1';
+import {
+  classifyDecibelRuntimeConditionV1,
+  getDecibelConditionSourceV1,
+  type decibel_condition_source_v1,
+  type decibel_runtime_condition_kind_v1,
+} from '../../src/decibel_runtime_condition_v1';
 export type dashboard_view_v1 = 'OVERVIEW' | 'ACTIVITY' | 'SETTINGS';
 
 export type session_volume_sample_v1 = Readonly<{
@@ -131,12 +142,7 @@ export type operator_alert_v1 = Readonly<{
   source: string;
   message: string;
   code?: string;
-  classification?:
-    | 'VENUE_SOURCE_UNAVAILABLE'
-    | 'MARKET_SAMPLES_INSUFFICIENT'
-    | 'ECONOMIC_EVIDENCE_STALE'
-    | 'AUTHENTICATED_ACCOUNT_STALE'
-    | 'REAL_RECONCILIATION_CONFLICT';
+  classification?: decibel_condition_source_v1['classification'];
   relatedId?: string;
   active: boolean;
 }>;
@@ -167,7 +173,8 @@ export function deriveSessionStartGateV1(
     return { blocked: true, code: 'SESSION_STATE_LOADING', message: 'Loading session state.' };
   if (
     input.sessionState &&
-    ['STARTING', 'RUNNING', 'STOPPING', 'RECOVERY_BLOCKED'].includes(input.sessionState)
+    (isDecibelActiveSessionStatusV1(input.sessionState) ||
+      input.sessionState === 'RECOVERY_BLOCKED')
   )
     return {
       blocked: true,
@@ -184,7 +191,7 @@ export function deriveSessionStartGateV1(
       code: 'SETTINGS_VALIDATION_FAILED',
       message: 'Load and save valid Settings before starting.',
     };
-  if (input.intents?.some((intent) => unresolvedStatuses.has(intent.status)))
+  if (input.intents?.some((intent) => isDecibelUnresolvedIntentStatusV1(intent.status)))
     return {
       blocked: true,
       code: 'EXECUTION_RECONCILIATION_REQUIRED',
@@ -215,15 +222,27 @@ export type operator_blocker_v1 = Readonly<{
   code: string;
   meaning: string;
   intentId: string | null;
-  kind?: 'FAULT' | 'DEGRADED' | 'RECONCILING' | 'WAITING';
+  kind?: decibel_runtime_condition_kind_v1;
 }>;
 
+/**
+ * The blocker's kind. A blocker from an older runtime has no kind: it stays a fault unless
+ * the shared classifier knows its evidence source, as before 2026-11-16.
+ */
+function getBlockerKindV1(blocker: operator_blocker_v1): decibel_runtime_condition_kind_v1 {
+  if (blocker.kind !== undefined) return blocker.kind;
+  return getDecibelConditionSourceV1(blocker.code) === null
+    ? 'FAULT'
+    : classifyDecibelRuntimeConditionV1(blocker.code);
+}
+
 function isFaultBlockerV1(blocker: operator_blocker_v1): boolean {
-  return blocker.kind === undefined || blocker.kind === 'FAULT';
+  return getBlockerKindV1(blocker) === 'FAULT';
 }
 
 function isAlertBlockerV1(blocker: operator_blocker_v1): boolean {
-  return isFaultBlockerV1(blocker) || blocker.kind === 'DEGRADED';
+  const kind = getBlockerKindV1(blocker);
+  return kind === 'FAULT' || kind === 'DEGRADED';
 }
 
 export type alert_drawer_action_v1 = 'OPEN' | 'CLOSE' | 'ESCAPE' | 'OUTSIDE';
@@ -269,45 +288,16 @@ export function selectHighestPriorityOperatorAlertV1(
   );
 }
 
-/** Classify evidence by its source, before generic reconciliation presentation. */
+/** Classify evidence by its source (decibel_runtime_condition_v1), with the kind's severity. */
 export function classifyOperatorEvidenceV1(
   reason: string,
 ): Pick<operator_alert_v1, 'classification' | 'source' | 'severity'> | null {
-  if (/IDENTITY.*CONFLICT|RECONCILIATION.*CONFLICT/.test(reason))
-    return {
-      classification: 'REAL_RECONCILIATION_CONFLICT',
-      source: 'RECONCILIATION',
-      severity: 'CRITICAL',
-    };
-  if (/ADVERSE.*(?:INSUFFICIENT|WARMING)|MARKET_SAMPLES_INSUFFICIENT/.test(reason))
-    return {
-      classification: 'MARKET_SAMPLES_INSUFFICIENT',
-      source: 'MARKET DATA',
-      severity: 'WARNING',
-    };
-  if (/ECONOMIC|ADVERSE_SELECTION.*STALE/.test(reason))
-    return {
-      classification: 'ECONOMIC_EVIDENCE_STALE',
-      source: 'ECONOMIC EVIDENCE',
-      severity: 'WARNING',
-    };
-  if (/AUTHENTICATED.*STALE|CAPACITY_ACCOUNT_EVIDENCE_STALE/.test(reason))
-    return {
-      classification: 'AUTHENTICATED_ACCOUNT_STALE',
-      source: 'ACCOUNT',
-      severity: 'WARNING',
-    };
-  if (
-    /BOOK_STALE|MARKET_DATA_STALE|READ_TIMEOUT|READ_STAGE|HTTP.*(?:TIMEOUT|FAILED)|SOURCE_UNAVAILABLE|CAPACITY_VENUE_MARGIN_RULES_STALE/.test(
-      reason,
-    )
-  )
-    return {
-      classification: 'VENUE_SOURCE_UNAVAILABLE',
-      source: 'VENUE DATA',
-      severity: 'WARNING',
-    };
-  return null;
+  const evidence = getDecibelConditionSourceV1(reason);
+  if (evidence === null) return null;
+  return {
+    ...evidence,
+    severity: classifyDecibelRuntimeConditionV1(reason) === 'FAULT' ? 'CRITICAL' : 'WARNING',
+  };
 }
 
 export function buildOperatorAlertsV1(
@@ -341,7 +331,8 @@ export function buildOperatorAlertsV1(
     Object.freeze({
       id: `blocker-${blocker.code}-${blocker.intentId ?? 'none'}`,
       timestamp: input.now,
-      severity: blocker.kind === 'DEGRADED' ? ('WARNING' as const) : ('CRITICAL' as const),
+      severity:
+        getBlockerKindV1(blocker) === 'DEGRADED' ? ('WARNING' as const) : ('CRITICAL' as const),
       source: 'RECONCILIATION',
       message: sanitizeOperatorAlertTextV1(blocker.meaning),
       code: sanitizeOperatorAlertTextV1(blocker.code),
@@ -495,14 +486,6 @@ export type dashboard_presentation_v1 = Readonly<{
   message: Readonly<{ timestamp: number | null; title: string; detail: string }>;
 }>;
 
-const unresolvedStatuses = new Set([
-  'PREPARED',
-  'SUBMITTING',
-  'SUBMIT_UNKNOWN',
-  'UNRESOLVABLE_ACK',
-  'RECONCILING',
-]);
-
 export function deriveDashboardPresentationV1(
   input: dashboard_status_input_v1,
 ): dashboard_presentation_v1 {
@@ -513,7 +496,9 @@ export function deriveDashboardPresentationV1(
       : 'CONNECTED';
   const blocker = input.blockers.find(isFaultBlockerV1);
   const reconciling = input.blockers.some((entry) => entry.kind === 'RECONCILING');
-  const unresolvedIntent = input.intents.find((intent) => unresolvedStatuses.has(intent.status));
+  const unresolvedIntent = input.intents.find((intent) =>
+    isDecibelUnresolvedIntentStatusV1(intent.status),
+  );
   const latestEvent = input.events[0];
   if (blocker !== undefined)
     return Object.freeze({
@@ -696,7 +681,7 @@ export type session_time_range_v1 = Readonly<{
 export function sortOperatorSessionsNewestFirstV1<T extends session_time_range_v1>(
   sessions: readonly T[],
 ): readonly T[] {
-  const active = new Set(['STARTING', 'RUNNING', 'STOPPING']);
+  const active: ReadonlySet<string> = new Set(DECIBEL_ACTIVE_SESSION_STATUSES_V1);
   return Object.freeze(
     [...sessions].sort(
       (left, right) =>

@@ -60,6 +60,10 @@ import {
   type operator_alert_v1,
   type dashboard_view_v1,
 } from './presentation';
+import {
+  isDecibelActiveSessionStatusV1,
+  isDecibelUnresolvedIntentStatusV1,
+} from '../../src/decibel_lifecycle_statuses_v1';
 import './styles.css';
 
 type Value = number | null;
@@ -360,11 +364,7 @@ export const OverviewView = (
   const limit = activeSession ? active.configSnapshot.maxLossUsd : null;
   const volume = matched && accountingFresh ? (e?.totalExecutedVolumeUsd ?? null) : null;
   const pending = frameFresh
-    ? t.intents.filter((i) =>
-        ['PREPARED', 'SUBMITTING', 'SUBMIT_UNKNOWN', 'UNRESOLVABLE_ACK', 'RECONCILING'].includes(
-          i.status,
-        ),
-      )
+    ? t.intents.filter((i) => isDecibelUnresolvedIntentStatusV1(i.status))
     : [];
   const last = [...t.intents]
     .filter(
@@ -897,7 +897,7 @@ export const ActivityView = (
   );
   // A live session's persisted PnL is not final yet: show the real-time net PnL instead.
   const isLiveSession = (session: { sessionId: string; status: string }) =>
-    ['STARTING', 'RUNNING', 'STOPPING'].includes(session.status) &&
+    isDecibelActiveSessionStatusV1(session.status) &&
     props.telemetry.overviewEvidence?.sessionId === session.sessionId;
   const getLiveSessionPnl = (session: {
     sessionId: string;

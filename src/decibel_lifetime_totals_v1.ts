@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
 import { existsSync } from 'node:fs';
+import { DECIBEL_ACTIVE_SESSION_STATUSES_V1 } from './decibel_lifecycle_statuses_v1.js';
 
 /**
  * Lifetime (all-time) session totals that survive session retention.
@@ -15,7 +16,7 @@ import { existsSync } from 'node:fs';
  */
 export const DECIBEL_LIFETIME_ARCHIVE_TABLE_V1 = 'production_lifetime_archive_v1';
 export const DECIBEL_METRICS_EPOCH_TABLE_V1 = 'production_metrics_epoch_v1';
-const LIVE_STATUSES = new Set(['STARTING', 'RUNNING', 'STOPPING']);
+const LIVE_STATUSES: ReadonlySet<string> = new Set(DECIBEL_ACTIVE_SESSION_STATUSES_V1);
 
 type session_row_v1 = Readonly<Record<string, unknown>>;
 

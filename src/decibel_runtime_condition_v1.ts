@@ -17,6 +17,8 @@
  * Presentation only: no trading decision reads this module, except the shared
  * entry-only reason lists, which the decision layer uses as its single source.
  */
+import { DECIBEL_STRATEGY_POLICY_V1 as POLICY_V1 } from './decibel_strategy_policy_v1.js';
+
 export type decibel_runtime_condition_kind_v1 = 'FAULT' | 'DEGRADED' | 'RECONCILING' | 'WAITING';
 
 export const DECIBEL_RECONCILING_ESCALATION_MS_V1 = 60_000;
@@ -122,13 +124,58 @@ export function normalizeDecibelConditionCodeV1(
   });
 }
 
+export type decibel_condition_source_v1 = Readonly<{
+  classification:
+    | 'REAL_RECONCILIATION_CONFLICT'
+    | 'MARKET_SAMPLES_INSUFFICIENT'
+    | 'ECONOMIC_EVIDENCE_STALE'
+    | 'AUTHENTICATED_ACCOUNT_STALE'
+    | 'VENUE_SOURCE_UNAVAILABLE';
+  source: 'RECONCILIATION' | 'MARKET DATA' | 'ECONOMIC EVIDENCE' | 'ACCOUNT' | 'VENUE DATA';
+}>;
+
+function isWaitingCodeV1(code: string): boolean {
+  if (DEGRADED_CODES_V1.has(code)) return false;
+  return (
+    WAITING_CODES_V1.has(code) ||
+    /^SIDE_OCCUPIED_(?:BUY|SELL)_[A-Z_]+$/.test(code) ||
+    isDecibelEntryCapacityOnlyReasonV1(code)
+  );
+}
+
+/**
+ * Which evidence a condition is about, for the dashboard alert label (moved here from the
+ * dashboard on 2026-11-16 so the label and the kind come from one place). Null for normal
+ * waits and for codes without a known evidence source.
+ */
+export function getDecibelConditionSourceV1(raw: string): decibel_condition_source_v1 | null {
+  const { code } = normalizeDecibelConditionCodeV1(raw);
+  if (isWaitingCodeV1(code)) return null;
+  if (/IDENTITY.*CONFLICT|RECONCILIATION.*CONFLICT/.test(code))
+    return { classification: 'REAL_RECONCILIATION_CONFLICT', source: 'RECONCILIATION' };
+  if (/ADVERSE.*(?:INSUFFICIENT|WARMING)|MARKET_SAMPLES_INSUFFICIENT/.test(code))
+    return { classification: 'MARKET_SAMPLES_INSUFFICIENT', source: 'MARKET DATA' };
+  if (/ECONOMIC|ADVERSE_SELECTION.*STALE/.test(code))
+    return { classification: 'ECONOMIC_EVIDENCE_STALE', source: 'ECONOMIC EVIDENCE' };
+  if (/AUTHENTICATED.*STALE|CAPACITY_ACCOUNT_EVIDENCE_STALE/.test(code))
+    return { classification: 'AUTHENTICATED_ACCOUNT_STALE', source: 'ACCOUNT' };
+  if (
+    /BOOK_STALE|MARKET_DATA_STALE|READ_TIMEOUT|READ_STAGE|HTTP.*(?:TIMEOUT|FAILED)|SOURCE_UNAVAILABLE|CAPACITY_VENUE_MARGIN_RULES_STALE/.test(
+      code,
+    )
+  )
+    return { classification: 'VENUE_SOURCE_UNAVAILABLE', source: 'VENUE DATA' };
+  return null;
+}
+
 export function classifyDecibelRuntimeConditionV1(raw: string): decibel_runtime_condition_kind_v1 {
   const { code } = normalizeDecibelConditionCodeV1(raw);
   if (DEGRADED_CODES_V1.has(code)) return 'DEGRADED';
   if (RECONCILING_CODES_V1.has(code)) return 'RECONCILING';
-  if (WAITING_CODES_V1.has(code) || /^SIDE_OCCUPIED_(?:BUY|SELL)_[A-Z_]+$/.test(code))
-    return 'WAITING';
-  if (isDecibelEntryCapacityOnlyReasonV1(code)) return 'WAITING';
+  if (isWaitingCodeV1(code)) return 'WAITING';
+  const source = getDecibelConditionSourceV1(code);
+  if (source !== null)
+    return source.classification === 'REAL_RECONCILIATION_CONFLICT' ? 'FAULT' : 'DEGRADED';
   return 'FAULT';
 }
 
@@ -183,16 +230,14 @@ const MEANINGS_V1: Readonly<Record<string, string>> = Object.freeze({
   EXECUTION_SUBMISSION_WATCHDOG_TIMEOUT:
     'An order submission did not finish in time. Its outcome is reconciled before trading resumes.',
   EXECUTION_SINGLE_LIVE_ORDER_BLOCKED: 'Only one live order is allowed at this release stage.',
-  ENTRY_GAS_BALANCE_LOW:
-    'The APT gas wallet is below the protection reserve (0.1 APT). New entries are paused; top up APT on the signing account.',
+  ENTRY_GAS_BALANCE_LOW: `The APT gas wallet is below the protection reserve (${POLICY_V1.gas.entryReserveApt} APT). New entries are paused; top up APT on the signing account.`,
   ENTRY_REQUIRES_NEW_LOW:
     'Entry filter: a long opens only after the last closed 5-minute candle made a lower low.',
   ENTRY_REQUIRES_NEW_HIGH:
     'Entry filter: a short opens only after the last closed 5-minute candle made a higher high.',
   ENTRY_CANDLE_EVIDENCE_REQUIRED:
     'Entry filter: waiting for two closed 5-minute candles of price history.',
-  ENTRY_VOLATILITY_PAUSE:
-    'The 5-minute price range is above 40 bps. New entries and DCA are paused until it calms down; exits continue.',
+  ENTRY_VOLATILITY_PAUSE: `The 5-minute price range is above ${POLICY_V1.entry.volatilityPauseBps} bps. New entries and DCA are paused until it calms down; exits continue.`,
   NO_NEW_QUOTE_HEADROOM: 'No free margin for another entry. Resting orders and the TP continue.',
   QUOTE_CAPACITY_BELOW_MINIMUM_ORDER:
     'The remaining capacity is below the venue minimum order. No new entry.',

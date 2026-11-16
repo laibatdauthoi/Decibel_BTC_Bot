@@ -37,6 +37,7 @@ import type {
   decibel_production_live_configuration_v1,
   decibel_production_live_snapshot_v1,
 } from './decibel_production_live_orchestrator_v1.js';
+import { isDecibelUnresolvedIntentStatusV1 } from './decibel_lifecycle_statuses_v1.js';
 
 export const DECIBEL_PRODUCTION_WEB_TELEMETRY_V1 = 'DECIBEL_PRODUCTION_WEB_TELEMETRY_V1' as const;
 export const DECIBEL_PRODUCTION_WEB_HISTORY_LIMIT_V1 = 100;
@@ -1337,15 +1338,10 @@ export function mapDecibelProductionWebTelemetryV1(
   const totalLimit = DECIBEL_PRODUCTION_MUTATION_BUDGET_V1.totalPerMinute;
   const attempts = input.history.mutationAttempts;
   const unresolvedIntent = input.history.intents
-    .filter((intent) =>
-      [
-        'PREPARED',
-        'SUBMITTING',
-        'SUBMIT_UNKNOWN',
-        'ACKNOWLEDGED',
-        'UNRESOLVABLE_ACK',
-        'RECONCILING',
-      ].includes(intent.status),
+    // ACKNOWLEDGED counts only until the order is visible (acknowledgedOrderIsAuthoritativelyOpen).
+    .filter(
+      (intent) =>
+        isDecibelUnresolvedIntentStatusV1(intent.status) || intent.status === 'ACKNOWLEDGED',
     )
     .sort((left, right) => {
       const priority = (status: string): number =>
