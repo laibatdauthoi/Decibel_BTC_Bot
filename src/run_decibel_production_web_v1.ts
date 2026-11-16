@@ -13,7 +13,6 @@ import {
   planDecibelReplacementFollowUpV1,
 } from './decibel_replacement_follow_up_v1.js';
 import { calculateDecibelPreferredEntrySizeUsdV1 } from './decibel_entry_size_v1.js';
-import { readDecibelActivityHistoryV1 } from './decibel_activity_history_v1.js';
 import { validateSettingsCapitalMarginV1 } from './settings_capital_margin_v1.js';
 import { readDecibelOverviewSessionCountV1 } from './decibel_overview_metrics_v1.js';
 import { validateDecibelFinalMakerAdmissionV1 } from './decibel_final_maker_admission_v1.js';
@@ -25,10 +24,7 @@ import {
 } from './decibel_venue_reconciliation_snapshot_v1.js';
 import { readDecibelSessionCapacityProjectionV1 } from './decibel_session_capacity_projection_v1.js';
 import { decibel_authenticated_refresh_retry_v1 } from './decibel_authenticated_refresh_retry_v1.js';
-import {
-  evaluateTradingDecision,
-  type trading_decision_v1,
-} from './decibel_trading_decision_v1.js';
+import { type trading_decision_v1 } from './decibel_trading_decision_v1.js';
 import dotenv from 'dotenv';
 import {
   collectDecibelSecretValuesV1,
@@ -42,12 +38,8 @@ import {
 } from './decibel_protective_recovery_admission_v1.js';
 
 import {
-  projectDecibelNextSessionEntrySizeUsdV1,
-  handleDecibelOperatorSettingsRequestV1,
-  handleDecibelExecutionModeRequestV1,
   finalizeDecibelVerifiedSessionV1,
   assertDecibelSessionMutationOwnerV1,
-  handleDecibelProductionSessionRequestV1,
   recoverDecibelProductionSessionBeforeListenV1,
   convergeDecibelStartupRecoveryV1,
   isDecibelExecutionCompositeReadyV1,
@@ -61,15 +53,20 @@ import {
   formatDecibelProductionWebProcessLifecycleV1,
   type decibel_production_web_startup_overrides_v1,
 } from './decibel_production_web_helpers_v1.js';
+import { emitDecibelControlLoopLogV1 } from './decibel_control_loop_log_v1.js';
+import {
+  handleDecibelProductionWebRequestV1,
+  type authenticated_account_state,
+} from './decibel_production_web_routes_v1.js';
 
 dotenv.config();
 // SDK request errors include the node API key; redact all console output in this process.
 installDecibelConsoleRedactionV1(collectDecibelSecretValuesV1(process.env));
 
-import { createReadStream, existsSync, statSync, readFileSync } from 'node:fs';
+import { existsSync, statSync, readFileSync } from 'node:fs';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { createServer, type ServerResponse } from 'node:http';
-import { extname, join, normalize, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { z } from 'zod';
@@ -84,7 +81,6 @@ import {
 
 import {
   decibel_operator_settings_store_v1,
-  parseDecibelOperatorSettingsValuesV1,
   deriveDecibelSessionTradingLimitsV1,
   validateDecibelCapitalAllocationV1,
   type decibel_operator_settings_values_v1,
@@ -146,7 +142,6 @@ import {
   publishDecibelRuntimeSnapshotV1,
   selectNewestDecibelRuntimeSnapshotV1,
 } from './decibel_runtime_snapshot_owner_v1.js';
-import { readDecibelLegacyHandoffV1 } from './decibel_legacy_handoff_v1.js';
 import {
   decibel_runtime_supervisor_v1,
   readDecibelSupervisorAuthenticatedSnapshotV1,
@@ -156,10 +151,6 @@ import {
   DECIBEL_PRODUCTION_LIFECYCLE_COST_ENTRY_BPS_V1,
 } from './decibel_smart_ladder_v1.js';
 import { resolveDecibelProductionEconomicStorePathsV1 } from './decibel_adverse_selection_evidence_v1.js';
-import {
-  buildDecibelRestartSafetySnapshotV1,
-  persistDecibelRestartSafetySnapshotV1,
-} from './decibel_restart_safety_gate_v1.js';
 import {
   assertDecibelPersistedExecutionModeV1,
   executionModesEqualV1,
@@ -221,23 +212,6 @@ const WebEnvironmentSchema = z.object({
     .default('config/production_state/decibel_production_sessions_v1.sqlite'),
 });
 
-const contentTypes: Readonly<Record<string, string>> = Object.freeze({
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-});
-
-function writeJson(response: ServerResponse, status: number, value: unknown): void {
-  response.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-  });
-  response.end(JSON.stringify(value));
-}
-
 /**
  * For a stack overflow, the top frames of the innermost one (the message alone never said
  * which code recursed: 9 occurrences 2026-11-05..14, all during network outages). URLs are
@@ -275,22 +249,6 @@ function describeAuthenticatedReadFailure(error: unknown): string {
   return stage === undefined
     ? `${messages[0] ?? 'PRODUCTION_AUTHENTICATED_READ_TRANSIENT'}:${safeDetail}`
     : `${stage}:${safeDetail}`;
-}
-
-async function readJsonBody(request: import('node:http').IncomingMessage): Promise<unknown> {
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  for await (const chunk of request) {
-    const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    length += value.length;
-    if (length > 32_768) throw new Error('SETTINGS_REQUEST_TOO_LARGE');
-    chunks.push(value);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
-  } catch (error) {
-    throw new Error('SETTINGS_REQUEST_INVALID_JSON', { cause: error });
-  }
 }
 
 /** Control cycles a Ctrl+C pause may run to cancel resting entries before the process exits. */
@@ -467,9 +425,6 @@ export async function runDecibelProductionWebV1(
   let authenticatedSchedulerStopped = false;
   let notifyAuthenticatedReady = (): void => undefined;
   let notifyExecutionSnapshotReady = (): void => undefined;
-  type authenticated_account_state = Awaited<
-    ReturnType<NonNullable<DecibelProductionLiveStateSourceV1['readAuthenticatedAccountState']>>
-  > & { venueSnapshot?: decibel_production_live_snapshot_v1 };
   type public_market_state = Awaited<
     ReturnType<NonNullable<DecibelProductionLiveStateSourceV1['readPublicMarketState']>>
   >;
@@ -805,142 +760,26 @@ export async function runDecibelProductionWebV1(
     // open orders, market data, and economic evidence owned by the supervisor.
     rebuildExecutionSnapshotFromPublishedComponents();
   };
-  let lastControlSignature = '';
-  let lastControlLogAt = 0;
+  const ControlLoopLogThrottle = { signature: '', loggedAt: 0 };
   const emitControlLoopTelemetry = (
     result: Awaited<ReturnType<decibel_production_live_orchestrator_v1['evaluateOnce']>> | null,
     currentSnapshot: decibel_production_live_snapshot_v1 | null,
     lastError: string | null = null,
-  ): void => {
-    const controlSnapshot = result?.controlSnapshot ?? null;
-    const midpoint =
-      currentSnapshot === null
-        ? null
-        : (currentSnapshot.input.book.bestBid + currentSnapshot.input.book.bestAsk) / 2;
-    const position = currentSnapshot?.input.actualInventoryBase ?? null;
-    const inventoryUsd =
-      position === null || midpoint === null ? null : Math.abs(position * midpoint);
-    const direction =
-      position === null ? 'UNKNOWN' : position > 0 ? 'LONG' : position < 0 ? 'SHORT' : 'FLAT';
-    const whyNoAction =
-      result === null
-        ? (lastError ?? 'CONTROL_CYCLE_NOT_AVAILABLE')
-        : result.action === 'HOLD' || result.action === 'BLOCKED'
-          ? (result.blocker ?? controlSnapshot?.exactReason ?? 'CONTROL_ADMISSION_REASON_MISSING')
-          : 'NONE';
-    const decision =
-      result?.tradingDecision ??
-      evaluateTradingDecision(currentSnapshot, {
-        now: Date.now(),
-        sessionId: execution.sessionId,
-        state: SessionStore.getActive()?.status ?? 'IDLE',
-        blocker: lastError,
-        identityConflict: TelemetryJournal.getActiveIdentityConflict()?.blocker ?? null,
-      });
-    const mutation = result?.intentId ? TelemetryJournal.getIntent(result.intentId) : null;
-    const tpCancelReason =
-      mutation?.action === 'CANCEL' &&
-      result?.evaluation?.actions.some(
-        (action) =>
-          action.current?.venueOrderId === mutation.expectedPreviousVenueOrderId &&
-          action.current.reduceOnly === true,
-      )
-        ? mutation.cancelReason
-        : null;
-    const tpKeepReason =
-      result?.evaluation?.actions.find(
-        (action) => action.action === 'NO_OP' && action.current?.reduceOnly === true,
-      )?.reason ?? null;
-    const signature = JSON.stringify([
-      decision?.state,
-      decision?.primaryReason,
-      decision?.primaryReason === undefined ? whyNoAction : null,
-      direction,
-    ]);
-    if (
-      signature === lastControlSignature &&
-      Date.now() - lastControlLogAt < 10000 &&
-      (result?.mutationInvocations ?? 0) === 0
-    )
-      return;
-    lastControlSignature = signature;
-    lastControlLogAt = Date.now();
-    console.log(
-      [
-        `PROCESS_ID=${process.pid}`,
-        ...(
-          [
-            'INTENDED_ACTION',
-            'FIRST_BLOCKING_GATE',
-            'REQUIRED_EVIDENCE',
-            'ACTUAL_CAPACITY_LIMIT',
-            'FINAL_EXECUTOR_OUTCOME',
-          ] as const
-        ).map(
-          (key) =>
-            `${key}=${JSON.stringify(result?.orderDecisionTrace ? result.orderDecisionTrace[key] : key === 'FINAL_EXECUTOR_OUTCOME' ? (lastError === null ? 'UNKNOWN' : 'BLOCKED') : key === 'FIRST_BLOCKING_GATE' ? (lastError === null ? null : { function: 'executionCycle', reason: lastError }) : 'UNKNOWN')}`,
-        ),
-        `CONTROL_LOOP=${!execution.running ? 'STOPPED' : lastSuccessfulCycleAt === null || Date.now() - lastSuccessfulCycleAt > configuration.readTimeoutMs * (configuration.readRetryCount + 1) + configuration.pollIntervalMs ? 'STALLED' : lastAuthenticatedReadError !== null ? 'WAIT_AUTH' : 'ACTIVE'}`,
-        `LAST_CYCLE_AGE_MS=${lastSuccessfulCycleAt === null ? 'UNKNOWN' : Math.max(0, Date.now() - lastSuccessfulCycleAt)}`,
-        `TRADING_STATE=${decision?.state ?? 'WAIT'}`,
-        `TRADING_REASON=${decision?.primaryReason ?? whyNoAction}`,
-        `EXECUTION_LATENCY_MS=${JSON.stringify(result?.latency ?? null)}`,
-        `ACTION_CAPITAL=${JSON.stringify(decision?.capital ?? null)}`,
-        `ACTION_PLAN=${JSON.stringify(decision?.actionPlan ?? null)}`,
-        `SIDE_DIAGNOSTICS=${JSON.stringify(decision?.sideDiagnostics ?? null)}`,
-        ...(
-          [
-            'POSITION_QTY',
-            'CONFIRMED_EXIT_COVERAGE_QTY',
-            'UNCOVERED_INVENTORY_QTY',
-            'PENDING_EXIT_QTY',
-            'SAME_DIRECTION_ENTRY_QTY',
-          ] as const
-        ).map((key) => `${key}=${decision?.exitCoverage?.[key] ?? 'UNKNOWN'}`),
-        `TP_CANCEL_REASON=${tpCancelReason ?? 'NONE'}`,
-        `TP_KEEP_REASON=${result?.tpPricing?.TP_REPRICE_DECISION === 'KEEP' ? result.tpPricing.TP_REPRICE_REASON : (tpKeepReason ?? 'NONE')}`,
-        ...(
-          [
-            'TP_RESTING_PRICE',
-            'TP_CANDIDATE_PRICE',
-            'TP_MARKET_DISTANCE_TICKS',
-            'TP_PRICE_SUITABILITY',
-            'TP_REPRICE_DECISION',
-            'TP_EXIT_POLICY_MODE',
-            'TP_ADVERSE_MOVEMENT_BAND_USD',
-            'TP_PROJECTED_SESSION_PNL_USD',
-            'TP_REPRICE_REASON',
-            'TP_EXPECTED_NET_BENEFIT',
-            'TP_LAST_REPRICE_AGE_MS',
-            'AUTHENTICATED_ENTRY_BASIS',
-            'RESTING_TP_NET_PNL',
-            'CANDIDATE_TP_NET_PNL',
-            'TP_NET_PROFIT_REQUIRED',
-            'TP_EXPECTED_NET_BENEFIT_KIND',
-          ] as const
-        ).map((key) => `${key}=${result?.tpPricing?.[key] ?? 'UNKNOWN'}`),
-        `EXIT_COVERAGE_WORKFLOW=${JSON.stringify(result?.exitCoverageWorkflow ?? { outcome: 'BLOCKED', reason: lastError ?? 'AUTHENTICATED_EXIT_STATE_UNAVAILABLE' })}`,
-        `INVENTORY_EXIT=${JSON.stringify(result?.inventoryExit ?? { EXIT_MODE: 'RECONCILE', BLOCKING_EVIDENCE: ['AUTHENTICATED_EXIT_STATE_UNAVAILABLE'] })}`,
-        `EXIT_MODE=${result?.inventoryExit?.EXIT_MODE ?? 'RECONCILE'}`,
-        `RESTING_TP_PRICE=${result?.tpPricing?.TP_RESTING_PRICE ?? 'UNKNOWN'}`,
-        `CANDIDATE_TP_PRICE=${result?.tpPricing?.TP_CANDIDATE_PRICE ?? 'UNKNOWN'}`,
-        `TP_PRICE_DECISION=${result?.tpPricing?.TP_REPRICE_DECISION ?? 'UNKNOWN'}`,
-        `FILL_TO_EXIT_COVERAGE_MS=${result?.latency?.fillToExitCoverageMs ?? 'UNKNOWN'}`,
-        `STRATEGY_STATE=${decision?.state ?? 'WAIT'}`,
-        `AUTHENTICATED_INVENTORY_USD=${inventoryUsd === null ? 'UNKNOWN' : `${direction}:${inventoryUsd.toFixed(6)}`}`,
-        `BID_ELIGIBLE=${decision ? (decision.bidEligible ? 'YES' : 'NO') : controlSnapshot === null ? 'UNKNOWN' : controlSnapshot.bidAdmission === 'READY' ? 'YES' : controlSnapshot.bidAdmission === 'BLOCKED' ? 'NO' : 'UNKNOWN'}`,
-        `ASK_ELIGIBLE=${decision ? (decision.askEligible ? 'YES' : 'NO') : controlSnapshot === null ? 'UNKNOWN' : controlSnapshot.askAdmission === 'READY' ? 'YES' : controlSnapshot.askAdmission === 'BLOCKED' ? 'NO' : 'UNKNOWN'}`,
-        `SELECTED_ACTION=${result?.action ?? 'NONE'}`,
-        `WHY_NO_ACTION=${whyNoAction}`,
-        `LIFECYCLE_BLOCKER=${result?.blocker ?? 'NONE'}`,
-        `RESTING_AGE_MS=${controlSnapshot?.restingAgeMs ?? 'NONE'}`,
-        `PRICE_DRIFT_TICKS=${controlSnapshot?.priceDriftTicks ?? 'NONE'}`,
-        `CANCEL_REASON=${controlSnapshot?.cancelReason ?? 'NONE'}`,
-        `ORDER_DECISIONS=${JSON.stringify(result?.orderDecisions ?? [])}`,
-        `LAST_ERROR=${lastError ?? 'NONE'}`,
-      ].join(' '),
+  ): void =>
+    emitDecibelControlLoopLogV1(
+      {
+        sessionStore: SessionStore,
+        journal: TelemetryJournal,
+        configuration,
+        execution,
+        lastAuthenticatedReadError,
+        lastSuccessfulCycleAt,
+        throttle: ControlLoopLogThrottle,
+      },
+      result,
+      currentSnapshot,
+      lastError,
     );
-  };
   const clearCompletedSessionProjection = (): void => {
     execution = {
       ...execution,
@@ -1946,286 +1785,29 @@ export async function runDecibelProductionWebV1(
     dependencies: RuntimeSupervisor.getSnapshot().dependencies,
     readiness: RuntimeSupervisor.getSnapshot().readiness,
   });
-  const Server = createServer((request, response) => {
-    const pathname = new URL(request.url ?? '/', `http://${web.DECIBEL_PRODUCTION_WEB_HOST}`)
-      .pathname;
-    if (pathname === '/api/activity-history') {
-      if (request.method !== 'GET')
-        return writeJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
-      const sessionId = new URL(request.url ?? '/', 'http://localhost').searchParams.get(
-        'sessionId',
-      );
-      if (!sessionId || sessionId.length > 256)
-        return writeJson(response, 400, { error: 'SESSION_ID_INVALID' });
-      if (!SessionController.getHistory().some((session) => session.sessionId === sessionId))
-        return writeJson(response, 404, { error: 'SESSION_NOT_FOUND' });
-      try {
-        return writeJson(
-          response,
-          200,
-          readDecibelActivityHistoryV1(
-            configuration.journalPath,
-            sessionId,
-            snapshot?.input.actualFillLedger,
-          ),
-        );
-      } catch {
-        return writeJson(response, 503, { error: 'ACTIVITY_HISTORY_UNAVAILABLE' });
-      }
-    }
-    if (pathname.startsWith('/api/session')) {
-      const isStartRequest = request.method === 'POST' && pathname === '/api/session/start';
-      if (isStartRequest) RuntimeForensics.record('SESSION_START_HTTP_REQUEST');
-      void (async () => {
-        const body = request.method === 'POST' ? await readJsonBody(request) : null;
-        const result = await handleDecibelProductionSessionRequestV1(
-          request.method ?? 'GET',
-          pathname,
-          body,
-          SessionController,
-        );
-        if (result === null) return writeJson(response, 404, { error: 'NOT_FOUND' });
-        if (isStartRequest) {
-          const error =
-            typeof result.body === 'object' && result.body !== null && 'error' in result.body
-              ? result.body.error
-              : null;
-          const blocker =
-            typeof error === 'string'
-              ? (error.match(/^[A-Z][A-Z0-9_]+/u)?.[0] ?? 'SESSION_START_REQUEST_INVALID')
-              : null;
-          RuntimeForensics.record('SESSION_START_HTTP_RESPONSE', {
-            status: result.status,
-            blocker,
-          });
-        }
-        writeJson(response, result.status, result.body);
-      })().catch((error: unknown) => {
-        if (isStartRequest)
-          RuntimeForensics.record('SESSION_START_HTTP_RESPONSE', {
-            status: 400,
-            blocker: 'SESSION_REQUEST_PARSE_FAILED',
-          });
-        writeJson(response, 400, {
-          error: error instanceof Error ? error.message : 'SESSION_REQUEST_FAILED',
-        });
-      });
-      return;
-    }
-    if (pathname === '/api/operator-settings') {
-      void (async () => {
-        if (request.method === 'GET') {
-          const saved = SettingsStore.read();
-          const params = new URL(request.url ?? '/', 'http://localhost').searchParams;
-          const queryValues = z
-            .object({
-              capitalToUseUsd: z.coerce.number().finite().positive().optional(),
-              maxLossUsd: z.coerce.number().finite().positive().optional(),
-              targetMakerVolumeUsd: z.coerce
-                .number()
-                .finite()
-                .refine((value) => value !== 0)
-                .optional(),
-            })
-            .safeParse(Object.fromEntries(params));
-          const state = RuntimeSupervisor.getSnapshot();
-          const base =
-            RuntimeSupervisor.getExecutionSnapshot<decibel_production_live_snapshot_v1>();
-          const account = RuntimeSupervisor.getAuthenticatedSnapshot<authenticated_account_state>();
-          const nextPracticalInputs = Source.readNextSessionCapacityInputs?.();
-          const projectedSnapshot =
-            base === null || account === null
-              ? null
-              : {
-                  ...base,
-                  ...(nextPracticalInputs ? { practicalCapacityInputs: nextPracticalInputs } : {}),
-                  availableMarginUsd: account.availableMarginUsd ?? Number.NaN,
-                  accountMetrics: account.accountMetrics,
-                  input: {
-                    ...base.input,
-                    actualInventoryBase: account.actualInventoryBase,
-                    openOrders: account.openOrders,
-                  },
-                };
-          const entrySizeUsd = queryValues.success
-            ? projectDecibelNextSessionEntrySizeUsdV1({
-                settings: {
-                  ...saved.values,
-                  capitalToUseUsd: queryValues.data.capitalToUseUsd ?? saved.values.capitalToUseUsd,
-                  maxLossUsd: queryValues.data.maxLossUsd ?? saved.values.maxLossUsd,
-                  targetMakerVolumeUsd:
-                    queryValues.data.targetMakerVolumeUsd ?? saved.values.targetMakerVolumeUsd,
-                },
-                snapshot: projectedSnapshot,
-                accountReady: state.readiness.accountReady,
-                marketReady: state.readiness.marketReady,
-                venueMaximumNotionalUsd: Number(
-                  environment.DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD ?? '100',
-                ),
-                maximumAggregateCollateralFraction:
-                  configuration.maximumAggregateCollateralFraction,
-              })
-            : null;
-          return writeJson(response, 200, {
-            ...saved,
-            nextSessionProjection: {
-              settingsRevision: saved.revision,
-              entrySizeUsd,
-            },
-          });
-        }
-        const body = request.method === 'POST' ? await readJsonBody(request) : null;
-        if (request.method === 'POST') {
-          const pending = z.object({ values: z.unknown() }).parse(body);
-          const values = parseDecibelOperatorSettingsValuesV1(pending.values);
-          const state = RuntimeSupervisor.getSnapshot();
-          const current =
-            RuntimeSupervisor.getExecutionSnapshot<decibel_production_live_snapshot_v1>();
-          const account = RuntimeSupervisor.getAuthenticatedSnapshot<authenticated_account_state>();
-          const practicalInputs = Source.readNextSessionCapacityInputs?.();
-          const entrySize = projectDecibelNextSessionEntrySizeUsdV1({
-            settings: values,
-            snapshot:
-              current && account
-                ? {
-                    ...current,
-                    availableMarginUsd: account.availableMarginUsd ?? Number.NaN,
-                    accountMetrics: account.accountMetrics,
-                    input: {
-                      ...current.input,
-                      actualInventoryBase: account.actualInventoryBase,
-                      openOrders: account.openOrders,
-                    },
-                    ...(practicalInputs ? { practicalCapacityInputs: practicalInputs } : {}),
-                  }
-                : null,
-            accountReady: state.readiness.accountReady,
-            marketReady: state.readiness.marketReady,
-            venueMaximumNotionalUsd: Number(
-              environment.DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD ?? '100',
-            ),
-            maximumAggregateCollateralFraction: configuration.maximumAggregateCollateralFraction,
-          });
-          if (entrySize === null) throw new Error('ENTRY_UNAVAILABLE_MARGIN_OR_VENUE_EVIDENCE');
-        }
-        const result = handleDecibelOperatorSettingsRequestV1(
-          request.method ?? 'GET',
-          pathname,
-          body,
-          SettingsStore,
-          {
-            availableMarginUsd:
-              RuntimeSupervisor.getAuthenticatedSnapshot<authenticated_account_state>()
-                ?.availableMarginUsd ?? null,
-            status: RuntimeSupervisor.getAuthenticatedEvidenceDiagnostics().ready
-              ? 'fresh'
-              : 'stale',
-          },
-        );
-        if (result === null) return writeJson(response, 404, { error: 'NOT_FOUND' });
-        writeJson(response, result.status, result.body);
-      })().catch((error: unknown) =>
-        writeJson(response, 400, {
-          error: error instanceof Error ? error.message : 'SETTINGS_REQUEST_FAILED',
-        }),
-      );
-      return;
-    }
-    if (pathname === '/api/execution-mode') {
-      void (async () => {
-        const body = request.method === 'POST' ? await readJsonBody(request) : null;
-        const result = handleDecibelExecutionModeRequestV1(
-          request.method ?? 'GET',
-          pathname,
-          body,
-          LoadedExecutionMode.path,
-          LoadedExecutionMode.mode,
-        );
-        if (result === null) return writeJson(response, 404, { error: 'NOT_FOUND' });
-        writeJson(response, result.status, result.body);
-      })().catch((error: unknown) =>
-        writeJson(response, 400, {
-          error: error instanceof Error ? error.message : 'EXECUTION_MODE_REQUEST_FAILED',
-        }),
-      );
-      return;
-    }
-    if (pathname === '/api/telemetry') return writeJson(response, 200, telemetry);
-    if (pathname === '/api/restart-safety' && request.method === 'GET') {
-      void (async () => {
-        const authenticated = await refreshAuthenticatedComponents();
-        const journalObservedAt = Date.now();
-        const unresolvedIntents = TelemetryJournal.nonTerminal();
-        const evaluatedAt = Date.now();
-        const result = buildDecibelRestartSafetySnapshotV1({
-          evaluatedAt,
-          authenticatedObservedAt: authenticated.observedAt,
-          authenticatedFreshnessLimitMs: 5_000,
-          positionBase: authenticated.actualInventoryBase,
-          openOrders: authenticated.openOrders,
-          journalObservedAt,
-          unresolvedIntents,
-        });
-        persistDecibelRestartSafetySnapshotV1(
-          environment.DECIBEL_PRODUCTION_RESTART_SAFETY_PATH ??
-            'config/production_state/decibel_restart_safety_v1.json',
-          result,
-        );
-        writeJson(response, result.safeToRestart ? 200 : 409, result);
-      })().catch((error: unknown) =>
-        writeJson(response, 503, {
-          safeToRestart: false,
-          blocker: error instanceof Error ? error.message : 'RESTART_SAFETY_REFRESH_FAILED',
-        }),
-      );
-      return;
-    }
-    if (pathname === '/api/runtime-snapshot')
-      return writeJson(response, 200, {
-        snapshot,
-        supervisor: RuntimeSupervisor.getSnapshot(),
-        authenticatedEvidence: RuntimeSupervisor.getAuthenticatedEvidenceDiagnostics(),
-        sourceEvidence: Source.readAuthenticatedEvidenceDiagnostics?.() ?? null,
-        takeover: SessionController.getState().takeover,
-        handoff:
-          Number.isSafeInteger(Number(environment.DECIBEL_PRODUCTION_LEGACY_TAKEOVER_PID)) &&
-          Number.isSafeInteger(Number(environment.DECIBEL_PRODUCTION_LEGACY_TAKEOVER_START_MS))
-            ? readDecibelLegacyHandoffV1(
-                environment.DECIBEL_PRODUCTION_LEGACY_HANDOFF_PATH ??
-                  'config/production_state/decibel_legacy_handoff_27624.json',
-                Number(environment.DECIBEL_PRODUCTION_LEGACY_TAKEOVER_PID),
-                Number(environment.DECIBEL_PRODUCTION_LEGACY_TAKEOVER_START_MS),
-              )
-            : null,
-      });
-    if (pathname === '/api/events') {
-      response.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      });
-      clients.add(response);
-      response.write(`data: ${JSON.stringify(telemetry)}\n\n`);
-      request.once('close', () => clients.delete(response));
-      return;
-    }
-    if (pathname.startsWith('/api/')) return writeJson(response, 404, { error: 'NOT_FOUND' });
-    const requested = pathname === '/' ? 'index.html' : pathname.slice(1);
-    const filePath = normalize(join(staticRoot, requested));
-    if (!filePath.startsWith(staticRoot) || !existsSync(filePath) || !statSync(filePath).isFile()) {
-      response.writeHead(404);
-      response.end('Not found');
-      return;
-    }
-    response.writeHead(200, {
-      'Content-Type': contentTypes[extname(filePath)] ?? 'application/octet-stream',
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy':
-        "default-src 'self'; img-src 'self' blob:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
-    });
-    createReadStream(filePath).pipe(response);
-  });
+  const Server = createServer((request, response) =>
+    handleDecibelProductionWebRequestV1(
+      {
+        web,
+        environment,
+        configuration,
+        loadedExecutionMode: LoadedExecutionMode,
+        runtimeSupervisor: RuntimeSupervisor,
+        runtimeForensics: RuntimeForensics,
+        sessionController: SessionController,
+        settingsStore: SettingsStore,
+        source: Source,
+        telemetryJournal: TelemetryJournal,
+        clients,
+        staticRoot,
+        refreshAuthenticatedComponents,
+        getSnapshot: () => snapshot,
+        getTelemetry: () => telemetry,
+      },
+      request,
+      response,
+    ),
+  );
   let shutdownStarted = false;
   let gracefulShutdownCompleted = false;
   const stop = (): void => {
