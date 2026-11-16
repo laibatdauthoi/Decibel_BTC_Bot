@@ -525,7 +525,7 @@ export const OverviewView = (
       progress: progressText,
       elapsed,
       capital: formatNumber(capital, 2, '$'),
-      pnl: sessionMetric(pnl),
+      pnl: pnl === null ? sessionMetric(pnl) : formatOperatorPnlV1(pnl),
       maxLoss: maxLossText,
       target: targetText,
       volume: sessionMetric(volume),
