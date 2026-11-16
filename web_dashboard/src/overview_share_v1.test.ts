@@ -2,6 +2,7 @@ import {
   calculateOverviewCostPerMillionV1,
   formatShareCostPerMillionV1,
   getCostPerMillionDisplayValueV1,
+  getShareValueColorV1,
   getOverviewShareRowsV1,
 } from './overview_share_v1';
 import { describe, expect, it } from 'vitest';
@@ -23,6 +24,14 @@ describe('Overview net trading cost and share presentation', () => {
     expect(formatShareCostPerMillionV1(-120)).toMatch(/^\+\$120\.00$/);
     expect(formatShareCostPerMillionV1(0)).toMatch(/^\$0\.00$/);
     expect(formatShareCostPerMillionV1(null)).toBe('UNVERIFIED');
+  });
+  it('colors signed PnL and cost rows on the share card like the dashboard', () => {
+    expect(getShareValueColorV1('COST / 1M VOL', '-$120.00')).toBe('#dc2753');
+    expect(getShareValueColorV1('COST / 1M VOL', '+$120.00')).toBe('#16835f');
+    expect(getShareValueColorV1('Net PnL', '-$0.50')).toBe('#dc2753');
+    expect(getShareValueColorV1('Session PnL', '+$1.00')).toBe('#16835f');
+    expect(getShareValueColorV1('Session PnL', '$0.00')).toBe('#0a0b0c');
+    expect(getShareValueColorV1('Capital', '-$1.00')).toBe('#0a0b0c');
   });
   it('does not fabricate costs when volume or PnL evidence is missing', () => {
     for (const [pnl, volume] of [

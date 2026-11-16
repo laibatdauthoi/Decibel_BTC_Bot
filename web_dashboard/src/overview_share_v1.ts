@@ -68,6 +68,17 @@ export function formatShareCostPerMillionV1(value: number | null): string {
         });
 }
 
+const SIGNED_SHARE_LABELS_V1 = new Set(['SESSION PNL', 'NET PNL', 'COST / 1M VOL']);
+
+/** PnL-like rows are red when negative and green when positive, like the dashboard. */
+export function getShareValueColorV1(label: string, value: string): string {
+  if (SIGNED_SHARE_LABELS_V1.has(label.toUpperCase())) {
+    if (value.startsWith('-')) return '#dc2753';
+    if (value.startsWith('+')) return '#16835f';
+  }
+  return '#0a0b0c';
+}
+
 /** One PNG renderer for Overview, Activity, preview, clipboard and explicit downloads. */
 export async function createSessionSharePngV1(
   data: overview_share_data_v1,
@@ -136,7 +147,7 @@ export async function createSessionSharePngV1(
     Context.fillStyle = '#77766f';
     Context.font = '400 23px Fredoka, sans-serif';
     Context.fillText(label.toUpperCase(), 48, y, 400);
-    Context.fillStyle = label === 'Session PnL' && value.includes('-') ? '#dc2753' : '#0a0b0c';
+    Context.fillStyle = getShareValueColorV1(label, value);
     Context.font = '500 27px Fredoka, sans-serif';
     Context.fillText(value, valueLeft, y, valueMaxWidth);
   }

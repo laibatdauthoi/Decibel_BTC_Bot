@@ -285,7 +285,9 @@ describe('Overview evidence and original presentation', () => {
     p.telemetry.degraded = true;
     expect(getSection(renderOverview(p), 'market-header')).toContain('100,000.0');
     expect(getSection(renderOverview(p), 'quote-section')).toContain('99,999.0');
-    expect(getSection(renderOverview(p), 'inventory-strip')).toContain('UNAVAILABLE');
+    expect(getSection(renderOverview(p), 'bot-state-panel')).toContain('UNAVAILABLE');
+    // All-time cost comes from the fresh telemetry frame, not the stale session source.
+    expect(getSection(renderOverview(p), 'inventory-strip')).not.toContain('UNAVAILABLE');
   });
   it('missing PnL does not hide valid capital, limit, volume, history, status or quotes', () => {
     const p = createProps();
@@ -496,7 +498,7 @@ it('history counts and UTC volume survive session reset but cannot leak yesterda
   expect(cards).toContain('$1,234.00');
   p.session = { ...p.session!, state: 'IDLE', activeSession: null };
   cards = getSection(renderOverview(p), 'inventory-strip');
-  expect(cards).toContain('NO SESSION');
+  expect(cards).not.toContain('NO SESSION');
   expect(cards).toContain('>104</strong>');
   expect(cards).toContain('$1,234.00');
   p.now = 86400001;
@@ -548,6 +550,14 @@ it('prioritizes session fields, removes volume subtext and binds lifetime totals
   expect(getSection(renderOverview(p), 'inventory-strip')).toContain('+$12.00');
   p.session = { ...p.session!, state: 'IDLE', activeSession: null };
   expect(getSection(renderOverview(p), 'inventory-strip')).toContain('+$12.00');
+  // COST / 1M VOL is all-time (12 / 2654.5 * 1M), shown even without a session, green with +.
+  expect(getSection(renderOverview(p), 'inventory-strip')).toMatch(
+    /<strong class="positive"[^>]*>\+\$4,520\.63<\/strong>/,
+  );
+  p.telemetry.overviewHistory = { ...p.telemetry.overviewHistory, allTimeNetPnlUsd: -1 };
+  expect(getSection(renderOverview(p), 'inventory-strip')).toMatch(
+    /<strong class="negative"[^>]*>-\$376\.72<\/strong>/,
+  );
   p.telemetry.overviewHistory = { ...p.telemetry.overviewHistory!, allTimeNetPnlUsd: null };
   html = renderOverview(p);
   expect(getSection(html, 'inventory-strip')).toContain('UNVERIFIED');

@@ -697,7 +697,7 @@ describe('Decibel production web presentation V1', () => {
 
   it('formats PnL without an asterisk and preserves session start and risk gates', () => {
     expect(formatOperatorPnlV1(0.04)).toBe('+$0.04');
-    expect(formatOperatorPnlV1(-0.04)).toBe('$-0.04');
+    expect(formatOperatorPnlV1(-0.04)).toBe('-$0.04');
     expect(formatOperatorPnlV1(null)).toBe('\u2014');
     expect(formatOperatorPnlV1(0.04)).not.toContain('*');
     expect(canStartOperatorSessionV1(true, false)).toBe(true);

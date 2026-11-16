@@ -661,7 +661,8 @@ export function formatOperatorValueV1(value: number | null, digits: number, pref
 
 export function formatOperatorPnlV1(value: number | null): string {
   if (value === null) return '\u2014';
-  return `${value > 0 ? '+' : ''}${formatOperatorValueV1(value, 2, '$')}`;
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${formatOperatorValueV1(Math.abs(value), 2, '$')}`;
 }
 
 export function canStartOperatorSessionV1(

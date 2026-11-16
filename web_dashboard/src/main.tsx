@@ -486,6 +486,10 @@ export const OverviewView = (
       : `${pnl === null ? '?' : formatNumber(Math.max(0, -pnl), 2, '$')} / ${formatNumber(limit, 2, '$')}`;
   const averageCost = calculateOverviewCostPerMillionV1(pnl, volume);
   const history = t.overviewHistory;
+  const allTimeCost = calculateOverviewCostPerMillionV1(
+    history?.allTimeNetPnlUsd ?? null,
+    history?.lifetimeVolumeUsd ?? null,
+  );
   const todayStart = Math.floor(props.now / 86400000) * 86400000;
   const shareEnabled =
     sessionFresh &&
@@ -723,21 +727,19 @@ export const OverviewView = (
           <small>COST / 1M VOL</small>
           <strong
             className={getPnlSemanticClassV1(
-              activeSession && accountingFresh
-                ? getCostPerMillionDisplayValueV1(averageCost)
-                : null,
+              frameFresh ? getCostPerMillionDisplayValueV1(allTimeCost) : null,
             )}
-            title="Current session net result per 1M executed USD volume = (realized + unrealized - trading fees) / executed USD volume * 1,000,000. Fees already included; gas excluded. A loss (cost) is shown red with -, a profit green with +."
+            title={`All-time net result per 1M executed USD volume = ALL-TIME PNL / TOTAL EXECUTED VOLUME * 1,000,000, including the current session in real time. Trading fees included; gas excluded. A loss (cost) is shown red with -, a profit green with +.${
+              history?.allTimeIncompletePnlCount
+                ? ` ${history.allTimeIncompletePnlCount} session(s) without final PnL count in volume but not in PnL.`
+                : ''
+            }`}
           >
-            {!activeSession
-              ? !sessionFresh
-                ? 'UNAVAILABLE'
-                : 'NO SESSION'
-              : !accountingFresh
-                ? 'STALE'
-                : averageCost === null
-                  ? 'NOT AVAILABLE'
-                  : formatOperatorPnlV1(getCostPerMillionDisplayValueV1(averageCost))}
+            {!frameFresh
+              ? 'STALE'
+              : allTimeCost === null
+                ? 'UNVERIFIED'
+                : formatOperatorPnlV1(getCostPerMillionDisplayValueV1(allTimeCost))}
           </strong>
         </div>
         <div>
