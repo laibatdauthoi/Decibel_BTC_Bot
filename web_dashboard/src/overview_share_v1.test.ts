@@ -1,4 +1,9 @@
-import { calculateOverviewCostPerMillionV1, getOverviewShareRowsV1 } from './overview_share_v1';
+import {
+  calculateOverviewCostPerMillionV1,
+  formatShareCostPerMillionV1,
+  getCostPerMillionDisplayValueV1,
+  getOverviewShareRowsV1,
+} from './overview_share_v1';
 import { describe, expect, it } from 'vitest';
 
 describe('Overview net trading cost and share presentation', () => {
@@ -7,6 +12,17 @@ describe('Overview net trading cost and share presentation', () => {
     expect(calculateOverviewCostPerMillionV1(-12, 100000)).toBe(120);
     expect(calculateOverviewCostPerMillionV1(12, 100000)).toBe(-120);
     expect(calculateOverviewCostPerMillionV1(0, 100000)).toBe(0);
+  });
+  it('shows a cost as a red negative number and a profit as a green positive number', () => {
+    expect(getCostPerMillionDisplayValueV1(120)).toBe(-120);
+    expect(getCostPerMillionDisplayValueV1(-120)).toBe(120);
+    expect(Object.is(getCostPerMillionDisplayValueV1(0), 0)).toBe(true);
+    expect(getCostPerMillionDisplayValueV1(null)).toBeNull();
+    expect(getCostPerMillionDisplayValueV1(NaN)).toBeNull();
+    expect(formatShareCostPerMillionV1(120)).toMatch(/^-\$120\.00$/);
+    expect(formatShareCostPerMillionV1(-120)).toMatch(/^\+\$120\.00$/);
+    expect(formatShareCostPerMillionV1(0)).toMatch(/^\$0\.00$/);
+    expect(formatShareCostPerMillionV1(null)).toBe('UNVERIFIED');
   });
   it('does not fabricate costs when volume or PnL evidence is missing', () => {
     for (const [pnl, volume] of [

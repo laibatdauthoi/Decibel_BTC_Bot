@@ -11,7 +11,10 @@ import {
   isSettingsMaxLossBelowDCAFloorV1,
   isSettingsMaxLossBelowEntryFloorV1,
 } from '../../src/settings_max_loss_floor_v1';
-import { calculateOverviewCostPerMillionV1 } from './overview_share_v1';
+import {
+  calculateOverviewCostPerMillionV1,
+  getCostPerMillionDisplayValueV1,
+} from './overview_share_v1';
 import { selectNewerSnapshotV1 } from './snapshot_v1';
 import type { trading_decision_display_v1 as trading_decision_v1 } from './presentation';
 import {
@@ -718,7 +721,14 @@ export const OverviewView = (
         </div>
         <div>
           <small>COST / 1M VOL</small>
-          <strong title="Current session net cost = -(realized + unrealized - trading fees) / executed USD volume * 1,000,000. Fees already included; gas excluded. Profit means negative cost.">
+          <strong
+            className={getPnlSemanticClassV1(
+              activeSession && accountingFresh
+                ? getCostPerMillionDisplayValueV1(averageCost)
+                : null,
+            )}
+            title="Current session net result per 1M executed USD volume = (realized + unrealized - trading fees) / executed USD volume * 1,000,000. Fees already included; gas excluded. A loss (cost) is shown red with -, a profit green with +."
+          >
             {!activeSession
               ? !sessionFresh
                 ? 'UNAVAILABLE'
@@ -727,7 +737,7 @@ export const OverviewView = (
                 ? 'STALE'
                 : averageCost === null
                   ? 'NOT AVAILABLE'
-                  : formatNumber(averageCost, 2, '$')}
+                  : formatOperatorPnlV1(getCostPerMillionDisplayValueV1(averageCost))}
           </strong>
         </div>
         <div>

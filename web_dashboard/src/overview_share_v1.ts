@@ -46,15 +46,26 @@ export function getOverviewShareRowsV1(
   ];
 }
 
+/**
+ * Display value of a cost per 1M volume, signed like PnL: a loss is negative (red, "-"),
+ * a profit is positive (green, "+").
+ */
+export function getCostPerMillionDisplayValueV1(cost: number | null): number | null {
+  if (cost === null || !Number.isFinite(cost)) return null;
+  return cost === 0 ? 0 : -cost;
+}
+
 export function formatShareCostPerMillionV1(value: number | null): string {
-  return value === null || !Number.isFinite(value)
+  const display = getCostPerMillionDisplayValueV1(value);
+  return display === null
     ? 'UNVERIFIED'
-    : value.toLocaleString(undefined, {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+    : (display > 0 ? '+' : '') +
+        display.toLocaleString(undefined, {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
 }
 
 /** One PNG renderer for Overview, Activity, preview, clipboard and explicit downloads. */
