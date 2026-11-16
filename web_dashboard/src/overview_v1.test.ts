@@ -338,6 +338,21 @@ describe('Overview evidence and original presentation', () => {
     expect(renderOverview(p)).toContain('STALE');
     expect(renderOverview(p)).not.toContain('$30.00');
   });
+  it('shows routine order confirmation as running, and only a fault as an error', () => {
+    // Live 2026-11-16: the few seconds of confirmation after each order showed ERROR.
+    const p = createProps();
+    activateSession(p);
+    p.telemetry.runtime.executionBlocker = 'RECONCILIATION_REQUIRED';
+    p.telemetry.runtime.executionBlockerKind = 'RECONCILING';
+    expect(renderOverview(p)).not.toContain('ERROR');
+    expect(renderOverview(p)).not.toContain('RECONCILIATION_REQUIRED');
+    p.telemetry.runtime.executionBlocker = 'ENTRY_REQUIRES_NEW_LOW';
+    p.telemetry.runtime.executionBlockerKind = 'WAITING';
+    expect(renderOverview(p)).toContain('WAITING');
+    expect(renderOverview(p)).toContain('ENTRY_REQUIRES_NEW_LOW');
+    p.telemetry.runtime.lastError = 'STRATEGY_ACTIVITY_EXCLUSIVITY_LOST';
+    expect(renderOverview(p)).toContain('ERROR');
+  });
 });
 
 it('rejects replay, out-of-order and invalid frames; new session replaces old totals', () => {

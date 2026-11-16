@@ -6,6 +6,10 @@ import {
 import { calculateDecibelExitCoverageV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
 import { assessDecibelSnapshotDCAV1, isDecibelDCAPriceAdmittedV1 } from './decibel_dca_v1.js';
 import { getDecibelEntryVolatilityPauseReasonV1 } from './decibel_volatility_targets_v1.js';
+import {
+  isDecibelEntryCapacityOnlyReasonV1,
+  isDecibelEntryOnlyReasonV1,
+} from './decibel_runtime_condition_v1.js';
 import { calculateDecibelSidePositionBudgetBtcV1 } from './decibel_dynamic_quote_size_v1.js';
 import type { decibel_production_live_snapshot_v1 } from './decibel_production_live_orchestrator_v1.js';
 import type { DecibelAuthenticatedPassiveRecyclingEvaluationV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
@@ -168,10 +172,7 @@ export function evaluateTradingDecision(
       ),
     );
   const entryCapacityOnly = (reason: string | null | undefined) =>
-    reason != null &&
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|ENTRY_REQUIRES_NEW_LOW|ENTRY_REQUIRES_NEW_HIGH|ENTRY_CANDLE_EVIDENCE_REQUIRED|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL|CAPACITY_ACCOUNT_EVIDENCE_STALE|CAPACITY_MARKET_EVIDENCE_STALE|CAPACITY_VENUE_MARGIN_RULES_STALE|CAPACITY_POST_ORDER_MARGIN_TIER_UNVERIFIED|CAPACITY_POST_FILL_MARGIN_UNSAFE)$/.test(
-      reason,
-    );
+    reason != null && isDecibelEntryCapacityOnlyReasonV1(reason);
   if (candidate && snapshot && !positionReduction) {
     const economics = snapshot.economicInputs;
     const notional = candidate.quantity * candidate.price;
@@ -675,10 +676,7 @@ export function evaluateTradingDecision(
     source !== undefined &&
     ((source.actualInventoryBase < 0 && side === 'BUY') ||
       (source.actualInventoryBase > 0 && side === 'SELL'));
-  const entryOnly = (reason: string) =>
-    /^(RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|ENTRY_REQUIRES_NEW_LOW|ENTRY_REQUIRES_NEW_HIGH|ENTRY_CANDLE_EVIDENCE_REQUIRED|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/.test(
-      reason,
-    );
+  const entryOnly = isDecibelEntryOnlyReasonV1;
   const executableReduction =
     (buy !== null && reductionSide('BUY')) || (sell !== null && reductionSide('SELL'));
   const applicableReasons = executableReduction ? reasons.filter((r) => !entryOnly(r)) : reasons;

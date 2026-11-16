@@ -1673,6 +1673,92 @@ describe('Decibel production web telemetry V1', () => {
     );
   });
 
+  it('reports a normal wait as a waiting condition, not as an error', () => {
+    const map = (blocker: string) =>
+      mapDecibelProductionWebTelemetryV1({
+        snapshot: makeSnapshot(),
+        history: readDecibelProductionWebHistoryV1('missing-journal.sqlite', 10, 10_100),
+        configuration,
+        startedAt: 1_000,
+        generatedAt: 10_100,
+        lastSuccessfulCycleAt: 10_000,
+        connectionError: null,
+        execution: {
+          running: true,
+          sessionId: 'session-active',
+          cycles: 3,
+          lastAction: 'HOLD',
+          blocker,
+        },
+      });
+    // Live 2026-11-16: REASON showed "VOLUME_COST_BUDGET_ELIGIBLE / VOLUME_COST_BUDGET_ELIGIBLE".
+    const idle = mapDecibelProductionWebTelemetryV1({
+      snapshot: makeSnapshot(),
+      history: readDecibelProductionWebHistoryV1('missing-journal.sqlite', 10, 10_100),
+      configuration,
+      startedAt: 1_000,
+      generatedAt: 10_100,
+      lastSuccessfulCycleAt: 10_000,
+      connectionError: null,
+      execution: { running: true, sessionId: 's', cycles: 3, lastAction: 'HOLD', blocker: null },
+    });
+    expect(idle.runtime.whyNoAction ?? '').not.toContain('_ELIGIBLE');
+    const waiting = map('NO_NEW_QUOTE_HEADROOM');
+    expect(waiting.runtime).toMatchObject({
+      executionBlocker: 'NO_NEW_QUOTE_HEADROOM',
+      executionBlockerKind: 'WAITING',
+      lastError: null,
+    });
+    expect(waiting.blockers).toContainEqual(
+      expect.objectContaining({
+        code: 'NO_NEW_QUOTE_HEADROOM',
+        kind: 'WAITING',
+        meaning: 'No free margin for another entry. Resting orders and the TP continue.',
+      }),
+    );
+    expect(map('STRATEGY_ACTIVITY_EXCLUSIVITY_LOST').runtime).toMatchObject({
+      executionBlockerKind: 'FAULT',
+      lastError: 'STRATEGY_ACTIVITY_EXCLUSIVITY_LOST',
+    });
+    const withId = map('INVENTORY_INVALID:OPEN_ORDER_CROSSES_FLAT:170141594179263708311478428007');
+    expect(withId.blockers).toContainEqual(
+      expect.objectContaining({
+        code: 'INVENTORY_INVALID:OPEN_ORDER_CROSSES_FLAT',
+        detail: '170141594179263708311478428007',
+        kind: 'FAULT',
+      }),
+    );
+  });
+
+  it('groups identifier-suffixed history blockers under one code', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'web-history-ids-')), 'journal.sqlite');
+    const Writer = new Database(path);
+    Writer.exec(`
+      CREATE TABLE execution_intents(intent_id TEXT PRIMARY KEY,mutation_key TEXT,body_json TEXT,status TEXT,venue_order_id TEXT,created_at INTEGER,updated_at INTEGER);
+      CREATE TABLE executor_outcomes(id INTEGER PRIMARY KEY,intent_id TEXT,outcome_json TEXT,observed_at INTEGER);
+      CREATE TABLE reconciliation_observations(id INTEGER PRIMARY KEY,intent_id TEXT,state TEXT,venue_order_id TEXT,observed_at INTEGER);
+      CREATE TABLE lifecycle_blockers(id INTEGER PRIMARY KEY,intent_id TEXT,blocker TEXT,observed_at INTEGER);
+      CREATE TABLE authenticated_fills(fill_id TEXT PRIMARY KEY,intent_id TEXT,side TEXT,quantity REAL,price REAL,strategy_lineage INTEGER,maker_proven INTEGER,external_counterparty INTEGER,observed_at INTEGER);
+      CREATE TABLE mutation_attempts(id INTEGER PRIMARY KEY,intent_id TEXT,attempted_at INTEGER,outcome TEXT);
+    `);
+    const insert = Writer.prepare('INSERT INTO lifecycle_blockers VALUES(?,?,?,?)');
+    insert.run(1, null, 'INVENTORY_INVALID:OPEN_ORDER_CROSSES_FLAT:1701415943', 5);
+    insert.run(2, null, 'INVENTORY_INVALID:OPEN_ORDER_CROSSES_FLAT:1701415999', 9);
+    insert.run(3, null, 'NO_NEW_QUOTE_HEADROOM', 7);
+    Writer.close();
+
+    const history = readDecibelProductionWebHistoryV1(path, 10, 10);
+    expect(history.blockers.map((blocker) => [blocker.code, blocker.kind])).toEqual([
+      ['INVENTORY_INVALID:OPEN_ORDER_CROSSES_FLAT', 'FAULT'],
+      ['NO_NEW_QUOTE_HEADROOM', 'WAITING'],
+    ]);
+    expect(history.blockers[0]).toMatchObject({ firstObservedAt: 5, lastObservedAt: 9 });
+    const severity = (code: string) =>
+      history.events.find((event) => event.eventType === code)?.severity;
+    expect(severity('INVENTORY_INVALID:OPEN_ORDER_CROSSES_FLAT')).toBe('ERROR');
+    expect(severity('NO_NEW_QUOTE_HEADROOM')).toBe('INFO');
+  });
+
   it('maps runtime, ladder, risk, and degraded state without execution controls', () => {
     const history = readDecibelProductionWebHistoryV1('missing-journal.sqlite', 10, 10_100);
     const telemetry = mapDecibelProductionWebTelemetryV1({
@@ -2301,6 +2387,9 @@ describe('Decibel production web telemetry V1', () => {
       runtimeBlockMessage: alert?.message ?? null,
       capitalToUseUsd: 10,
       authenticatedAccountEquityUsd: 50,
+      // As in the dashboard: routine reconciliation is not an alert (2026-11-16), so the
+      // gate reads the telemetry blockers directly.
+      blockers: telemetry.blockers,
     });
 
     expect(history.intents[0]?.status).toBe('UNRESOLVABLE_ACK');

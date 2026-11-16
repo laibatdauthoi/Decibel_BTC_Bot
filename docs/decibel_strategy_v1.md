@@ -135,6 +135,10 @@ catastrophe stop trigger, and for each rule its state (PASS / BLOCK / WAIT / IDL
 and blocked cycles this session. It is not shown on the dashboard (the operator's status
 areas are Settings and the top-right indicator) and never feeds back into decisions.
 
+**Status and errors** (since 2026-11-16): `decibel_runtime_condition_v1.ts` classifies each reason as FAULT,
+DEGRADED, RECONCILING or WAITING. Only a FAULT (or confirmation stuck for more than 60 s) is an error on the
+dashboard; strategy waits such as `ENTRY_REQUIRES_NEW_LOW` show as WAITING with their reason.
+
 ## 10. Backtest
 
 `npm run decibel:backtest` replays recorded BBO rows (`data/decibel_production_raw_ws_bbo_v1.jsonl`,

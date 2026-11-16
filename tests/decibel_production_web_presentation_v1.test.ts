@@ -599,6 +599,66 @@ describe('Decibel production web presentation V1', () => {
     });
   });
 
+  it('shows only faults as errors and keeps normal waits out of the alerts', () => {
+    // Live 2026-11-16: entry waits and routine order confirmation showed CRITICAL alerts.
+    const waiting = {
+      code: 'NO_NEW_QUOTE_HEADROOM',
+      meaning: 'wait',
+      intentId: null,
+      kind: 'WAITING' as const,
+    };
+    const reconciling = {
+      code: 'PRODUCTION_RECONCILIATION_CONFIRMATION_PENDING',
+      meaning: 'confirming',
+      intentId: 'intent-1',
+      kind: 'RECONCILING' as const,
+    };
+    const degraded = {
+      code: 'MARKET_DATA_STALE',
+      meaning: 'stale',
+      intentId: null,
+      kind: 'DEGRADED' as const,
+    };
+    const fault = {
+      code: 'STRATEGY_ACTIVITY_EXCLUSIVITY_LOST',
+      meaning: 'lost',
+      intentId: null,
+      kind: 'FAULT' as const,
+    };
+    const base = {
+      connected: true,
+      degraded: false,
+      runtimeState: 'RUNNING',
+      dryRun: false,
+      intents: [],
+      events: [],
+    };
+    expect(
+      buildOperatorAlertsV1({ ...alertBase, blockers: [waiting, reconciling] }).active,
+    ).toEqual([]);
+    expect(deriveDashboardPresentationV1({ ...base, blockers: [waiting] })).toMatchObject({
+      botState: 'RUNNING',
+      abnormal: false,
+    });
+    expect(deriveDashboardPresentationV1({ ...base, blockers: [reconciling] })).toMatchObject({
+      botState: 'RECONCILE ONLY',
+    });
+    expect(buildOperatorAlertsV1({ ...alertBase, blockers: [degraded] }).active[0]).toMatchObject({
+      code: 'MARKET_DATA_STALE',
+      severity: 'WARNING',
+    });
+    expect(deriveDashboardPresentationV1({ ...base, blockers: [waiting, fault] })).toMatchObject({
+      botState: 'BLOCKED',
+      message: { detail: 'STRATEGY_ACTIVITY_EXCLUSIVITY_LOST' },
+    });
+    expect(buildOperatorAlertsV1({ ...alertBase, blockers: [fault] }).active[0]).toMatchObject({
+      severity: 'CRITICAL',
+    });
+    expect(
+      buildOperatorAlertsV1({ ...alertBase, sessionState: 'STOPPING' }).active[0]?.message,
+    ).toBe('Session is stopping: cancelling orders and closing the position');
+  });
+
   it('maps the compact quote ladder with only operational fields and state marks', () => {
     expect(
       mapQuoteLadderRowsV1([

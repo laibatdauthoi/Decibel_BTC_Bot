@@ -24,6 +24,13 @@ import Database from 'better-sqlite3';
 import { calculateDecibelRealizedPnlWindowsV1 } from './decibel_pnl_tracker_v1.js';
 import { resolveDecibelAuthoritativeOrderEvidenceV1 } from './decibel_authoritative_order_reconciliation_v1.js';
 import { evaluateDecibelAuthenticatedPassiveRecyclingV1 } from './decibel_authenticated_passive_recycling_orchestrator_v1.js';
+import {
+  classifyDecibelRuntimeConditionV1,
+  describeDecibelRuntimeConditionV1,
+  escalateDecibelRuntimeConditionV1,
+  normalizeDecibelConditionCodeV1,
+  type decibel_runtime_condition_kind_v1,
+} from './decibel_runtime_condition_v1.js';
 import type { decibel_execution_lifecycle_journal_v1 } from './decibel_execution_lifecycle_journal_v1.js';
 import type {
   DecibelProductionLiveStateSourceV1,
@@ -112,6 +119,7 @@ export type decibel_production_web_telemetry_v1 = Readonly<{
     executionCycles: number;
     lastExecutionAction: string | null;
     executionBlocker: string | null;
+    executionBlockerKind: decibel_runtime_condition_kind_v1 | null;
     strategyState: string | null;
     tradingDecision: trading_decision_v1;
     /** Strategy rules passing / blocking now (decibel_strategy_status_v1). */
@@ -265,6 +273,10 @@ export type decibel_production_web_telemetry_v1 = Readonly<{
   blockers: readonly Readonly<{
     code: string;
     meaning: string;
+    /** decibel_runtime_condition_v1: only FAULT is an error on the dashboard. */
+    kind: decibel_runtime_condition_kind_v1;
+    /** Identifier split out of the raw code (order id, order key), if any. */
+    detail: string | null;
     firstObservedAt: number;
     lastObservedAt: number;
     intentId: string | null;
@@ -305,30 +317,17 @@ export type decibel_production_web_history_v1 = Readonly<{
   }>[];
 }>;
 
-const blockerMeanings: Readonly<Record<string, string>> = Object.freeze({
-  EXECUTION_STATE_CHANGED_BEFORE_INTENT: 'Authenticated state changed before mutation.',
-  RECONCILE_ONLY: 'A prior intent requires authoritative reconciliation.',
-  STRATEGY_ACTIVITY_EXCLUSIVITY_LOST: 'Unmanaged BTC/USD activity prevents exclusive control.',
-  PRODUCTION_AUTHENTICATED_READ_REQUIRED: 'Required authenticated account evidence is unavailable.',
-  PRODUCTION_DECIBEL_HTTP_RATE_LIMITED:
-    'Decibel HTTP API rate limit reached. Authenticated reads are paused for bounded backoff.',
-  EXECUTION_MUTATION_BUDGET_BLOCKED: 'Rolling mutation capacity is depleted.',
-  PRODUCTION_RECONCILIATION_CONFIRMATION_PENDING: 'Waiting for authenticated intent confirmation.',
-  PRODUCTION_RECONCILIATION_PENDING_ACKNOWLEDGED_ORDER:
-    'Acknowledged order is waiting for authoritative venue reconciliation.',
-  PRODUCTION_RECONCILIATION_UNRESOLVABLE_ACK:
-    'Acknowledged order is awaiting authoritative venue evidence. Automatic reconciliation will retry; missing evidence keeps the order unresolved.',
-  ENTRY_GAS_BALANCE_LOW:
-    'The APT gas wallet is below the protection reserve (0.1 APT). New entries are paused; top up APT on the signing account.',
-  ENTRY_REQUIRES_NEW_LOW:
-    'Entry filter: a long opens only after the last closed 5-minute candle made a lower low.',
-  ENTRY_REQUIRES_NEW_HIGH:
-    'Entry filter: a short opens only after the last closed 5-minute candle made a higher high.',
-  ENTRY_CANDLE_EVIDENCE_REQUIRED:
-    'Entry filter: waiting for two closed 5-minute candles of price history.',
-  ENTRY_VOLATILITY_PAUSE:
-    'The 5-minute price range is above 40 bps. New entries and DCA are paused until it calms down; exits continue.',
-});
+/** Why each side is not quoting; null when both sides are eligible. */
+function describeIneligibleSidesV1(
+  bidReason: string | null | undefined,
+  askReason: string | null | undefined,
+): string | null {
+  const reasons = [bidReason, askReason].filter(
+    (reason): reason is string =>
+      typeof reason === 'string' && reason !== '' && !reason.endsWith('_ELIGIBLE'),
+  );
+  return reasons.length === 0 ? null : [...new Set(reasons)].join(' / ');
+}
 
 export function reconcileDecibelAcknowledgedTerminalOrdersV1(
   Journal: decibel_execution_lifecycle_journal_v1,
@@ -952,16 +951,39 @@ export function readDecibelProductionWebHistoryV1(
       `SELECT blocker code,MIN(observed_at) firstObservedAt,MAX(observed_at) lastObservedAt,
        MAX(intent_id) intentId FROM lifecycle_blockers GROUP BY blocker ORDER BY lastObservedAt DESC LIMIT ?`,
     ).all(limit) as Array<Record<string, unknown>>;
-    const blockers = blockerRows.map((row) =>
-      Object.freeze({
-        code: String(row.code),
-        meaning:
-          blockerMeanings[String(row.code)] ?? 'Production safety condition requires review.',
-        firstObservedAt: Number(row.firstObservedAt),
-        lastObservedAt: Number(row.lastObservedAt),
-        intentId: asString(row.intentId),
-      }),
-    );
+    const blockersByCode = new Map<
+      string,
+      decibel_production_web_telemetry_v1['blockers'][number]
+    >();
+    for (const row of blockerRows) {
+      const normalized = normalizeDecibelConditionCodeV1(String(row.code));
+      const firstObservedAt = Number(row.firstObservedAt);
+      const lastObservedAt = Number(row.lastObservedAt);
+      const prior = blockersByCode.get(normalized.code);
+      if (prior !== undefined) {
+        blockersByCode.set(
+          normalized.code,
+          Object.freeze({
+            ...prior,
+            firstObservedAt: Math.min(prior.firstObservedAt, firstObservedAt),
+          }),
+        );
+        continue;
+      }
+      blockersByCode.set(
+        normalized.code,
+        Object.freeze({
+          code: normalized.code,
+          meaning: describeDecibelRuntimeConditionV1(normalized.code),
+          kind: classifyDecibelRuntimeConditionV1(normalized.code),
+          detail: normalized.detail,
+          firstObservedAt,
+          lastObservedAt,
+          intentId: asString(row.intentId),
+        }),
+      );
+    }
+    const blockers = [...blockersByCode.values()];
     const attemptRows = Reader.prepare(
       'SELECT a.attempted_at attemptedAt,i.body_json bodyJson FROM mutation_attempts a JOIN execution_intents i ON i.intent_id=a.intent_id WHERE a.attempted_at>=? ORDER BY a.attempted_at',
     ).all(now - 60_000) as Array<Record<string, unknown>>;
@@ -970,7 +992,11 @@ export function readDecibelProductionWebHistoryV1(
       ...intents.map((intent) =>
         Object.freeze({
           timestamp: intent.timestamp,
-          severity: intent.blocker === null ? ('INFO' as const) : ('WARN' as const),
+          severity:
+            intent.blocker === null ||
+            ['RECONCILING', 'WAITING'].includes(classifyDecibelRuntimeConditionV1(intent.blocker))
+              ? ('INFO' as const)
+              : ('WARN' as const),
           category: 'EXECUTION' as const,
           eventType: intent.status,
           description: `${intent.action} ${intent.side} ${intent.intentId}`,
@@ -988,8 +1014,13 @@ export function readDecibelProductionWebHistoryV1(
       ...blockers.map((blocker) =>
         Object.freeze({
           timestamp: blocker.lastObservedAt,
-          severity: 'ERROR' as const,
-          category: 'ERROR' as const,
+          severity:
+            blocker.kind === 'FAULT'
+              ? ('ERROR' as const)
+              : blocker.kind === 'DEGRADED'
+                ? ('WARN' as const)
+                : ('INFO' as const),
+          category: blocker.kind === 'FAULT' ? ('ERROR' as const) : ('EXECUTION' as const),
           eventType: blocker.code,
           description: blocker.meaning,
         }),
@@ -1350,11 +1381,25 @@ export function mapDecibelProductionWebTelemetryV1(
       ? []
       : [input.execution.blocker]),
   ];
-  const historicalBlockers = input.history.blockers.filter((blocker) =>
-    activeBlockers.includes(blocker.code),
-  );
   const hasUnresolvedIntent =
     unresolvedIntent !== undefined && !acknowledgedOrderIsAuthoritativelyOpen;
+  // Routine confirmation becomes a fault when the unresolved intent is older than a minute.
+  const reconcilingForMs =
+    hasUnresolvedIntent && unresolvedIntent !== undefined
+      ? Math.max(0, input.generatedAt - unresolvedIntent.timestamp)
+      : null;
+  const conditionKind = (code: string) =>
+    escalateDecibelRuntimeConditionV1(classifyDecibelRuntimeConditionV1(code), reconcilingForMs);
+  const activeCodes = activeBlockers.map((code) => normalizeDecibelConditionCodeV1(code));
+  const historicalBlockers = input.history.blockers
+    .filter((blocker) => activeCodes.some((active) => active.code === blocker.code))
+    .map((blocker) => Object.freeze({ ...blocker, kind: conditionKind(blocker.code) }));
+  const executionBlockerKind =
+    input.execution?.blocker == null ? null : conditionKind(input.execution.blocker);
+  const lastError =
+    [input.connectionError, input.execution?.blocker].find(
+      (code): code is string => typeof code === 'string' && conditionKind(code) === 'FAULT',
+    ) ?? null;
   const latestMutation = input.history.intents[0];
   const executionAction = input.execution?.lastAction ?? null;
   const whyNoAction =
@@ -1364,7 +1409,10 @@ export function mapDecibelProductionWebTelemetryV1(
         evaluation?.blockers[0] ??
         (evaluation === null
           ? 'EVALUATION_UNAVAILABLE'
-          : [evaluation.bidEligibilityReason, evaluation.askEligibilityReason].join(' / ')));
+          : describeIneligibleSidesV1(
+              evaluation.bidEligibilityReason,
+              evaluation.askEligibilityReason,
+            )));
   const storedDecision = input.execution?.tradingDecision ?? snapshot?.tradingDecision;
   const decisionContext: Parameters<typeof evaluateTradingDecision>[1] = {
     now: input.generatedAt,
@@ -1474,6 +1522,7 @@ export function mapDecibelProductionWebTelemetryV1(
       executionCycles: input.execution?.cycles ?? 0,
       lastExecutionAction: input.execution?.lastAction ?? null,
       executionBlocker: input.execution?.blocker ?? null,
+      executionBlockerKind,
       strategyState: evaluation?.operatingState ?? evaluation?.strategyState ?? null,
       tradingDecision: unifiedDecision,
       strategy: input.execution?.strategy ?? null,
@@ -1491,7 +1540,7 @@ export function mapDecibelProductionWebTelemetryV1(
       lifecycleBlocker: reconciliationBlocker ?? input.execution?.blocker ?? null,
       rateLimitBackoff: activeBlockers.includes('PRODUCTION_DECIBEL_HTTP_RATE_LIMITED'),
       authenticatedReadError: input.connectionError,
-      lastError: input.connectionError ?? input.execution?.blocker ?? null,
+      lastError,
       readiness: Object.freeze(
         input.readiness ?? {
           processReady: true,
@@ -1710,12 +1759,23 @@ export function mapDecibelProductionWebTelemetryV1(
     }),
     blockers: Object.freeze([
       ...historicalBlockers,
-      ...activeBlockers
-        .filter((code) => !historicalBlockers.some((blocker) => blocker.code === code))
+      ...[
+        ...new Map(
+          activeBlockers.map((raw) => [normalizeDecibelConditionCodeV1(raw).code, raw]),
+        ).values(),
+      ]
+        .filter(
+          (raw) =>
+            !historicalBlockers.some(
+              (blocker) => blocker.code === normalizeDecibelConditionCodeV1(raw).code,
+            ),
+        )
         .map((code) =>
           Object.freeze({
-            code,
-            meaning: blockerMeanings[code] ?? 'Production safety condition requires review.',
+            code: normalizeDecibelConditionCodeV1(code).code,
+            meaning: describeDecibelRuntimeConditionV1(code),
+            kind: conditionKind(code),
+            detail: normalizeDecibelConditionCodeV1(code).detail,
             firstObservedAt: input.generatedAt,
             lastObservedAt: input.generatedAt,
             intentId: code === reconciliationBlocker ? (unresolvedIntent?.intentId ?? null) : null,

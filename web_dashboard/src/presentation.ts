@@ -207,6 +207,25 @@ export function deriveSessionStartGateV1(
   return { blocked: false, code: null, message: null };
 }
 
+/**
+ * A telemetry blocker. `kind` comes from decibel_runtime_condition_v1; a blocker without
+ * a kind is treated as a fault, so an older runtime never hides a real problem.
+ */
+export type operator_blocker_v1 = Readonly<{
+  code: string;
+  meaning: string;
+  intentId: string | null;
+  kind?: 'FAULT' | 'DEGRADED' | 'RECONCILING' | 'WAITING';
+}>;
+
+function isFaultBlockerV1(blocker: operator_blocker_v1): boolean {
+  return blocker.kind === undefined || blocker.kind === 'FAULT';
+}
+
+function isAlertBlockerV1(blocker: operator_blocker_v1): boolean {
+  return isFaultBlockerV1(blocker) || blocker.kind === 'DEGRADED';
+}
+
 export type alert_drawer_action_v1 = 'OPEN' | 'CLOSE' | 'ESCAPE' | 'OUTSIDE';
 
 export function getNextAlertDrawerStateV1(
@@ -297,7 +316,7 @@ export function buildOperatorAlertsV1(
     connected: boolean;
     degraded: boolean;
     runtimeState: string;
-    blockers: readonly Readonly<{ code: string; meaning: string; intentId: string | null }>[];
+    blockers: readonly operator_blocker_v1[];
     events: readonly Readonly<{
       timestamp: number;
       severity: string;
@@ -317,11 +336,12 @@ export function buildOperatorAlertsV1(
     lossUtilization: number | null;
   }>,
 ): Readonly<{ active: readonly operator_alert_v1[]; recent: readonly operator_alert_v1[] }> {
-  const active: operator_alert_v1[] = input.blockers.map((blocker) =>
+  // Normal waits and routine order confirmation are not alerts (decibel_runtime_condition_v1).
+  const active: operator_alert_v1[] = input.blockers.filter(isAlertBlockerV1).map((blocker) =>
     Object.freeze({
       id: `blocker-${blocker.code}-${blocker.intentId ?? 'none'}`,
       timestamp: input.now,
-      severity: 'CRITICAL' as const,
+      severity: blocker.kind === 'DEGRADED' ? ('WARNING' as const) : ('CRITICAL' as const),
       source: 'RECONCILIATION',
       message: sanitizeOperatorAlertTextV1(blocker.meaning),
       code: sanitizeOperatorAlertTextV1(blocker.code),
@@ -403,7 +423,7 @@ export function buildOperatorAlertsV1(
         source: 'SESSION',
         message:
           input.sessionState === 'STOPPING'
-            ? 'Session end is waiting for reconciliation'
+            ? 'Session is stopping: cancelling orders and closing the position'
             : input.sessionState === 'RECOVERY_BLOCKED'
               ? sanitizeOperatorAlertTextV1(
                   `Session recovery is blocked: ${input.sessionStopReason ?? 'Recovery evidence unavailable'}`,
@@ -459,7 +479,7 @@ export type dashboard_status_input_v1 = Readonly<{
   degraded: boolean;
   runtimeState: string;
   dryRun: boolean;
-  blockers: readonly Readonly<{ code: string; meaning: string; intentId: string | null }>[];
+  blockers: readonly operator_blocker_v1[];
   intents: readonly Readonly<{ intentId: string; status: string }>[];
   events: readonly Readonly<{
     timestamp: number;
@@ -491,7 +511,8 @@ export function deriveDashboardPresentationV1(
     : input.degraded
       ? 'DEGRADED'
       : 'CONNECTED';
-  const blocker = input.blockers[0];
+  const blocker = input.blockers.find(isFaultBlockerV1);
+  const reconciling = input.blockers.some((entry) => entry.kind === 'RECONCILING');
   const unresolvedIntent = input.intents.find((intent) => unresolvedStatuses.has(intent.status));
   const latestEvent = input.events[0];
   if (blocker !== undefined)
@@ -505,7 +526,7 @@ export function deriveDashboardPresentationV1(
         detail: blocker.code,
       }),
     });
-  if (unresolvedIntent !== undefined || input.runtimeState === 'RECONCILE_ONLY')
+  if (unresolvedIntent !== undefined || reconciling || input.runtimeState === 'RECONCILE_ONLY')
     return Object.freeze({
       status: connectionStatus,
       botState: 'RECONCILE ONLY',

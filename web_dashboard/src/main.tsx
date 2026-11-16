@@ -104,6 +104,7 @@ type Telemetry = {
     executionCycles: number;
     lastExecutionAction: string | null;
     executionBlocker: string | null;
+    executionBlockerKind?: 'FAULT' | 'DEGRADED' | 'RECONCILING' | 'WAITING' | null;
     strategyState: string | null;
     tradingDecision?: trading_decision_v1;
     bidEligible: boolean | null;
@@ -182,6 +183,8 @@ type Telemetry = {
   blockers: Array<{
     code: string;
     meaning: string;
+    kind?: 'FAULT' | 'DEGRADED' | 'RECONCILING' | 'WAITING';
+    detail?: string | null;
     firstObservedAt: number;
     lastObservedAt: number;
     intentId: string | null;
@@ -377,8 +380,11 @@ export const OverviewView = (
         ].includes(i.status),
     )
     .sort((a, b) => b.timestamp - a.timestamp)[0];
+  // Routine order confirmation is shown as the RECONCILING action, not as a wait reason.
   const runtimeReason = frameFresh
-    ? (t.runtime.lastError ?? t.runtime.executionBlocker ?? t.runtime.whyNoAction)
+    ? (t.runtime.lastError ??
+      (t.runtime.executionBlockerKind === 'RECONCILING' ? null : t.runtime.executionBlocker) ??
+      t.runtime.whyNoAction)
     : null;
   const status = !sessionFresh
     ? 'WAITING'
