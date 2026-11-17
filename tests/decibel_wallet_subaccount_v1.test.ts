@@ -12,7 +12,7 @@ import {
 } from '../src/decibel_wallet_routes_v1.js';
 import {
   readDecibelSelectedSubaccountV1,
-  resolveDecibelOwnerRootV1,
+  resolveDecibelWalletPathsV1,
 } from '../src/decibel_wallet_workspace_v1.js';
 
 const OWNER = `0x${'aa'.repeat(32)}`;
@@ -62,7 +62,9 @@ function setup(
     dataRoot,
     selectionPath,
   };
-  const keystore = resolveDecibelAgentKeystorePathV1(resolveDecibelOwnerRootV1(OWNER, dataRoot));
+  const keystore = resolveDecibelAgentKeystorePathV1(
+    resolveDecibelWalletPathsV1(OWNER, dataRoot).root,
+  );
   return { deps, switchNow, generateAgentKey, selectionPath, keystore };
 }
 

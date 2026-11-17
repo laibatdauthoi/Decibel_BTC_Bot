@@ -16,7 +16,7 @@ import {
   assessDecibelAgentDelegationV1,
   type decibel_delegation_v1,
 } from './decibel_agent_delegation_v1.js';
-import { resolveDecibelOwnerRootV1 } from './decibel_wallet_workspace_v1.js';
+import { resolveDecibelWalletPathsV1 } from './decibel_wallet_workspace_v1.js';
 
 export type decibel_executor_signer_environment_v1 = Readonly<{
   DECIBEL_OWNER_ADDRESS?: string;
@@ -31,7 +31,7 @@ export function resolveDecibelAgentKeystorePathFromEnvironmentV1(
   if (environment.DECIBEL_AGENT_KEYSTORE_PATH) return environment.DECIBEL_AGENT_KEYSTORE_PATH;
   const owner = environment.DECIBEL_OWNER_ADDRESS?.trim();
   if (!owner) return null;
-  return resolveDecibelAgentKeystorePathV1(resolveDecibelOwnerRootV1(owner));
+  return resolveDecibelAgentKeystorePathV1(resolveDecibelWalletPathsV1(owner).root);
 }
 
 export type decibel_executor_signer_v1 = Readonly<{
