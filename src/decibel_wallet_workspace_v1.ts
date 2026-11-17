@@ -355,9 +355,14 @@ export async function prepareDecibelWalletWorkspaceV1(
     retryDelayMs?: number;
     now?: () => number;
     legacyManifestPath?: string;
+    selectionPath?: string;
   }>,
 ): Promise<decibel_wallet_workspace_v1> {
-  const subaccount = environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
+  const selected =
+    environment.DECIBEL_SUBACCOUNT_SELECTION === 'off'
+      ? null
+      : readDecibelSelectedSubaccountV1(dependencies.selectionPath);
+  const subaccount = selected?.subaccount ?? environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
   if (!subaccount) throw new Error('WALLET_SUBACCOUNT_REQUIRED');
   const whitelist = loadDecibelWalletWhitelistV1(
     dependencies.whitelistPath ?? DECIBEL_WALLET_WHITELIST_PATH_V1,
@@ -421,6 +426,7 @@ export async function prepareDecibelWalletWorkspaceV1(
   return Object.freeze({
     ownerAddress,
     pathEnvironment: Object.freeze({
+      DECIBEL_SUBACCOUNT_ADDRESS: normalizeDecibelAddressV1(subaccount),
       ...Object.fromEntries(keys.map((key) => [key, built[key]!])),
       ...(legacyOwner ? {} : { DECIBEL_ACTIVITY_BASELINE_PATH: paths.activityBaseline }),
     }),
@@ -445,4 +451,51 @@ export function resolveDecibelToolPathV1(
   if (wallets.length === 1) return resolveDecibelWalletPathsV1(wallets[0]!, dataRoot)[key];
   if (wallets.length > 1) throw new Error('WALLET_OWNER_ADDRESS_REQUIRED');
   return DECIBEL_LEGACY_PATHS_V1[key];
+}
+
+/**
+ * Subaccount chosen in the dashboard wallet menu (added 2026-11-17). The launcher prefers it
+ * over DECIBEL_SUBACCOUNT_ADDRESS on the next start; the multi-wallet supervisor turns it off.
+ */
+export const DECIBEL_SUBACCOUNT_SELECTION_PATH_V1 = 'data/selected_subaccount_v1.json';
+
+const SelectionSchema = z.object({
+  subaccount: z.string(),
+  owner: z.string(),
+  selectedAt: z.number().int().nonnegative(),
+});
+
+export function readDecibelSelectedSubaccountV1(
+  path: string = DECIBEL_SUBACCOUNT_SELECTION_PATH_V1,
+): Readonly<{ subaccount: string; owner: string; selectedAt: number }> | null {
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = SelectionSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
+    return Object.freeze({
+      subaccount: normalizeDecibelAddressV1(parsed.subaccount),
+      owner: normalizeDecibelAddressV1(parsed.owner),
+      selectedAt: parsed.selectedAt,
+    });
+  } catch (error) {
+    throw new Error('SUBACCOUNT_SELECTION_INVALID', { cause: error });
+  }
+}
+
+export function writeDecibelSelectedSubaccountV1(
+  selection: Readonly<{ subaccount: string; owner: string; selectedAt: number }>,
+  path: string = DECIBEL_SUBACCOUNT_SELECTION_PATH_V1,
+): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(
+    path,
+    `${JSON.stringify(
+      {
+        subaccount: normalizeDecibelAddressV1(selection.subaccount),
+        owner: normalizeDecibelAddressV1(selection.owner),
+        selectedAt: selection.selectedAt,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }

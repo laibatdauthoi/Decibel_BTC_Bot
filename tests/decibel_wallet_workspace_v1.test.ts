@@ -43,6 +43,7 @@ function makeRoot() {
     root,
     legacy,
     legacyManifestPath,
+    selectionPath: join(root, 'selected_subaccount.json'),
     dataRoot: join(root, 'data', 'wallets'),
     backupRoot: join(root, 'backups'),
   };
@@ -199,7 +200,8 @@ describe('Launcher workspace step', () => {
   };
 
   it('runs the runtime on the owner workspace after migrating', async () => {
-    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath } = setup('ENDED');
+    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath, selectionPath } =
+      setup('ENDED');
     const workspace = await prepareDecibelWalletWorkspaceV1(
       { DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
       {
@@ -210,11 +212,13 @@ describe('Launcher workspace step', () => {
         legacy,
         backupRoot,
         legacyManifestPath,
+        selectionPath,
       },
     );
     const paths = resolveDecibelWalletPathsV1(OWNER, dataRoot);
     expect(workspace.migration.status).toBe('MIGRATED');
     expect(workspace.pathEnvironment).toEqual({
+      DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT,
       DECIBEL_OWNER_ADDRESS: OWNER,
       DECIBEL_EXECUTION_JOURNAL_PATH: paths.executionJournal,
       DECIBEL_PRODUCTION_SESSION_STORE_PATH: paths.sessionStore,
@@ -226,7 +230,8 @@ describe('Launcher workspace step', () => {
   });
 
   it('keeps the legacy files in use while a session is active', async () => {
-    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath } = setup('RUNNING');
+    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath, selectionPath } =
+      setup('RUNNING');
     const workspace = await prepareDecibelWalletWorkspaceV1(
       { DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
       {
@@ -237,6 +242,7 @@ describe('Launcher workspace step', () => {
         legacy,
         backupRoot,
         legacyManifestPath,
+        selectionPath,
       },
     );
     expect(workspace.migration.status).toBe('SKIPPED_ACTIVE_SESSION');
@@ -247,7 +253,8 @@ describe('Launcher workspace step', () => {
   });
 
   it('refuses a wallet that is not whitelisted or cannot be proven', async () => {
-    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath } = setup('ENDED');
+    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath, selectionPath } =
+      setup('ENDED');
     const base = {
       fullnodeUrl: 'https://node.example/v1',
       whitelistPath,
@@ -255,6 +262,7 @@ describe('Launcher workspace step', () => {
       legacy,
       backupRoot,
       legacyManifestPath,
+      selectionPath,
       retryDelayMs: 0,
     };
     await expect(
@@ -305,6 +313,7 @@ describe('Per-wallet market data and activity baseline', () => {
       legacy: fresh.legacy,
       backupRoot: fresh.backupRoot,
       legacyManifestPath: fresh.legacyManifestPath,
+      selectionPath: fresh.selectionPath,
       now: () => 1_800_000_000_000,
     };
     // A second wallet (another subaccount) never takes the first wallet's legacy files.

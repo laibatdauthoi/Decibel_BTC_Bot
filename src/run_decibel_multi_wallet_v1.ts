@@ -80,6 +80,8 @@ for (const wallet of Registry.wallets) {
         DECIBEL_PRODUCTION_WEB_PORT: String(wallet.port),
         // The gateway signs users in; runtimes only listen on 127.0.0.1.
         DECIBEL_DASHBOARD_AUTH: 'off',
+        // Each runtime runs exactly its registry subaccount.
+        DECIBEL_SUBACCOUNT_SELECTION: 'off',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },

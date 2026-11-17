@@ -1846,17 +1846,22 @@ const App = () => {
           <span>{telemetry.runtime.network}</span>
           <i className={presentation.status.toLowerCase()} />
           <WalletMenu />
-          <button
-            className={`alert-control ${hasCriticalAlert ? 'critical' : ''}`}
-            aria-label={`${alerts.active.length} active alerts`}
-            onClick={() =>
-              setAlertDrawerOpen((current) => getNextAlertDrawerStateV1(current, 'OPEN'))
-            }
-          >
-            ! {alerts.active.length}
-          </button>
         </div>
       </header>
+      <button
+        type="button"
+        className={`alert-bell ${hasCriticalAlert ? 'critical' : ''} ${
+          alerts.active.length > 0 ? 'has-alerts' : ''
+        }`}
+        aria-label={`${alerts.active.length} active alerts`}
+        onClick={() => setAlertDrawerOpen((current) => getNextAlertDrawerStateV1(current, 'OPEN'))}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z" />
+          <path d="M10 20a2 2 0 0 0 4 0" />
+        </svg>
+        {alerts.active.length > 0 && <b>{alerts.active.length}</b>}
+      </button>
       {alertDrawerOpen && (
         <AlertDrawer
           active={alerts.active}

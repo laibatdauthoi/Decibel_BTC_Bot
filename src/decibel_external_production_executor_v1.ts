@@ -209,12 +209,19 @@ async function createWriteClient(
     { DecibelWriteDex, MAINNET_CONFIG },
   ] = await Promise.all([import('@aptos-labs/ts-sdk'), loadDecibelSdkRuntimeV1()]);
   // Agent key (delegated by the owner wallet) when one is set up, else the legacy key.
-  const SignerKey = await resolveDecibelExecutorSignerV1(environment, () =>
-    readDecibelDelegationsV1({
-      tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
-      subaccountAddress: subaccount,
-      apiKey: environment.DECIBEL_NODE_API_KEY,
-    }),
+  const SignerKey = await resolveDecibelExecutorSignerV1(
+    environment,
+    () =>
+      readDecibelDelegationsV1({
+        tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
+        subaccountAddress: subaccount,
+        apiKey: environment.DECIBEL_NODE_API_KEY,
+      }),
+    Date.now,
+    (privateKeyHex) =>
+      Account.fromPrivateKey({
+        privateKey: new Ed25519PrivateKey(privateKeyHex),
+      }).accountAddress.toStringLong(),
   );
   const Signer = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(SignerKey.privateKeyHex),

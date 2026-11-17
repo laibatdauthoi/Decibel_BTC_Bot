@@ -3,8 +3,10 @@
  * payloads for delegation, gas top-up and revocation. The server never signs for the owner;
  * Petra signs those transactions in the browser.
  *
- *   GET  /api/wallet        status and payloads
- *   POST /api/wallet/agent  create the agent key once (needs DECIBEL_KEYSTORE_SECRET)
+ *   GET  /api/wallet                     status and payloads
+ *   POST /api/wallet/agent               create the agent key once (needs DECIBEL_KEYSTORE_SECRET)
+ *   GET  /api/wallet/subaccounts?owner=  subaccounts of a connected, whitelisted wallet
+ *   POST /api/wallet/subaccount          choose the subaccount for the next start
  */
 import { z } from 'zod';
 import {
@@ -23,7 +25,16 @@ import {
   type decibel_wallet_payload_v1,
 } from './decibel_agent_delegation_v1.js';
 import { resolveDecibelAgentKeystorePathFromEnvironmentV1 } from './decibel_executor_signer_v1.js';
-import { normalizeDecibelAddressV1 } from './decibel_wallet_workspace_v1.js';
+import {
+  normalizeDecibelAddressV1,
+  writeDecibelSelectedSubaccountV1,
+} from './decibel_wallet_workspace_v1.js';
+
+export type decibel_wallet_subaccount_v1 = Readonly<{
+  address: string;
+  label: string | null;
+  isPrimary: boolean;
+}>;
 
 export type decibel_wallet_route_dependencies_v1 = Readonly<{
   environment: NodeJS.ProcessEnv;
@@ -32,6 +43,10 @@ export type decibel_wallet_route_dependencies_v1 = Readonly<{
   readDelegations: (subaccount: string) => Promise<readonly decibel_delegation_v1[]>;
   readAptBalanceOctas: (address: string) => Promise<number>;
   generateAgentKey: () => Promise<decibel_agent_key_material_v1>;
+  readSubaccounts?: (owner: string) => Promise<readonly decibel_wallet_subaccount_v1[]>;
+  readSubaccountOwner?: (subaccount: string) => Promise<string>;
+  isWhitelisted?: (owner: string) => boolean;
+  selectionPath?: string;
 }>;
 
 export type decibel_wallet_status_v1 = Readonly<{
@@ -128,7 +143,48 @@ export async function handleDecibelWalletRequestV1(
   method: string,
   pathname: string,
   dependencies: decibel_wallet_route_dependencies_v1,
+  input: Readonly<{ query?: URLSearchParams; body?: unknown }> = {},
 ): Promise<Readonly<{ status: number; body: unknown }> | null> {
+  if (pathname === '/api/wallet/subaccounts') {
+    if (method !== 'GET') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
+    const owner = optionalAddress(input.query?.get('owner') ?? undefined);
+    if (owner === null) return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
+    const inUse = optionalAddress(dependencies.environment.DECIBEL_SUBACCOUNT_ADDRESS);
+    if (!(dependencies.isWhitelisted?.(owner) ?? false))
+      return { status: 200, body: { owner, whitelisted: false, inUse, subaccounts: [] } };
+    try {
+      const subaccounts = (await dependencies.readSubaccounts?.(owner)) ?? [];
+      return { status: 200, body: { owner, whitelisted: true, inUse, subaccounts } };
+    } catch {
+      return { status: 503, body: { error: 'SUBACCOUNTS_UNAVAILABLE' } };
+    }
+  }
+  if (pathname === '/api/wallet/subaccount') {
+    if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
+    const parsed = z.object({ owner: z.string(), subaccount: z.string() }).safeParse(input.body);
+    const owner = parsed.success ? optionalAddress(parsed.data.owner) : null;
+    const subaccount = parsed.success ? optionalAddress(parsed.data.subaccount) : null;
+    if (owner === null || subaccount === null)
+      return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
+    if (!(dependencies.isWhitelisted?.(owner) ?? false))
+      return { status: 403, body: { error: 'WALLET_NOT_WHITELISTED' } };
+    let chainOwner: string;
+    try {
+      chainOwner = normalizeDecibelAddressV1(
+        (await dependencies.readSubaccountOwner?.(subaccount)) ?? '',
+      );
+    } catch {
+      return { status: 503, body: { error: 'SUBACCOUNT_OWNER_UNAVAILABLE' } };
+    }
+    if (chainOwner !== owner) return { status: 403, body: { error: 'SUBACCOUNT_NOT_OWNED' } };
+    if (subaccount === optionalAddress(dependencies.environment.DECIBEL_SUBACCOUNT_ADDRESS))
+      return { status: 200, body: { status: 'IN_USE', subaccount } };
+    writeDecibelSelectedSubaccountV1(
+      { subaccount, owner, selectedAt: dependencies.now() },
+      dependencies.selectionPath,
+    );
+    return { status: 200, body: { status: 'RESTART_REQUIRED', subaccount } };
+  }
   if (pathname === '/api/wallet') {
     if (method !== 'GET') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
     return { status: 200, body: await readDecibelWalletStatusV1(dependencies) };
@@ -193,4 +249,46 @@ export async function readDecibelAptBalanceOctasV1(
   const parsed = z.tuple([z.string().regex(/^\d+$/)]).safeParse(await response.json());
   if (!parsed.success) throw new Error('APT_BALANCE_RESPONSE_INVALID');
   return Number(parsed.data[0]);
+}
+
+const SubaccountsSchema = z.array(
+  z.object({
+    subaccount_address: z.string(),
+    is_primary: z.boolean(),
+    is_active: z.boolean().optional(),
+    custom_label: z.string().nullable(),
+  }),
+);
+
+/** Active subaccounts of an owner from the Decibel REST API. */
+export async function readDecibelSubaccountsV1(
+  input: Readonly<{
+    tradingHttpUrl: string;
+    owner: string;
+    apiKey?: string | undefined;
+    fetchImpl?: typeof fetch;
+  }>,
+): Promise<readonly decibel_wallet_subaccount_v1[]> {
+  const query = new URLSearchParams({ owner: normalizeDecibelAddressV1(input.owner) });
+  const response = await (input.fetchImpl ?? fetch)(
+    `${input.tradingHttpUrl.replace(/\/+$/, '')}/api/v1/subaccounts?${query.toString()}`,
+    {
+      headers: input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {},
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!response.ok) throw new Error(`SUBACCOUNTS_READ_FAILED:HTTP_${response.status}`);
+  const parsed = SubaccountsSchema.safeParse(await response.json());
+  if (!parsed.success) throw new Error('SUBACCOUNTS_RESPONSE_INVALID');
+  return Object.freeze(
+    parsed.data
+      .filter((row) => row.is_active !== false)
+      .map((row) =>
+        Object.freeze({
+          address: normalizeDecibelAddressV1(row.subaccount_address),
+          label: row.custom_label,
+          isPrimary: row.is_primary,
+        }),
+      ),
+  );
 }

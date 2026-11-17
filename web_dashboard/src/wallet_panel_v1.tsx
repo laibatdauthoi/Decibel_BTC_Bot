@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  findPetraWalletV1,
-  shortAddressV1,
-  type petra_wallet_v1,
-  type wallet_payload_v1,
-} from './petra_wallet_v1';
+import { findPetraWalletV1, shortAddressV1, type wallet_payload_v1 } from './petra_wallet_v1';
 
 /** Mirrors decibel_wallet_status_v1 from src/decibel_wallet_routes_v1.ts. */
 export type wallet_status_v1 = Readonly<{
@@ -31,47 +26,40 @@ export function normalizeWalletAddressV1(address: string | null | undefined): st
   return match ? `0x${match[1].toLowerCase().padStart(64, '0')}` : null;
 }
 
-export function describeSignerV1(status: wallet_status_v1 | null): string {
-  if (status === null) return 'UNAVAILABLE';
-  if (status.signerMode === 'PRIVATE_KEY') return 'PRIVATE KEY (.env)';
-  if (status.signerMode === 'NONE') return 'NOT CONFIGURED';
-  const delegation = status.delegation?.status;
-  return delegation === 'ACTIVE' || delegation === 'EXPIRING_SOON'
-    ? 'AGENT WALLET'
-    : 'AGENT WALLET (NOT AUTHORIZED)';
+/** Mirrors GET /api/wallet/subaccounts (src/decibel_wallet_routes_v1.ts). */
+export type wallet_subaccounts_v1 = Readonly<{
+  owner: string;
+  whitelisted: boolean;
+  inUse: string | null;
+  subaccounts: readonly Readonly<{ address: string; label: string | null; isPrimary: boolean }>[];
+}>;
+
+const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
+  PETRA_NOT_INSTALLED: 'Petra is not installed in this browser.',
+  WALLET_REQUEST_REJECTED: 'Request rejected in Petra.',
+  CONNECTED_WALLET_IS_NOT_THE_SUBACCOUNT_OWNER: 'This wallet does not own the subaccount.',
+  AGENT_KEYSTORE_SECRET_REQUIRED:
+    'Add DECIBEL_KEYSTORE_SECRET (16+ characters) to .env and restart.',
+  WALLET_NOT_WHITELISTED: 'This wallet is not allowed to use this bot.',
+};
+
+export function describeWalletErrorV1(code: string): string {
+  return FRIENDLY_ERRORS_V1[code] ?? code;
 }
 
-export function describeDelegationV1(status: wallet_status_v1 | null): string {
-  if (status?.agent == null) return '—';
-  if (status.delegation === null) return status.delegationError ?? 'UNAVAILABLE';
-  const expiry =
-    status.delegation.expiresAtMs === null
-      ? 'NO EXPIRY'
-      : `UNTIL ${new Date(status.delegation.expiresAtMs).toISOString().slice(0, 10)}`;
-  switch (status.delegation.status) {
-    case 'ACTIVE':
-      return `AUTHORIZED · ${expiry}`;
-    case 'EXPIRING_SOON':
-      return `EXPIRING SOON · ${expiry}`;
-    case 'EXPIRED':
-      return 'EXPIRED';
-    default:
-      return 'NOT AUTHORIZED';
-  }
-}
-
-const formatApt = (octas: number | null | undefined) =>
-  octas == null ? '—' : `${(octas / 100_000_000).toFixed(4)} APT`;
+/** Gas top-up is asked only when the bot key has less than 0.1 APT. */
+const MINIMUM_AGENT_GAS_OCTAS_V1 = 10_000_000;
 
 /**
- * Wallet control in the top bar, next to the network badge. The button shows the connected
- * Petra wallet (or WALLET); its menu holds the owner, agent and delegation status and the
- * Petra actions.
+ * Wallet control in the top bar: connect Petra, pick the subaccount, confirm. The bot key
+ * (agent) and its gas stay behind the Confirm step.
  */
 export const WalletMenu = () => {
   const [status, setStatus] = useState<wallet_status_v1 | null>(null);
   const [connected, setConnected] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<wallet_subaccounts_v1 | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
@@ -80,12 +68,11 @@ export const WalletMenu = () => {
   const refresh = useCallback(async () => {
     try {
       const response = await fetch('/api/wallet');
-      if (!response.ok) throw new Error('WALLET_STATUS_UNAVAILABLE');
-      setStatus((await response.json()) as wallet_status_v1);
+      if (response.ok) setStatus((await response.json()) as wallet_status_v1);
       const session = await fetch('/api/auth/session');
       if (session.ok) setSignedIn(((await session.json()) as { mode?: string }).mode === 'wallet');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'WALLET_STATUS_UNAVAILABLE');
+    } catch {
+      // The menu keeps its last state; the next refresh retries.
     }
   }, []);
   useEffect(() => {
@@ -109,157 +96,187 @@ export const WalletMenu = () => {
     };
   }, [open]);
 
-  const run = (
-    label: string,
-    action: (wallet: petra_wallet_v1 | null) => Promise<string | void>,
-  ) => {
-    if (busy !== null) return;
-    setBusy(label);
+  const run = (action: () => Promise<string | void>) => {
+    if (busy) return;
+    setBusy(true);
     setMessage(null);
-    void action(findPetraWalletV1())
+    void action()
       .then((done) => {
         if (done) setMessage(done);
         window.setTimeout(() => void refresh(), 4_000);
       })
       .catch((error: unknown) =>
-        setMessage(error instanceof Error ? error.message : 'WALLET_ACTION_FAILED'),
+        setMessage(
+          describeWalletErrorV1(error instanceof Error ? error.message : 'WALLET_ACTION_FAILED'),
+        ),
       )
-      .finally(() => setBusy(null));
+      .finally(() => setBusy(false));
   };
-  const requireOwner = async (wallet: petra_wallet_v1 | null): Promise<petra_wallet_v1> => {
+  const connect = () =>
+    run(async () => {
+      const wallet = findPetraWalletV1();
+      if (wallet === null) throw new Error('PETRA_NOT_INSTALLED');
+      const address = normalizeWalletAddressV1((await wallet.connect()).address);
+      if (address === null) throw new Error('WALLET_ADDRESS_INVALID');
+      setConnected(address);
+      setOpen(true);
+      const response = await fetch(`/api/wallet/subaccounts?owner=${address}`);
+      const body = (await response.json()) as wallet_subaccounts_v1 & { error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'SUBACCOUNTS_UNAVAILABLE');
+      setAccounts(body);
+      const inUse = body.subaccounts.find((row) => row.address === body.inUse);
+      setSelected(inUse?.address ?? body.subaccounts[0]?.address ?? null);
+    });
+  const submit = async (payload: wallet_payload_v1 | undefined) => {
+    if (!payload) throw new Error('WALLET_PAYLOAD_UNAVAILABLE');
+    const wallet = findPetraWalletV1();
     if (wallet === null) throw new Error('PETRA_NOT_INSTALLED');
-    const account = await wallet.connect();
-    const address = normalizeWalletAddressV1(account.address);
-    setConnected(address);
-    if (address === null || address !== normalizeWalletAddressV1(status?.ownerAddress))
-      throw new Error('CONNECTED_WALLET_IS_NOT_THE_SUBACCOUNT_OWNER');
-    return wallet;
+    return wallet.signAndSubmit(payload);
   };
-  const submit = (label: string, payload: wallet_payload_v1 | undefined) =>
-    run(label, async (wallet) => {
-      if (!payload) throw new Error('WALLET_PAYLOAD_UNAVAILABLE');
-      const hash = await (await requireOwner(wallet)).signAndSubmit(payload);
-      return `SUBMITTED ${shortAddressV1(hash)}`;
+  const confirm = () =>
+    run(async () => {
+      if (connected !== normalizeWalletAddressV1(status?.ownerAddress))
+        throw new Error('CONNECTED_WALLET_IS_NOT_THE_SUBACCOUNT_OWNER');
+      let current = status;
+      if (current?.agent == null) {
+        const response = await fetch('/api/wallet/agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        const body = (await response.json()) as wallet_status_v1 & { error?: string };
+        if (!response.ok) throw new Error(body.error ?? 'AGENT_CREATE_FAILED');
+        current = body;
+        setStatus(body);
+      }
+      await submit(current.payloads?.delegate);
+      if ((current.agent?.aptBalanceOctas ?? 0) < MINIMUM_AGENT_GAS_OCTAS_V1)
+        await submit(current.payloads?.gasTopUp);
+      return 'Confirmed. The bot can trade this subaccount.';
+    });
+  const choose = () =>
+    run(async () => {
+      const response = await fetch('/api/wallet/subaccount', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner: connected, subaccount: selected }),
+      });
+      const body = (await response.json()) as { status?: string; error?: string };
+      if (!response.ok) throw new Error(body.error ?? 'SUBACCOUNT_SELECTION_FAILED');
+      return 'Saved. Restart the bot to use this subaccount.';
     });
 
-  const ownerMatches =
-    connected !== null && connected === normalizeWalletAddressV1(status?.ownerAddress);
   const authorized =
     status?.delegation?.status === 'ACTIVE' || status?.delegation?.status === 'EXPIRING_SOON';
-  const tone = status?.agent == null ? '' : authorized ? 'authorized' : 'unauthorized';
+  const selectedInUse = selected !== null && selected === accounts?.inUse;
+  const expiry =
+    status?.delegation?.expiresAtMs == null
+      ? null
+      : new Date(status.delegation.expiresAtMs).toISOString().slice(0, 10);
   return (
     <div className="wallet-menu" ref={Root}>
       <button
         type="button"
-        className={`wallet-control ${tone}`}
+        className={`wallet-control ${connected !== null && authorized ? 'authorized' : ''}`}
         aria-label="Wallet"
         aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
+        disabled={busy && connected === null}
+        onClick={() => (connected === null ? connect() : setOpen((current) => !current))}
       >
-        {connected === null ? 'WALLET' : shortAddressV1(connected)}
+        {connected === null ? (busy ? 'CONNECTING…' : 'CONNECT WALLET') : shortAddressV1(connected)}
       </button>
       {open && (
-        <div className="wallet-dropdown" role="dialog" aria-label="Wallet details">
-          <dl>
-            <dt>Owner</dt>
-            <dd title={status?.ownerAddress ?? undefined}>
-              {shortAddressV1(status?.ownerAddress)}
-            </dd>
-            <dt>Petra</dt>
-            <dd className={connected === null ? '' : ownerMatches ? 'positive' : 'negative'}>
-              {connected === null ? 'NOT CONNECTED' : shortAddressV1(connected)}
-            </dd>
-            <dt>Signer</dt>
-            <dd>{describeSignerV1(status)}</dd>
-            <dt>Agent</dt>
-            <dd title={status?.agent?.address}>{shortAddressV1(status?.agent?.address)}</dd>
-            <dt>Agent gas</dt>
-            <dd>{formatApt(status?.agent?.aptBalanceOctas)}</dd>
-            <dt>Delegation</dt>
-            <dd className={authorized ? 'positive' : status?.agent ? 'warning' : ''}>
-              {describeDelegationV1(status)}
-            </dd>
-          </dl>
-          <div className="wallet-actions">
+        <div className="wallet-dropdown" role="dialog" aria-label="Wallet">
+          <div className="wallet-head">
+            <strong title={connected ?? undefined}>{shortAddressV1(connected)}</strong>
             <button
               type="button"
-              disabled={busy !== null}
+              className="wallet-link"
+              onClick={() => {
+                setConnected(null);
+                setAccounts(null);
+                setSelected(null);
+                setMessage(null);
+                setOpen(false);
+              }}
+            >
+              DISCONNECT
+            </button>
+          </div>
+          {accounts !== null && !accounts.whitelisted ? (
+            <p className="wallet-note">{describeWalletErrorV1('WALLET_NOT_WHITELISTED')}</p>
+          ) : accounts !== null && accounts.subaccounts.length === 0 ? (
+            <p className="wallet-note">No Decibel subaccount on this wallet.</p>
+          ) : accounts !== null ? (
+            <>
+              <div className="wallet-subaccounts" role="radiogroup" aria-label="Subaccount">
+                {accounts.subaccounts.map((row) => (
+                  <label key={row.address} className={row.address === selected ? 'selected' : ''}>
+                    <input
+                      type="radio"
+                      name="wallet-subaccount"
+                      checked={row.address === selected}
+                      onChange={() => setSelected(row.address)}
+                    />
+                    <span>{row.label ?? (row.isPrimary ? 'Primary' : 'Subaccount')}</span>
+                    <code title={row.address}>{shortAddressV1(row.address)}</code>
+                    {row.address === accounts.inUse && <em>IN USE</em>}
+                  </label>
+                ))}
+              </div>
+              {selectedInUse && (
+                <p className={`wallet-state ${authorized ? 'positive' : 'warning'}`}>
+                  {authorized
+                    ? `Bot authorized${expiry ? ` until ${expiry}` : ''}`
+                    : 'Bot not authorized yet'}
+                </p>
+              )}
+              <div className="wallet-actions">
+                <button
+                  type="button"
+                  disabled={busy || selected === null}
+                  onClick={selectedInUse ? confirm : choose}
+                >
+                  {busy
+                    ? 'WAITING…'
+                    : selectedInUse
+                      ? authorized
+                        ? 'RENEW'
+                        : 'CONFIRM'
+                      : 'USE THIS SUBACCOUNT'}
+                </button>
+                {selectedInUse && authorized && (
+                  <button
+                    type="button"
+                    className="wallet-link"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        await submit(status?.payloads?.revoke);
+                        return 'Bot access revoked.';
+                      })
+                    }
+                  >
+                    REVOKE
+                  </button>
+                )}
+              </div>
+            </>
+          ) : null}
+          {signedIn && (
+            <button
+              type="button"
+              className="wallet-link wallet-signout"
               onClick={() =>
-                run('connect', async (wallet) => {
-                  await requireOwner(wallet);
-                })
+                void fetch('/api/auth/logout', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: '{}',
+                }).then(() => window.location.reload())
               }
             >
-              {busy === 'connect' ? 'CONNECTING…' : 'CONNECT PETRA'}
+              SIGN OUT
             </button>
-            {status?.agent == null ? (
-              <button
-                type="button"
-                disabled={busy !== null || !status?.keystoreSecretConfigured}
-                title={
-                  status?.keystoreSecretConfigured
-                    ? undefined
-                    : 'Add DECIBEL_KEYSTORE_SECRET (16+ characters) to .env and restart the bot'
-                }
-                onClick={() =>
-                  run('create', async () => {
-                    const response = await fetch('/api/wallet/agent', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: '{}',
-                    });
-                    const body = (await response.json()) as { error?: string };
-                    if (!response.ok) throw new Error(body.error ?? 'AGENT_CREATE_FAILED');
-                    return 'AGENT WALLET CREATED';
-                  })
-                }
-              >
-                CREATE AGENT
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => submit('delegate', status.payloads?.delegate)}
-                >
-                  {authorized ? 'RENEW' : 'AUTHORIZE'} {status.delegationDays}D
-                </button>
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => submit('gas', status.payloads?.gasTopUp)}
-                >
-                  SEND 0.5 APT
-                </button>
-                <button
-                  type="button"
-                  disabled={busy !== null || !authorized}
-                  onClick={() => submit('revoke', status.payloads?.revoke)}
-                >
-                  REVOKE
-                </button>
-              </>
-            )}
-            {signedIn && (
-              <button
-                type="button"
-                onClick={() =>
-                  void fetch('/api/auth/logout', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: '{}',
-                  }).then(() => window.location.reload())
-                }
-              >
-                SIGN OUT
-              </button>
-            )}
-          </div>
-          {!status?.keystoreSecretConfigured && status?.agent == null && (
-            <p className="wallet-note">
-              Agent wallet needs DECIBEL_KEYSTORE_SECRET (16+ characters) in .env, then a restart.
-            </p>
           )}
           {message && <p className="wallet-note">{message}</p>}
         </div>
