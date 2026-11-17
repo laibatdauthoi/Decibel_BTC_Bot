@@ -51,7 +51,7 @@ export type decibel_wallet_route_dependencies_v1 = Readonly<{
   /** Secret that encrypts bot keys; created automatically when not configured. */
   keystoreSecret: () => string;
   /** Whether the runtime may switch now, and the switch itself. */
-  canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'DISABLED';
+  canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'OPEN_ORDERS' | 'DISABLED';
   switchNow: () => void;
   dataRoot?: string;
   selectionPath?: string;
@@ -198,6 +198,10 @@ export async function handleDecibelWalletRequestV1(
     const allowed = dependencies.canSwitch();
     if (allowed === 'SESSION_ACTIVE')
       return { status: 409, body: { error: 'END_SESSION_BEFORE_SWITCHING' } };
+    // The wallet's subaccounts share one journal: a resting or unreconciled order of the
+    // current subaccount must settle first, or the next run would look for it in the new one.
+    if (allowed === 'OPEN_ORDERS')
+      return { status: 409, body: { error: 'ORDERS_OPEN_BEFORE_SWITCHING' } };
     if (allowed === 'DISABLED')
       return { status: 409, body: { error: 'SUBACCOUNT_SWITCH_DISABLED' } };
     writeDecibelSelectedSubaccountV1(

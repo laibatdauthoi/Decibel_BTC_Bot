@@ -7,7 +7,7 @@ Added 2026-11-17. No private key and no account address in `.env`: the connected
 | Piece | Where | Purpose |
 | --- | --- | --- |
 | Whitelist | `config/allowed_wallets.json` (gitignored; example in `config/allowed_wallets.example.json`) | Owner wallets allowed to run the bot. Missing or invalid file: nobody runs. |
-| Wallet workspace | `data/wallets/<owner>/` | Session store (newest 30 sessions with PnL and volume), execution journal, settings, restart safety, logs, agent keystore, dashboard sessions. |
+| Wallet workspace | `data/wallets/<owner>/` | One data set per wallet, all its subaccounts merged: session store (newest 30 sessions with PnL and volume), execution journal, settings, restart safety, logs, bot key, dashboard sessions. Switching subaccount waits until no order is open or unreconciled. |
 | Bot key | `data/wallets/<owner>/agent_key_v1.json` | Key the bot creates for itself (never the owner's key); can trade but not withdraw; encrypted (scrypt + AES-256-GCM) with `data/keystore_secret_v1.key`, or `DECIBEL_KEYSTORE_SECRET` on a server. |
 | Authorization | on-chain, `dex_accounts_entry::delegate_trading_to_for_subaccount` | The owner lets the bot key trade one subaccount for 30 days. Signed in Petra. |
 | Selected subaccount | `data/selected_subaccount_v1.json` | Subaccount the bot runs on, chosen in the wallet menu. |

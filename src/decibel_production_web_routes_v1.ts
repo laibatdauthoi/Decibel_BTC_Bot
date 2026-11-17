@@ -115,7 +115,7 @@ export type decibel_production_web_route_context_v1 = Readonly<{
   secureCookie: boolean;
   /** Switch the runtime to the subaccount chosen in the wallet menu (relaunch when idle). */
   subaccountSwitch: Readonly<{
-    canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'DISABLED';
+    canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'OPEN_ORDERS' | 'DISABLED';
     switchNow: () => void;
   }>;
 }>;

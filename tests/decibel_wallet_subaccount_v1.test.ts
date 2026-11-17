@@ -28,7 +28,10 @@ const material = {
 };
 
 function setup(
-  options: { canSwitch?: 'OK' | 'SESSION_ACTIVE' | 'DISABLED'; balance?: number } = {},
+  options: {
+    canSwitch?: 'OK' | 'SESSION_ACTIVE' | 'OPEN_ORDERS' | 'DISABLED';
+    balance?: number;
+  } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'wallet-routes-'));
   const dataRoot = join(root, 'wallets');
@@ -169,8 +172,8 @@ describe('Wallet subaccount switch', () => {
     });
   });
 
-  it('never switches during a session or in multi-wallet mode', async () => {
-    for (const canSwitch of ['SESSION_ACTIVE', 'DISABLED'] as const) {
+  it('never switches during a session, with open orders or in multi-wallet mode', async () => {
+    for (const canSwitch of ['SESSION_ACTIVE', 'OPEN_ORDERS', 'DISABLED'] as const) {
       const { deps, switchNow, selectionPath } = setup({ canSwitch });
       expect((await choose(deps, SECOND))?.status).toBe(409);
       expect(switchNow).not.toHaveBeenCalled();

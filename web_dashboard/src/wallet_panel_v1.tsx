@@ -34,6 +34,7 @@ const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
   WALLET_NOT_WHITELISTED: 'This wallet is not allowed to use this bot.',
   SUBACCOUNT_NOT_OWNED: 'This wallet does not own the subaccount.',
   END_SESSION_BEFORE_SWITCHING: 'End the running session before switching subaccount.',
+  ORDERS_OPEN_BEFORE_SWITCHING: 'Wait until the open orders of this subaccount are settled.',
 };
 
 export function describeWalletErrorV1(code: string): string {

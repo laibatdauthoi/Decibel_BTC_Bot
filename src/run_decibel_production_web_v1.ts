@@ -1820,7 +1820,9 @@ export async function runDecibelProductionWebV1(
               ? 'DISABLED'
               : SessionController.getState().activeSession !== null
                 ? 'SESSION_ACTIVE'
-                : 'OK',
+                : TelemetryJournal.nonTerminal().length > 0
+                  ? 'OPEN_ORDERS'
+                  : 'OK',
           // Exit code 75 asks the bootstrap to relaunch on the newly selected subaccount.
           switchNow: () => {
             setTimeout(() => {
