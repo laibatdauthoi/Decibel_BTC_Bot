@@ -15,6 +15,10 @@ import {
   resolveDecibelWalletPathsV1,
   type decibel_legacy_paths_v1,
 } from '../src/decibel_wallet_workspace_v1.js';
+import {
+  loadDecibelActivityBaselineV1,
+  loadDecibelFreshActivityBaselineV1,
+} from '../src/decibel_production_live_state_source_v1.js';
 
 const OWNER = `0x${'ab'.repeat(32)}`;
 const OTHER = `0x${'cd'.repeat(32)}`;
@@ -28,12 +32,17 @@ function makeRoot() {
     operatorSettings: join(root, 'state', 'decibel_operator_settings_v1.json'),
     restartSafety: join(root, 'state', 'decibel_restart_safety_v1.json'),
     forensics: join(root, 'data', 'production_runtime'),
+    economicEvidence: join(root, 'data', 'decibel_production_economic_inputs_v1.json'),
+    rawWsBbo: join(root, 'data', 'decibel_production_raw_ws_bbo_v1.jsonl'),
   };
   mkdirSync(join(root, 'data', 'production_runtime'), { recursive: true });
   mkdirSync(join(root, 'state'), { recursive: true });
+  const legacyManifestPath = join(root, 'state', 'canary_manifest.json');
+  writeFileSync(legacyManifestPath, JSON.stringify({ identity: { subaccount: SUBACCOUNT } }));
   return {
     root,
     legacy,
+    legacyManifestPath,
     dataRoot: join(root, 'data', 'wallets'),
     backupRoot: join(root, 'backups'),
   };
@@ -56,6 +65,8 @@ function writeLegacy(legacy: decibel_legacy_paths_v1, sessionStatus: string) {
   writeFileSync(`${legacy.operatorSettings}.audit.jsonl`, '{}\n');
   writeFileSync(legacy.restartSafety, '{"safeToRestart":true}');
   writeFileSync(join(legacy.forensics, 'stdout.log'), 'line\n');
+  writeFileSync(legacy.economicEvidence, '{}');
+  writeFileSync(legacy.rawWsBbo, '{"bid":1}\n');
 }
 
 describe('Wallet addresses and whitelist', () => {
@@ -149,7 +160,7 @@ describe('Legacy data migration', () => {
     expect(result.status).toBe('MIGRATED');
     for (const key of Object.keys(legacy) as (keyof decibel_legacy_paths_v1)[]) {
       expect(existsSync(legacy[key])).toBe(false);
-      expect(existsSync(paths[key])).toBe(true);
+      if (key !== 'rawWsBbo') expect(existsSync(paths[key])).toBe(true);
     }
     expect(existsSync(`${paths.operatorSettings}.audit.jsonl`)).toBe(true);
     expect(readFileSync(join(paths.forensics, 'stdout.log'), 'utf8')).toBe('line\n');
@@ -188,7 +199,7 @@ describe('Launcher workspace step', () => {
   };
 
   it('runs the runtime on the owner workspace after migrating', async () => {
-    const { legacy, dataRoot, backupRoot, whitelistPath } = setup('ENDED');
+    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath } = setup('ENDED');
     const workspace = await prepareDecibelWalletWorkspaceV1(
       { DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
       {
@@ -198,6 +209,7 @@ describe('Launcher workspace step', () => {
         dataRoot,
         legacy,
         backupRoot,
+        legacyManifestPath,
       },
     );
     const paths = resolveDecibelWalletPathsV1(OWNER, dataRoot);
@@ -209,11 +221,12 @@ describe('Launcher workspace step', () => {
       DECIBEL_OPERATOR_SETTINGS_PATH: paths.operatorSettings,
       DECIBEL_PRODUCTION_RESTART_SAFETY_PATH: paths.restartSafety,
       DECIBEL_PRODUCTION_FORENSICS_PATH: paths.forensics,
+      DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_PATH: paths.economicEvidence,
     });
   });
 
   it('keeps the legacy files in use while a session is active', async () => {
-    const { legacy, dataRoot, backupRoot, whitelistPath } = setup('RUNNING');
+    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath } = setup('RUNNING');
     const workspace = await prepareDecibelWalletWorkspaceV1(
       { DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
       {
@@ -223,6 +236,7 @@ describe('Launcher workspace step', () => {
         dataRoot,
         legacy,
         backupRoot,
+        legacyManifestPath,
       },
     );
     expect(workspace.migration.status).toBe('SKIPPED_ACTIVE_SESSION');
@@ -233,13 +247,14 @@ describe('Launcher workspace step', () => {
   });
 
   it('refuses a wallet that is not whitelisted or cannot be proven', async () => {
-    const { legacy, dataRoot, backupRoot, whitelistPath } = setup('ENDED');
+    const { legacy, dataRoot, backupRoot, whitelistPath, legacyManifestPath } = setup('ENDED');
     const base = {
       fullnodeUrl: 'https://node.example/v1',
       whitelistPath,
       dataRoot,
       legacy,
       backupRoot,
+      legacyManifestPath,
       retryDelayMs: 0,
     };
     await expect(
@@ -261,6 +276,84 @@ describe('Launcher workspace step', () => {
     ).rejects.toThrow('WALLET_SUBACCOUNT_REQUIRED');
     // Nothing moved for a refused wallet.
     expect(existsSync(legacy.executionJournal)).toBe(true);
+  });
+});
+
+describe('Per-wallet market data and activity baseline', () => {
+  it('moves the BBO recording next to the wallet economic evidence', () => {
+    const { legacy, dataRoot, backupRoot } = makeRoot();
+    writeLegacy(legacy, 'ENDED');
+    const paths = resolveDecibelWalletPathsV1(OWNER, dataRoot);
+    expect(migrateDecibelLegacyDataV1(paths, { legacy, backupRoot }).status).toBe('MIGRATED');
+    expect(existsSync(paths.economicEvidence)).toBe(true);
+    expect(readFileSync(join(paths.root, 'decibel_production_raw_ws_bbo_v1.jsonl'), 'utf8')).toBe(
+      '{"bid":1}\n',
+    );
+  });
+
+  it('gives a new wallet its own baseline and keeps the legacy baseline for the first wallet', async () => {
+    const fresh = makeRoot();
+    const whitelistPath = join(fresh.root, 'allowed_wallets.json');
+    writeFileSync(
+      whitelistPath,
+      JSON.stringify({ wallets: [{ address: OWNER }, { address: OTHER }] }),
+    );
+    const base = {
+      fullnodeUrl: 'https://node.example/v1',
+      whitelistPath,
+      dataRoot: fresh.dataRoot,
+      legacy: fresh.legacy,
+      backupRoot: fresh.backupRoot,
+      legacyManifestPath: fresh.legacyManifestPath,
+      now: () => 1_800_000_000_000,
+    };
+    // A second wallet (another subaccount) never takes the first wallet's legacy files.
+    writeLegacy(fresh.legacy, 'ENDED');
+    const second = await prepareDecibelWalletWorkspaceV1(
+      { DECIBEL_SUBACCOUNT_ADDRESS: `0x${'34'.repeat(32)}` },
+      { ...base, readOwner: () => Promise.resolve(OTHER) },
+    );
+    expect(second.migration.status).toBe('NOT_NEEDED');
+    expect(existsSync(fresh.legacy.executionJournal)).toBe(true);
+    const otherPaths = resolveDecibelWalletPathsV1(OTHER, fresh.dataRoot);
+    expect(second.pathEnvironment.DECIBEL_ACTIVITY_BASELINE_PATH).toBe(otherPaths.activityBaseline);
+    expect(second.pathEnvironment.DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_PATH).toBe(
+      otherPaths.economicEvidence,
+    );
+    expect(JSON.parse(readFileSync(otherPaths.activityBaseline, 'utf8'))).toEqual({
+      version: 1,
+      historyStartTimestamp: 1_800_000_000_000,
+    });
+    // The first wallet migrates from the legacy layout and keeps the canary baseline.
+    const first = await prepareDecibelWalletWorkspaceV1(
+      { DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
+      { ...base, readOwner: () => Promise.resolve(OWNER) },
+    );
+    expect(first.migration.status).toBe('MIGRATED');
+    expect(first.pathEnvironment.DECIBEL_ACTIVITY_BASELINE_PATH).toBeUndefined();
+    const again = await prepareDecibelWalletWorkspaceV1(
+      { DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
+      { ...base, readOwner: () => Promise.resolve(OWNER) },
+    );
+    expect(again.migration.status).toBe('NOT_NEEDED');
+    expect(again.pathEnvironment.DECIBEL_ACTIVITY_BASELINE_PATH).toBeUndefined();
+  });
+
+  it('loads a fresh baseline that owns no earlier fills', () => {
+    const { root } = makeRoot();
+    const path = join(root, 'activity_baseline_v1.json');
+    writeFileSync(path, '{"version":1,"historyStartTimestamp":1800000000000}');
+    expect(loadDecibelActivityBaselineV1({ DECIBEL_ACTIVITY_BASELINE_PATH: path })).toMatchObject({
+      historyStartTimestamp: 1_800_000_000_000,
+      fillIds: [],
+      reconciledAccountFillIds: [],
+      outOfBandFillIds: [],
+      venueOrderId: '',
+    });
+    writeFileSync(path, '{"version":2}');
+    expect(() => loadDecibelFreshActivityBaselineV1(path)).toThrow(
+      'PRODUCTION_LIVE_SOURCE_BASELINE_INVALID',
+    );
   });
 });
 

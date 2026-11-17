@@ -783,6 +783,42 @@ function loadAuthenticatedActivityBaseline(): authenticated_activity_baseline {
   });
 }
 
+/**
+ * Baseline of a wallet onboarded after 2026-11-17 (no legacy canary manifest): the bot owns
+ * only fills of its own strategy orders from the onboarding time on. Written once by the
+ * launcher to data/wallets/<owner>/activity_baseline_v1.json.
+ */
+const FreshActivityBaselineSchema = z.object({
+  version: z.literal(1),
+  historyStartTimestamp: z.number().int().nonnegative(),
+});
+
+export function loadDecibelFreshActivityBaselineV1(path: string): authenticated_activity_baseline {
+  const parsed = FreshActivityBaselineSchema.safeParse(JSON.parse(readFileSync(path, 'utf8')));
+  if (!parsed.success) throw new Error('PRODUCTION_LIVE_SOURCE_BASELINE_INVALID');
+  return Object.freeze({
+    historyStartTimestamp: parsed.data.historyStartTimestamp,
+    fillIds: Object.freeze([]),
+    reconciledAccountFillIds: Object.freeze([]),
+    venueOrderId: '',
+    venueClientOrderId: '',
+    side: 'BUY',
+    marketAddress: DECIBEL_BTC_USD_MARKET_ADDRESS_V1,
+    quantity: 0,
+    checkpointBodyHashSha256: 'FRESH_WALLET_BASELINE_V1',
+    resyncTimestamp: parsed.data.historyStartTimestamp,
+    outOfBandFillIds: Object.freeze([]),
+  });
+}
+
+/** Per-wallet baseline when the launcher set one, else the first wallet's legacy baseline. */
+export function loadDecibelActivityBaselineV1(
+  environment: NodeJS.ProcessEnv,
+): authenticated_activity_baseline {
+  const path = environment.DECIBEL_ACTIVITY_BASELINE_PATH?.trim();
+  return path ? loadDecibelFreshActivityBaselineV1(path) : loadAuthenticatedActivityBaseline();
+}
+
 function isStrategyClientOrderId(value: string | null | undefined): value is string {
   return value !== null && value !== undefined && isDecibelPassiveRecyclingClientOrderIdV1(value);
 }
@@ -1846,7 +1882,8 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     private readonly Reader: DecibelProductionLiveAuthenticatedReaderV1,
     private readonly Environment: NodeJS.ProcessEnv,
     private readonly getNow: () => number = Date.now,
-    private readonly getActivityBaseline: () => authenticated_activity_baseline = loadAuthenticatedActivityBaseline,
+    private readonly getActivityBaseline: () => authenticated_activity_baseline = () =>
+      loadDecibelActivityBaselineV1(Environment),
   ) {}
 
   public async assertAuthenticatedTransport(): Promise<

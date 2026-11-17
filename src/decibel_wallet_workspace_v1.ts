@@ -76,6 +76,10 @@ export type decibel_wallet_paths_v1 = Readonly<{
   operatorSettings: string;
   restartSafety: string;
   forensics: string;
+  /** Economic evidence; the raw WS BBO recording lives next to it. */
+  economicEvidence: string;
+  /** Activity baseline of a wallet onboarded after 2026-11-17. */
+  activityBaseline: string;
 }>;
 
 export function resolveDecibelWalletPathsV1(
@@ -90,6 +94,8 @@ export function resolveDecibelWalletPathsV1(
     operatorSettings: join(root, 'decibel_operator_settings_v1.json'),
     restartSafety: join(root, 'decibel_restart_safety_v1.json'),
     forensics: join(root, 'production_runtime'),
+    economicEvidence: join(root, 'decibel_production_economic_inputs_v1.json'),
+    activityBaseline: join(root, 'activity_baseline_v1.json'),
   });
 }
 
@@ -100,7 +106,7 @@ export function resolveDecibelWalletPathsV1(
 export function buildDecibelWalletEnvironmentV1(
   environment: NodeJS.ProcessEnv,
   ownerAddress: string,
-  paths: decibel_wallet_paths_v1,
+  paths: Omit<decibel_wallet_paths_v1, 'activityBaseline'>,
 ): NodeJS.ProcessEnv {
   return {
     ...environment,
@@ -115,6 +121,8 @@ export function buildDecibelWalletEnvironmentV1(
       environment.DECIBEL_PRODUCTION_RESTART_SAFETY_PATH ?? paths.restartSafety,
     DECIBEL_PRODUCTION_FORENSICS_PATH:
       environment.DECIBEL_PRODUCTION_FORENSICS_PATH ?? paths.forensics,
+    DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_PATH:
+      environment.DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_PATH ?? paths.economicEvidence,
   };
 }
 
@@ -152,6 +160,8 @@ export type decibel_legacy_paths_v1 = Readonly<{
   operatorSettings: string;
   restartSafety: string;
   forensics: string;
+  economicEvidence: string;
+  rawWsBbo: string;
 }>;
 
 export const DECIBEL_LEGACY_PATHS_V1: decibel_legacy_paths_v1 = Object.freeze({
@@ -160,7 +170,27 @@ export const DECIBEL_LEGACY_PATHS_V1: decibel_legacy_paths_v1 = Object.freeze({
   operatorSettings: 'config/production_state/decibel_operator_settings_v1.json',
   restartSafety: 'config/production_state/decibel_restart_safety_v1.json',
   forensics: 'data/production_runtime',
+  economicEvidence: 'data/decibel_production_economic_inputs_v1.json',
+  rawWsBbo: 'data/decibel_production_raw_ws_bbo_v1.jsonl',
 });
+
+export const DECIBEL_LEGACY_MANIFEST_PATH_V1 =
+  'config/production_state/decibel_authenticated_live_canary_success_v1_manifest.json';
+
+/**
+ * Subaccount of the first (pre-2026-11-17) wallet, named in its canary manifest. Only that
+ * wallet may take over the legacy files and baseline; any other wallet starts fresh.
+ */
+export function readDecibelLegacySubaccountV1(
+  manifestPath: string = DECIBEL_LEGACY_MANIFEST_PATH_V1,
+): string | null {
+  if (!existsSync(manifestPath)) return null;
+  const parsed = z
+    .object({ identity: z.object({ subaccount: z.string() }) })
+    .safeParse(JSON.parse(readFileSync(manifestPath, 'utf8')));
+  if (!parsed.success) throw new Error('LEGACY_MANIFEST_INVALID');
+  return normalizeDecibelAddressV1(parsed.data.identity.subaccount);
+}
 
 export type decibel_legacy_migration_result_v1 = Readonly<
   | { status: 'NOT_NEEDED' | 'MIGRATED'; moved: readonly string[]; backupDir: string | null }
@@ -223,7 +253,13 @@ export function migrateDecibelLegacyDataV1(
   const legacy = options.legacy ?? DECIBEL_LEGACY_PATHS_V1;
   const pairs: [keyof decibel_legacy_paths_v1, string, string][] = (
     Object.keys(legacy) as (keyof decibel_legacy_paths_v1)[]
-  ).map((key) => [key, legacy[key], paths[key]]);
+  ).map((key) => [
+    key,
+    legacy[key],
+    key === 'rawWsBbo'
+      ? join(dirname(paths.economicEvidence), 'decibel_production_raw_ws_bbo_v1.jsonl')
+      : paths[key],
+  ]);
   const pending = pairs.filter(([, from, to]) => existsSync(from) && !existsSync(to));
   if (pending.length === 0) return { status: 'NOT_NEEDED', moved: [], backupDir: null };
   try {
@@ -261,7 +297,12 @@ export function migrateDecibelLegacyDataV1(
   try {
     mkdirSync(backupDir, { recursive: true });
     for (const [key, from] of pending)
-      if (key === 'sessionStore' || key === 'operatorSettings' || key === 'restartSafety')
+      if (
+        key === 'sessionStore' ||
+        key === 'operatorSettings' ||
+        key === 'restartSafety' ||
+        key === 'economicEvidence'
+      )
         copyFileSync(from, join(backupDir, from.replace(/[\\/:]/g, '__')));
     for (const [from, to] of moves) {
       mkdirSync(dirname(to), { recursive: true });
@@ -312,6 +353,8 @@ export async function prepareDecibelWalletWorkspaceV1(
     backupRoot?: string;
     attempts?: number;
     retryDelayMs?: number;
+    now?: () => number;
+    legacyManifestPath?: string;
   }>,
 ): Promise<decibel_wallet_workspace_v1> {
   const subaccount = environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
@@ -342,15 +385,29 @@ export async function prepareDecibelWalletWorkspaceV1(
   assertDecibelWalletWhitelistedV1(whitelist, ownerAddress);
   const paths = resolveDecibelWalletPathsV1(ownerAddress, dependencies.dataRoot);
   const legacy = dependencies.legacy ?? DECIBEL_LEGACY_PATHS_V1;
-  const migration = migrateDecibelLegacyDataV1(paths, {
-    legacy,
-    ...(dependencies.backupRoot === undefined ? {} : { backupRoot: dependencies.backupRoot }),
-  });
-  const effective =
-    migration.status === 'SKIPPED_ACTIVE_SESSION' || migration.status === 'SKIPPED_FAILED'
-      ? { root: paths.root, ...legacy }
-      : paths;
+  const isLegacyWallet =
+    readDecibelLegacySubaccountV1(dependencies.legacyManifestPath) ===
+    normalizeDecibelAddressV1(subaccount);
+  const migration: decibel_legacy_migration_result_v1 = isLegacyWallet
+    ? migrateDecibelLegacyDataV1(paths, {
+        legacy,
+        ...(dependencies.backupRoot === undefined ? {} : { backupRoot: dependencies.backupRoot }),
+      })
+    : { status: 'NOT_NEEDED', moved: [], backupDir: null };
+  const usesLegacyFiles =
+    migration.status === 'SKIPPED_ACTIVE_SESSION' || migration.status === 'SKIPPED_FAILED';
+  const effective = usesLegacyFiles ? { root: paths.root, ...legacy } : paths;
   mkdirSync(paths.root, { recursive: true });
+  // The first wallet keeps its legacy canary baseline (config/production_state). Any other
+  // wallet starts its own baseline at onboarding: only later strategy fills belong to the bot.
+  const legacyOwner = isLegacyWallet;
+  if (!legacyOwner && !existsSync(paths.activityBaseline))
+    writeFileSync(
+      paths.activityBaseline,
+      `${JSON.stringify({ version: 1, historyStartTimestamp: dependencies.now?.() ?? Date.now() })}
+`,
+      { flag: 'wx' },
+    );
   const built = buildDecibelWalletEnvironmentV1(environment, ownerAddress, effective);
   const keys = [
     'DECIBEL_OWNER_ADDRESS',
@@ -359,10 +416,14 @@ export async function prepareDecibelWalletWorkspaceV1(
     'DECIBEL_OPERATOR_SETTINGS_PATH',
     'DECIBEL_PRODUCTION_RESTART_SAFETY_PATH',
     'DECIBEL_PRODUCTION_FORENSICS_PATH',
+    'DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_PATH',
   ] as const;
   return Object.freeze({
     ownerAddress,
-    pathEnvironment: Object.freeze(Object.fromEntries(keys.map((key) => [key, built[key]!]))),
+    pathEnvironment: Object.freeze({
+      ...Object.fromEntries(keys.map((key) => [key, built[key]!])),
+      ...(legacyOwner ? {} : { DECIBEL_ACTIVITY_BASELINE_PATH: paths.activityBaseline }),
+    }),
     migration,
   });
 }
@@ -373,7 +434,7 @@ export async function prepareDecibelWalletWorkspaceV1(
  */
 export function resolveDecibelToolPathV1(
   environment: NodeJS.ProcessEnv,
-  key: keyof decibel_legacy_paths_v1,
+  key: Exclude<keyof decibel_legacy_paths_v1, 'rawWsBbo'>,
   dataRoot: string = DECIBEL_WALLET_DATA_ROOT_V1,
 ): string {
   const owner = environment.DECIBEL_OWNER_ADDRESS?.trim();
