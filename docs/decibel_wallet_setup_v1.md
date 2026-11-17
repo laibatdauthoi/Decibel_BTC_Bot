@@ -1,6 +1,6 @@
-# Wallet setup (agent wallet, whitelist, sign-in)
+# Wallet setup (connect Petra, whitelist, sign-in)
 
-Added 2026-11-17. Replaces putting the owner's private key in `.env`.
+Added 2026-11-17. No private key and no account address in `.env`: the connected Petra wallet is the identity.
 
 ## Pieces
 
@@ -8,11 +8,12 @@ Added 2026-11-17. Replaces putting the owner's private key in `.env`.
 | --- | --- | --- |
 | Whitelist | `config/allowed_wallets.json` (gitignored; example in `config/allowed_wallets.example.json`) | Owner wallets allowed to run the bot. Missing or invalid file: nobody runs. |
 | Wallet workspace | `data/wallets/<owner>/` | Session store (newest 30 sessions with PnL and volume), execution journal, settings, restart safety, logs, agent keystore, dashboard sessions. |
-| Agent keystore | `data/wallets/<owner>/agent_key_v1.json` | Bot-only Ed25519 key, encrypted with `DECIBEL_KEYSTORE_SECRET` (scrypt + AES-256-GCM). |
-| Delegation | on-chain, `dex_accounts_entry::delegate_trading_to_for_subaccount` | The owner lets the agent trade the subaccount for 30 days. Signed in Petra. |
+| Bot key | `data/wallets/<owner>/agent_key_v1.json` | Key the bot creates for itself (never the owner's key); can trade but not withdraw; encrypted (scrypt + AES-256-GCM) with `data/keystore_secret_v1.key`, or `DECIBEL_KEYSTORE_SECRET` on a server. |
+| Authorization | on-chain, `dex_accounts_entry::delegate_trading_to_for_subaccount` | The owner lets the bot key trade one subaccount for 30 days. Signed in Petra. |
+| Selected subaccount | `data/selected_subaccount_v1.json` | Subaccount the bot runs on, chosen in the wallet menu. |
 
-The owner is read from the subaccount's on-chain `0x1::object::ObjectCore`, so the launcher needs only
-`DECIBEL_SUBACCOUNT_ADDRESS`.
+The launcher runs on the selected subaccount, else `DECIBEL_SUBACCOUNT_ADDRESS` if still set, else the primary
+subaccount of the first whitelisted wallet. The owner is read from the subaccount's on-chain `0x1::object::ObjectCore`.
 
 ## First run after the change
 
@@ -23,20 +24,17 @@ The owner is read from the subaccount's on-chain `0x1::object::ObjectCore`, so t
    - `SKIPPED_FAILED`: something was locked (for example an old process still running). Nothing moved.
 3. History, settings and PnL totals on the dashboard must look the same as before.
 
-## Agent wallet
+## Connect and run
 
-1. Add `DECIBEL_KEYSTORE_SECRET` (16+ characters, keep a copy safe) to `.env`; restart.
-2. Top bar: CONNECT WALLET (next to MAINNET), approve in Petra with the owner wallet.
-3. Pick the subaccount marked IN USE and press CONFIRM. The bot creates its key, then Petra asks for the
-   authorization (30 days) and, when the bot key has under 0.1 APT, a 0.5 APT gas transfer.
-4. The menu then shows "Bot authorized until …". Picking another subaccount and USE THIS SUBACCOUNT saves it
-   for the next start (`data/selected_subaccount_v1.json`); restart, then CONFIRM it.
-5. The next session signs with the agent (`DECIBEL_EXECUTOR_SIGNER=AGENT` in the log). If the delegation is
-   missing or expired, the session does not start; it never falls back to `DECIBEL_PRIVATE_KEY`.
-6. After one good session, `DECIBEL_PRIVATE_KEY` can be removed from `.env`.
-7. Revoke any time in the wallet menu (REVOKE) or on Decibel.
-
-Losing `DECIBEL_KEYSTORE_SECRET` only loses the agent: revoke it, delete `agent_key_v1.json`, create a new one.
+1. Top bar: CONNECT WALLET (next to MAINNET), approve in Petra. After a reload the connection is restored
+   without a popup.
+2. The menu lists the wallet's Decibel subaccounts. Pick one and press CONFIRM: Petra asks to authorize the bot
+   (30 days) and, when the bot key has under 0.1 APT, a 0.5 APT gas transfer. Nothing else to set up.
+3. If it is not the subaccount in use, the bot switches to it by itself (it restarts while idle; the page
+   reloads when it is back). A running session must be ended first.
+4. Sessions sign with the bot key (`DECIBEL_EXECUTOR_SIGNER=BOT_KEY` in the log). There is no private-key
+   fallback: without an active authorization the session does not start.
+5. REVOKE in the menu (or on Decibel) removes the bot's access at any time.
 
 ## Dashboard sign-in
 

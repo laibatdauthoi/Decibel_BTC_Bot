@@ -15,6 +15,8 @@ export type wallet_payload_v1 = Readonly<{
 export type petra_wallet_v1 = Readonly<{
   name: string;
   connect: () => Promise<Readonly<{ address: string; publicKey: string }>>;
+  /** The already connected account, without a Petra popup; null when not connected. */
+  account: () => Promise<string | null>;
   signAndSubmit: (payload: wallet_payload_v1) => Promise<string>;
   signMessage: (
     message: string,
@@ -31,6 +33,7 @@ type standard_wallet = {
 type standard_connect = {
   connect: () => Promise<user_response<{ address: stringable; publicKey: stringable }>>;
 };
+type standard_account = { account: () => Promise<{ address: stringable }> };
 type standard_sign_and_submit = {
   version?: string;
   signAndSubmitTransaction: (input: {
@@ -52,6 +55,8 @@ type standard_sign_message = {
 };
 type legacy_petra = {
   connect: () => Promise<{ address: string; publicKey: string | string[] }>;
+  isConnected?: () => Promise<boolean>;
+  account?: () => Promise<{ address: string }>;
   signAndSubmitTransaction: (transaction: {
     type: 'entry_function_payload';
     function: string;
@@ -96,9 +101,17 @@ function fromStandard(wallet: standard_wallet): petra_wallet_v1 | null {
   const submit = wallet.features['aptos:signAndSubmitTransaction'] as
     standard_sign_and_submit | undefined;
   const sign = wallet.features['aptos:signMessage'] as standard_sign_message | undefined;
+  const current = wallet.features['aptos:account'] as standard_account | undefined;
   if (!connect || !submit || !sign) return null;
   return Object.freeze({
     name: wallet.name,
+    account: async () => {
+      try {
+        return current ? (await current.account()).address.toString() : null;
+      } catch {
+        return null;
+      }
+    },
     connect: async () => {
       const account = approved(await connect.connect());
       return { address: account.address.toString(), publicKey: account.publicKey.toString() };
@@ -124,6 +137,14 @@ function fromLegacy(petra: legacy_petra): petra_wallet_v1 {
   const first = (value: string | string[]) => (Array.isArray(value) ? value[0] : value);
   return Object.freeze({
     name: 'Petra',
+    account: async () => {
+      try {
+        if (!(await petra.isConnected?.())) return null;
+        return (await petra.account?.())?.address ?? null;
+      } catch {
+        return null;
+      }
+    },
     connect: async () => {
       const account = await petra.connect();
       return { address: account.address, publicKey: first(account.publicKey) };
@@ -159,4 +180,16 @@ export function findPetraWalletV1(): petra_wallet_v1 | null {
 export function shortAddressV1(address: string | null | undefined): string {
   if (!address) return '—';
   return address.length > 14 ? `${address.slice(0, 8)}…${address.slice(-6)}` : address;
+}
+
+/**
+ * Petra registers itself a moment after the page loads; wait briefly before giving up.
+ */
+export async function waitForPetraWalletV1(timeoutMs = 2_000): Promise<petra_wallet_v1 | null> {
+  const startedAt = Date.now();
+  for (;;) {
+    const wallet = findPetraWalletV1();
+    if (wallet !== null || Date.now() - startedAt >= timeoutMs) return wallet;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
 }

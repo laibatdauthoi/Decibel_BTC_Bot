@@ -1,24 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { findPetraWalletV1, shortAddressV1, type wallet_payload_v1 } from './petra_wallet_v1';
+import { shortAddressV1, waitForPetraWalletV1, type wallet_payload_v1 } from './petra_wallet_v1';
 
-/** Mirrors decibel_wallet_status_v1 from src/decibel_wallet_routes_v1.ts. */
-export type wallet_status_v1 = Readonly<{
-  ownerAddress: string | null;
-  subaccountAddress: string | null;
-  signerMode: 'AGENT' | 'PRIVATE_KEY' | 'NONE';
-  keystoreSecretConfigured: boolean;
-  agent: Readonly<{ address: string; createdAt: number; aptBalanceOctas: number | null }> | null;
-  delegation: Readonly<{
-    status: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'MISSING';
-    expiresAtMs: number | null;
-  }> | null;
-  delegationError: string | null;
-  delegationDays: number;
-  payloads: Readonly<{
-    delegate: wallet_payload_v1;
-    revoke: wallet_payload_v1;
-    gasTopUp: wallet_payload_v1;
-  }> | null;
+type authorization_v1 = Readonly<{
+  status: 'ACTIVE' | 'EXPIRING_SOON' | 'EXPIRED' | 'MISSING';
+  expiresAtMs: number | null;
+}>;
+
+/** Mirrors GET /api/wallet/subaccounts (src/decibel_wallet_routes_v1.ts). */
+export type wallet_subaccounts_v1 = Readonly<{
+  owner: string;
+  whitelisted: boolean;
+  inUse: string | null;
+  subaccounts: readonly Readonly<{
+    address: string;
+    label: string | null;
+    isPrimary: boolean;
+    authorization: authorization_v1 | null;
+  }>[];
 }>;
 
 export function normalizeWalletAddressV1(address: string | null | undefined): string | null {
@@ -26,36 +24,45 @@ export function normalizeWalletAddressV1(address: string | null | undefined): st
   return match ? `0x${match[1].toLowerCase().padStart(64, '0')}` : null;
 }
 
-/** Mirrors GET /api/wallet/subaccounts (src/decibel_wallet_routes_v1.ts). */
-export type wallet_subaccounts_v1 = Readonly<{
-  owner: string;
-  whitelisted: boolean;
-  inUse: string | null;
-  subaccounts: readonly Readonly<{ address: string; label: string | null; isPrimary: boolean }>[];
-}>;
+export function isAuthorizedV1(authorization: authorization_v1 | null | undefined): boolean {
+  return authorization?.status === 'ACTIVE' || authorization?.status === 'EXPIRING_SOON';
+}
 
 const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
   PETRA_NOT_INSTALLED: 'Petra is not installed in this browser.',
   WALLET_REQUEST_REJECTED: 'Request rejected in Petra.',
-  CONNECTED_WALLET_IS_NOT_THE_SUBACCOUNT_OWNER: 'This wallet does not own the subaccount.',
-  AGENT_KEYSTORE_SECRET_REQUIRED:
-    'Add DECIBEL_KEYSTORE_SECRET (16+ characters) to .env and restart.',
   WALLET_NOT_WHITELISTED: 'This wallet is not allowed to use this bot.',
+  SUBACCOUNT_NOT_OWNED: 'This wallet does not own the subaccount.',
+  END_SESSION_BEFORE_SWITCHING: 'End the running session before switching subaccount.',
 };
 
 export function describeWalletErrorV1(code: string): string {
   return FRIENDLY_ERRORS_V1[code] ?? code;
 }
 
-/** Gas top-up is asked only when the bot key has less than 0.1 APT. */
-const MINIMUM_AGENT_GAS_OCTAS_V1 = 10_000_000;
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const value = (await response.json()) as T & { error?: string };
+  if (!response.ok) throw new Error(value.error ?? 'WALLET_REQUEST_FAILED');
+  return value;
+}
+
+async function readSubaccounts(owner: string): Promise<wallet_subaccounts_v1> {
+  const response = await fetch(`/api/wallet/subaccounts?owner=${owner}`);
+  const body = (await response.json()) as wallet_subaccounts_v1 & { error?: string };
+  if (!response.ok) throw new Error(body.error ?? 'SUBACCOUNTS_UNAVAILABLE');
+  return body;
+}
 
 /**
- * Wallet control in the top bar: connect Petra, pick the subaccount, confirm. The bot key
- * (agent) and its gas stay behind the Confirm step.
+ * Wallet control in the top bar: connect Petra, pick the subaccount, confirm with one Petra
+ * signature. The connection is restored on reload without a popup.
  */
 export const WalletMenu = () => {
-  const [status, setStatus] = useState<wallet_status_v1 | null>(null);
   const [connected, setConnected] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<wallet_subaccounts_v1 | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -65,21 +72,39 @@ export const WalletMenu = () => {
   const [open, setOpen] = useState(false);
   const Root = useRef<HTMLDivElement | null>(null);
 
-  const refresh = useCallback(async () => {
-    try {
-      const response = await fetch('/api/wallet');
-      if (response.ok) setStatus((await response.json()) as wallet_status_v1);
-      const session = await fetch('/api/auth/session');
-      if (session.ok) setSignedIn(((await session.json()) as { mode?: string }).mode === 'wallet');
-    } catch {
-      // The menu keeps its last state; the next refresh retries.
-    }
+  const load = useCallback(async (owner: string) => {
+    const body = await readSubaccounts(owner);
+    setAccounts(body);
+    setSelected(
+      (current) =>
+        body.subaccounts.find((row) => row.address === current)?.address ??
+        body.subaccounts.find((row) => row.address === body.inUse)?.address ??
+        body.subaccounts[0]?.address ??
+        null,
+    );
+    return body;
   }, []);
+
+  // Restore an existing Petra connection after a reload (no popup).
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+    let cancelled = false;
+    void (async () => {
+      const wallet = await waitForPetraWalletV1();
+      const address = normalizeWalletAddressV1(await wallet?.account());
+      if (cancelled || address === null) return;
+      setConnected(address);
+      await load(address).catch(() => undefined);
+    })();
+    void fetch('/api/auth/session')
+      .then(async (response) => {
+        if (response.ok)
+          setSignedIn(((await response.json()) as { mode?: string }).mode === 'wallet');
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
   useEffect(() => {
     if (!open) return;
     const closeOnOutsideClick = (event: MouseEvent) => {
@@ -103,7 +128,6 @@ export const WalletMenu = () => {
     void action()
       .then((done) => {
         if (done) setMessage(done);
-        window.setTimeout(() => void refresh(), 4_000);
       })
       .catch((error: unknown) =>
         setMessage(
@@ -112,72 +136,80 @@ export const WalletMenu = () => {
       )
       .finally(() => setBusy(false));
   };
+  const sign = async (payload: wallet_payload_v1 | null | undefined) => {
+    if (!payload) return;
+    const wallet = await waitForPetraWalletV1();
+    if (wallet === null) throw new Error('PETRA_NOT_INSTALLED');
+    await wallet.signAndSubmit(payload);
+  };
   const connect = () =>
     run(async () => {
-      const wallet = findPetraWalletV1();
+      const wallet = await waitForPetraWalletV1();
       if (wallet === null) throw new Error('PETRA_NOT_INSTALLED');
       const address = normalizeWalletAddressV1((await wallet.connect()).address);
       if (address === null) throw new Error('WALLET_ADDRESS_INVALID');
       setConnected(address);
       setOpen(true);
-      const response = await fetch(`/api/wallet/subaccounts?owner=${address}`);
-      const body = (await response.json()) as wallet_subaccounts_v1 & { error?: string };
-      if (!response.ok) throw new Error(body.error ?? 'SUBACCOUNTS_UNAVAILABLE');
-      setAccounts(body);
-      const inUse = body.subaccounts.find((row) => row.address === body.inUse);
-      setSelected(inUse?.address ?? body.subaccounts[0]?.address ?? null);
+      await load(address);
     });
-  const submit = async (payload: wallet_payload_v1 | undefined) => {
-    if (!payload) throw new Error('WALLET_PAYLOAD_UNAVAILABLE');
-    const wallet = findPetraWalletV1();
-    if (wallet === null) throw new Error('PETRA_NOT_INSTALLED');
-    return wallet.signAndSubmit(payload);
+  /** Runs the bot on `subaccount`; the bot restarts itself and the page reloads after. */
+  const switchTo = async (owner: string, subaccount: string) => {
+    const result = await postJson<{ status: string }>('/api/wallet/subaccount', {
+      owner,
+      subaccount,
+    });
+    if (result.status !== 'SWITCHING') return 'Confirmed. The bot can trade this subaccount.';
+    setMessage('Switching subaccount. The bot restarts; this page reloads when it is back.');
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      const back = await readSubaccounts(owner).catch(() => null);
+      if (back?.inUse === subaccount) window.location.reload();
+    }
   };
   const confirm = () =>
     run(async () => {
-      if (connected !== normalizeWalletAddressV1(status?.ownerAddress))
-        throw new Error('CONNECTED_WALLET_IS_NOT_THE_SUBACCOUNT_OWNER');
-      let current = status;
-      if (current?.agent == null) {
-        const response = await fetch('/api/wallet/agent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        });
-        const body = (await response.json()) as wallet_status_v1 & { error?: string };
-        if (!response.ok) throw new Error(body.error ?? 'AGENT_CREATE_FAILED');
-        current = body;
-        setStatus(body);
-      }
-      await submit(current.payloads?.delegate);
-      if ((current.agent?.aptBalanceOctas ?? 0) < MINIMUM_AGENT_GAS_OCTAS_V1)
-        await submit(current.payloads?.gasTopUp);
-      return 'Confirmed. The bot can trade this subaccount.';
+      if (connected === null || selected === null) return;
+      const { payloads } = await postJson<{
+        payloads: Record<'delegate' | 'revoke' | 'gasTopUp', wallet_payload_v1 | null>;
+      }>('/api/wallet/prepare', { owner: connected, subaccount: selected });
+      await sign(payloads.delegate);
+      await sign(payloads.gasTopUp);
+      await load(connected);
+      return switchTo(connected, selected);
     });
-  const choose = () =>
+  const use = () =>
     run(async () => {
-      const response = await fetch('/api/wallet/subaccount', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ owner: connected, subaccount: selected }),
-      });
-      const body = (await response.json()) as { status?: string; error?: string };
-      if (!response.ok) throw new Error(body.error ?? 'SUBACCOUNT_SELECTION_FAILED');
-      return 'Saved. Restart the bot to use this subaccount.';
+      if (connected !== null && selected !== null) return switchTo(connected, selected);
+    });
+  const revoke = () =>
+    run(async () => {
+      if (connected === null || selected === null) return;
+      const { payloads } = await postJson<{
+        payloads: Record<'revoke', wallet_payload_v1 | null>;
+      }>('/api/wallet/prepare', { owner: connected, subaccount: selected });
+      await sign(payloads.revoke);
+      await load(connected);
+      return 'Bot access revoked.';
     });
 
-  const authorized =
-    status?.delegation?.status === 'ACTIVE' || status?.delegation?.status === 'EXPIRING_SOON';
+  const inUseRow = accounts?.subaccounts.find((row) => row.address === accounts.inUse);
+  const selectedRow = accounts?.subaccounts.find((row) => row.address === selected);
+  const selectedAuthorized = isAuthorizedV1(selectedRow?.authorization);
   const selectedInUse = selected !== null && selected === accounts?.inUse;
   const expiry =
-    status?.delegation?.expiresAtMs == null
+    selectedRow?.authorization?.expiresAtMs == null
       ? null
-      : new Date(status.delegation.expiresAtMs).toISOString().slice(0, 10);
+      : new Date(selectedRow.authorization.expiresAtMs).toISOString().slice(0, 10);
+  const action = !selectedAuthorized
+    ? { label: 'CONFIRM', run: confirm }
+    : !selectedInUse
+      ? { label: 'USE THIS SUBACCOUNT', run: use }
+      : { label: 'RENEW', run: confirm };
   return (
     <div className="wallet-menu" ref={Root}>
       <button
         type="button"
-        className={`wallet-control ${connected !== null && authorized ? 'authorized' : ''}`}
+        className={`wallet-control ${isAuthorizedV1(inUseRow?.authorization) ? 'authorized' : ''}`}
         aria-label="Wallet"
         aria-expanded={open}
         disabled={busy && connected === null}
@@ -185,10 +217,10 @@ export const WalletMenu = () => {
       >
         {connected === null ? (busy ? 'CONNECTING…' : 'CONNECT WALLET') : shortAddressV1(connected)}
       </button>
-      {open && (
+      {open && connected !== null && (
         <div className="wallet-dropdown" role="dialog" aria-label="Wallet">
           <div className="wallet-head">
-            <strong title={connected ?? undefined}>{shortAddressV1(connected)}</strong>
+            <strong title={connected}>{shortAddressV1(connected)}</strong>
             <button
               type="button"
               className="wallet-link"
@@ -203,11 +235,11 @@ export const WalletMenu = () => {
               DISCONNECT
             </button>
           </div>
-          {accounts !== null && !accounts.whitelisted ? (
+          {accounts === null ? null : !accounts.whitelisted ? (
             <p className="wallet-note">{describeWalletErrorV1('WALLET_NOT_WHITELISTED')}</p>
-          ) : accounts !== null && accounts.subaccounts.length === 0 ? (
+          ) : accounts.subaccounts.length === 0 ? (
             <p className="wallet-note">No Decibel subaccount on this wallet.</p>
-          ) : accounts !== null ? (
+          ) : (
             <>
               <div className="wallet-subaccounts" role="radiogroup" aria-label="Subaccount">
                 {accounts.subaccounts.map((row) => (
@@ -220,49 +252,33 @@ export const WalletMenu = () => {
                     />
                     <span>{row.label ?? (row.isPrimary ? 'Primary' : 'Subaccount')}</span>
                     <code title={row.address}>{shortAddressV1(row.address)}</code>
-                    {row.address === accounts.inUse && <em>IN USE</em>}
+                    {row.address === accounts.inUse ? (
+                      <em>IN USE</em>
+                    ) : isAuthorizedV1(row.authorization) ? (
+                      <em className="positive">READY</em>
+                    ) : (
+                      <em />
+                    )}
                   </label>
                 ))}
               </div>
-              {selectedInUse && (
-                <p className={`wallet-state ${authorized ? 'positive' : 'warning'}`}>
-                  {authorized
-                    ? `Bot authorized${expiry ? ` until ${expiry}` : ''}`
-                    : 'Bot not authorized yet'}
-                </p>
-              )}
+              <p className={`wallet-state ${selectedAuthorized ? 'positive' : 'warning'}`}>
+                {selectedAuthorized
+                  ? `Bot authorized${expiry ? ` until ${expiry}` : ''}`
+                  : 'Bot not authorized on this subaccount'}
+              </p>
               <div className="wallet-actions">
-                <button
-                  type="button"
-                  disabled={busy || selected === null}
-                  onClick={selectedInUse ? confirm : choose}
-                >
-                  {busy
-                    ? 'WAITING…'
-                    : selectedInUse
-                      ? authorized
-                        ? 'RENEW'
-                        : 'CONFIRM'
-                      : 'USE THIS SUBACCOUNT'}
+                <button type="button" disabled={busy || selected === null} onClick={action.run}>
+                  {busy ? 'WAITING FOR PETRA…' : action.label}
                 </button>
-                {selectedInUse && authorized && (
-                  <button
-                    type="button"
-                    className="wallet-link"
-                    disabled={busy}
-                    onClick={() =>
-                      run(async () => {
-                        await submit(status?.payloads?.revoke);
-                        return 'Bot access revoked.';
-                      })
-                    }
-                  >
+                {selectedAuthorized && (
+                  <button type="button" className="wallet-link" disabled={busy} onClick={revoke}>
                     REVOKE
                   </button>
                 )}
               </div>
             </>
-          ) : null}
+          )}
           {signedIn && (
             <button
               type="button"

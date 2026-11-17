@@ -77,26 +77,39 @@ if (mode !== undefined) {
     '--config',
     'web_dashboard/vite.config.ts',
   ]);
-  const Child = spawn(Node22, ['--import', 'tsx', Launcher], {
-    cwd: ProjectRoot,
-    env: process.env,
-    stdio: 'inherit',
-    windowsHide: true,
-  });
+  // Exit code 75: the operator picked another subaccount in the wallet menu while idle; start
+  // the launcher again so it runs on that subaccount (no manual restart).
+  const SUBACCOUNT_SWITCH_EXIT_CODE = 75;
   let stopping = false;
+  /** @type {import('node:child_process').ChildProcess | null} */
+  let Child = null;
+  function startLauncher() {
+    Child = spawn(Node22, ['--import', 'tsx', Launcher], {
+      cwd: ProjectRoot,
+      env: process.env,
+      stdio: 'inherit',
+      windowsHide: true,
+    });
+    Child.once('error', () => {
+      console.error('PRODUCTION_LAUNCHER_START_FAILED');
+      process.exitCode = 1;
+    });
+    Child.once('exit', (code) => {
+      if (code === SUBACCOUNT_SWITCH_EXIT_CODE && !stopping) {
+        console.log('PRODUCTION_SUBACCOUNT_SWITCH=RELAUNCHING');
+        startLauncher();
+        return;
+      }
+      process.exitCode = code ?? 1;
+    });
+  }
   /** @param {NodeJS.Signals} signal */
   function forwardSignal(signal) {
     if (stopping) return;
     stopping = true;
-    Child.kill(signal);
+    Child?.kill(signal);
   }
   process.once('SIGINT', () => forwardSignal('SIGINT'));
   process.once('SIGTERM', () => forwardSignal('SIGTERM'));
-  Child.once('error', () => {
-    console.error('PRODUCTION_LAUNCHER_START_FAILED');
-    process.exitCode = 1;
-  });
-  Child.once('exit', (code) => {
-    process.exitCode = code ?? 1;
-  });
+  startLauncher();
 }

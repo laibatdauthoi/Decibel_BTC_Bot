@@ -9,7 +9,10 @@ import {
   type decibel_dashboard_auth_v1,
 } from './decibel_dashboard_auth_v1.js';
 import { readDecibelDelegationsV1 } from './decibel_agent_delegation_v1.js';
-import { generateDecibelAgentKeyV1 } from './decibel_agent_keystore_v1.js';
+import {
+  generateDecibelAgentKeyV1,
+  resolveDecibelKeystoreSecretV1,
+} from './decibel_agent_keystore_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
 import {
   handleDecibelWalletRequestV1,
@@ -110,6 +113,11 @@ export type decibel_production_web_route_context_v1 = Readonly<{
   /** Wallet sign-in; null when DECIBEL_DASHBOARD_AUTH=off. */
   auth: decibel_dashboard_auth_v1 | null;
   secureCookie: boolean;
+  /** Switch the runtime to the subaccount chosen in the wallet menu (relaunch when idle). */
+  subaccountSwitch: Readonly<{
+    canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'DISABLED';
+    switchNow: () => void;
+  }>;
 }>;
 
 export function handleDecibelProductionWebRequestV1(
@@ -400,6 +408,10 @@ export function handleDecibelProductionWebRequestV1(
               return false;
             }
           },
+          keystoreSecret: () =>
+            resolveDecibelKeystoreSecretV1(context.environment, { create: true }) ?? '',
+          canSwitch: context.subaccountSwitch.canSwitch,
+          switchNow: context.subaccountSwitch.switchNow,
         },
         { query: new URL(request.url ?? '/', 'http://localhost').searchParams, body },
       );

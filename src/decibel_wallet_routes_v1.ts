@@ -1,17 +1,17 @@
 /**
- * Dashboard wallet routes (added 2026-11-17): agent key status, agent creation and the Petra
- * payloads for delegation, gas top-up and revocation. The server never signs for the owner;
- * Petra signs those transactions in the browser.
+ * Dashboard wallet routes (added 2026-11-17). The connected Petra wallet is the identity:
+ * the server lists its subaccounts, prepares the transactions Petra signs, and switches the
+ * runtime to the chosen subaccount. The server never signs for the owner.
  *
- *   GET  /api/wallet                     status and payloads
- *   POST /api/wallet/agent               create the agent key once (needs DECIBEL_KEYSTORE_SECRET)
- *   GET  /api/wallet/subaccounts?owner=  subaccounts of a connected, whitelisted wallet
- *   POST /api/wallet/subaccount          choose the subaccount for the next start
+ *   GET  /api/wallet/subaccounts?owner=  subaccounts with bot authorization (whitelisted only)
+ *   POST /api/wallet/prepare             bot key (created once, automatically) + Petra payloads
+ *   POST /api/wallet/subaccount          run the bot on this subaccount (switches when idle)
  */
 import { z } from 'zod';
 import {
   createDecibelAgentKeystoreV1,
   readDecibelAgentKeystoreV1,
+  resolveDecibelAgentKeystorePathV1,
   type decibel_agent_key_material_v1,
 } from './decibel_agent_keystore_v1.js';
 import {
@@ -19,16 +19,18 @@ import {
   buildDecibelDelegationPayloadV1,
   buildDecibelGasTopUpPayloadV1,
   buildDecibelRevokePayloadV1,
-  DECIBEL_AGENT_DELEGATION_DAYS_V1,
   type decibel_agent_delegation_status_v1,
   type decibel_delegation_v1,
   type decibel_wallet_payload_v1,
 } from './decibel_agent_delegation_v1.js';
-import { resolveDecibelAgentKeystorePathFromEnvironmentV1 } from './decibel_executor_signer_v1.js';
 import {
   normalizeDecibelAddressV1,
+  resolveDecibelWalletPathsV1,
   writeDecibelSelectedSubaccountV1,
 } from './decibel_wallet_workspace_v1.js';
+
+/** Gas top-up is offered only when the bot key holds less than 0.1 APT. */
+export const DECIBEL_MINIMUM_AGENT_GAS_OCTAS_V1 = 10_000_000;
 
 export type decibel_wallet_subaccount_v1 = Readonly<{
   address: string;
@@ -43,34 +45,21 @@ export type decibel_wallet_route_dependencies_v1 = Readonly<{
   readDelegations: (subaccount: string) => Promise<readonly decibel_delegation_v1[]>;
   readAptBalanceOctas: (address: string) => Promise<number>;
   generateAgentKey: () => Promise<decibel_agent_key_material_v1>;
-  readSubaccounts?: (owner: string) => Promise<readonly decibel_wallet_subaccount_v1[]>;
-  readSubaccountOwner?: (subaccount: string) => Promise<string>;
-  isWhitelisted?: (owner: string) => boolean;
+  readSubaccounts: (owner: string) => Promise<readonly decibel_wallet_subaccount_v1[]>;
+  readSubaccountOwner: (subaccount: string) => Promise<string>;
+  isWhitelisted: (owner: string) => boolean;
+  /** Secret that encrypts bot keys; created automatically when not configured. */
+  keystoreSecret: () => string;
+  /** Whether the runtime may switch now, and the switch itself. */
+  canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'DISABLED';
+  switchNow: () => void;
+  dataRoot?: string;
   selectionPath?: string;
 }>;
 
-export type decibel_wallet_status_v1 = Readonly<{
-  ownerAddress: string | null;
-  subaccountAddress: string | null;
-  /** Signer the next session will use. */
-  signerMode: 'AGENT' | 'PRIVATE_KEY' | 'NONE';
-  keystoreSecretConfigured: boolean;
-  agent: Readonly<{
-    address: string;
-    createdAt: number;
-    aptBalanceOctas: number | null;
-  }> | null;
-  delegation: decibel_agent_delegation_status_v1 | null;
-  delegationError: string | null;
-  delegationDays: number;
-  payloads: Readonly<{
-    delegate: decibel_wallet_payload_v1;
-    revoke: decibel_wallet_payload_v1;
-    gasTopUp: decibel_wallet_payload_v1;
-  }> | null;
-}>;
+type route_result_v1 = Readonly<{ status: number; body: unknown }>;
 
-function optionalAddress(value: string | undefined): string | null {
+function optionalAddress(value: string | null | undefined): string | null {
   try {
     return value?.trim() ? normalizeDecibelAddressV1(value) : null;
   } catch {
@@ -78,144 +67,145 @@ function optionalAddress(value: string | undefined): string | null {
   }
 }
 
-export async function readDecibelWalletStatusV1(
-  dependencies: decibel_wallet_route_dependencies_v1,
-): Promise<decibel_wallet_status_v1> {
-  const environment = dependencies.environment;
-  const subaccountAddress = optionalAddress(environment.DECIBEL_SUBACCOUNT_ADDRESS);
-  const keystorePath = resolveDecibelAgentKeystorePathFromEnvironmentV1(environment);
-  const record = keystorePath === null ? null : readDecibelAgentKeystoreV1(keystorePath);
-  let delegation: decibel_agent_delegation_status_v1 | null = null;
-  let delegationError: string | null = null;
-  let aptBalanceOctas: number | null = null;
-  if (record !== null && subaccountAddress !== null) {
-    const [delegations, balance] = await Promise.allSettled([
-      dependencies.readDelegations(subaccountAddress),
-      dependencies.readAptBalanceOctas(record.address),
-    ]);
-    if (delegations.status === 'fulfilled')
-      delegation = assessDecibelAgentDelegationV1(
-        delegations.value,
-        record.address,
-        dependencies.now(),
-      );
-    else
-      delegationError =
-        delegations.reason instanceof Error
-          ? delegations.reason.message
-          : 'DELEGATIONS_UNAVAILABLE';
-    if (balance.status === 'fulfilled') aptBalanceOctas = balance.value;
-  }
-  return Object.freeze({
-    ownerAddress: optionalAddress(environment.DECIBEL_OWNER_ADDRESS),
-    subaccountAddress,
-    signerMode:
-      record !== null ? 'AGENT' : environment.DECIBEL_PRIVATE_KEY ? 'PRIVATE_KEY' : 'NONE',
-    keystoreSecretConfigured: (environment.DECIBEL_KEYSTORE_SECRET?.length ?? 0) >= 16,
-    agent:
-      record === null
-        ? null
-        : Object.freeze({ address: record.address, createdAt: record.createdAt, aptBalanceOctas }),
-    delegation,
-    delegationError,
-    delegationDays: DECIBEL_AGENT_DELEGATION_DAYS_V1,
-    payloads:
-      record === null || subaccountAddress === null
-        ? null
-        : Object.freeze({
-            delegate: buildDecibelDelegationPayloadV1({
-              packageAddress: dependencies.packageAddress,
-              subaccountAddress,
-              agentAddress: record.address,
-              now: dependencies.now(),
-            }),
-            revoke: buildDecibelRevokePayloadV1({
-              packageAddress: dependencies.packageAddress,
-              subaccountAddress,
-              agentAddress: record.address,
-            }),
-            gasTopUp: buildDecibelGasTopUpPayloadV1(record.address),
-          }),
-  });
+function errorCode(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : '';
+  return /^[A-Z_:0-9]+$/.test(message) ? message : fallback;
 }
+
+function keystorePathFor(owner: string, dependencies: decibel_wallet_route_dependencies_v1) {
+  return resolveDecibelAgentKeystorePathV1(
+    resolveDecibelWalletPathsV1(owner, dependencies.dataRoot).root,
+  );
+}
+
+/** Owner + subaccount from a POST body, proven: whitelisted and owned on-chain. */
+async function provenTarget(
+  body: unknown,
+  dependencies: decibel_wallet_route_dependencies_v1,
+): Promise<Readonly<{ owner: string; subaccount: string }> | route_result_v1> {
+  const parsed = z.object({ owner: z.string(), subaccount: z.string() }).safeParse(body);
+  const owner = parsed.success ? optionalAddress(parsed.data.owner) : null;
+  const subaccount = parsed.success ? optionalAddress(parsed.data.subaccount) : null;
+  if (owner === null || subaccount === null)
+    return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
+  if (!dependencies.isWhitelisted(owner))
+    return { status: 403, body: { error: 'WALLET_NOT_WHITELISTED' } };
+  let chainOwner: string;
+  try {
+    chainOwner = normalizeDecibelAddressV1(await dependencies.readSubaccountOwner(subaccount));
+  } catch {
+    return { status: 503, body: { error: 'SUBACCOUNT_OWNER_UNAVAILABLE' } };
+  }
+  if (chainOwner !== owner) return { status: 403, body: { error: 'SUBACCOUNT_NOT_OWNED' } };
+  return { owner, subaccount };
+}
+
+export type decibel_wallet_subaccounts_response_v1 = Readonly<{
+  owner: string;
+  whitelisted: boolean;
+  inUse: string | null;
+  subaccounts: readonly (decibel_wallet_subaccount_v1 &
+    Readonly<{ authorization: decibel_agent_delegation_status_v1 | null }>)[];
+}>;
 
 export async function handleDecibelWalletRequestV1(
   method: string,
   pathname: string,
   dependencies: decibel_wallet_route_dependencies_v1,
   input: Readonly<{ query?: URLSearchParams; body?: unknown }> = {},
-): Promise<Readonly<{ status: number; body: unknown }> | null> {
+): Promise<route_result_v1 | null> {
+  const inUse = optionalAddress(dependencies.environment.DECIBEL_SUBACCOUNT_ADDRESS);
   if (pathname === '/api/wallet/subaccounts') {
     if (method !== 'GET') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
-    const owner = optionalAddress(input.query?.get('owner') ?? undefined);
+    const owner = optionalAddress(input.query?.get('owner'));
     if (owner === null) return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
-    const inUse = optionalAddress(dependencies.environment.DECIBEL_SUBACCOUNT_ADDRESS);
-    if (!(dependencies.isWhitelisted?.(owner) ?? false))
+    if (!dependencies.isWhitelisted(owner))
       return { status: 200, body: { owner, whitelisted: false, inUse, subaccounts: [] } };
+    let subaccounts: readonly decibel_wallet_subaccount_v1[];
     try {
-      const subaccounts = (await dependencies.readSubaccounts?.(owner)) ?? [];
-      return { status: 200, body: { owner, whitelisted: true, inUse, subaccounts } };
+      subaccounts = await dependencies.readSubaccounts(owner);
     } catch {
       return { status: 503, body: { error: 'SUBACCOUNTS_UNAVAILABLE' } };
+    }
+    const agent = readDecibelAgentKeystoreV1(keystorePathFor(owner, dependencies));
+    const authorizations = await Promise.all(
+      subaccounts.map(async (row) => {
+        if (agent === null) return null;
+        try {
+          return assessDecibelAgentDelegationV1(
+            await dependencies.readDelegations(row.address),
+            agent.address,
+            dependencies.now(),
+          );
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const body: decibel_wallet_subaccounts_response_v1 = {
+      owner,
+      whitelisted: true,
+      inUse,
+      subaccounts: subaccounts.map((row, index) => ({
+        ...row,
+        authorization: authorizations[index] ?? null,
+      })),
+    };
+    return { status: 200, body };
+  }
+  if (pathname === '/api/wallet/prepare') {
+    if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
+    const target = await provenTarget(input.body, dependencies);
+    if ('status' in target) return target;
+    const path = keystorePathFor(target.owner, dependencies);
+    try {
+      let agent = readDecibelAgentKeystoreV1(path);
+      if (agent === null) {
+        const material = await dependencies.generateAgentKey();
+        agent = createDecibelAgentKeystoreV1(
+          path,
+          dependencies.keystoreSecret(),
+          () => material,
+          dependencies.now(),
+        );
+      }
+      const balance = await dependencies.readAptBalanceOctas(agent.address).catch(() => 0);
+      const base = {
+        packageAddress: dependencies.packageAddress,
+        subaccountAddress: target.subaccount,
+        agentAddress: agent.address,
+      };
+      const payloads: Record<'delegate' | 'revoke' | 'gasTopUp', decibel_wallet_payload_v1 | null> =
+        {
+          delegate: buildDecibelDelegationPayloadV1({ ...base, now: dependencies.now() }),
+          revoke: buildDecibelRevokePayloadV1(base),
+          gasTopUp:
+            balance < DECIBEL_MINIMUM_AGENT_GAS_OCTAS_V1
+              ? buildDecibelGasTopUpPayloadV1(agent.address)
+              : null,
+        };
+      return { status: 200, body: { payloads } };
+    } catch (error) {
+      return { status: 400, body: { error: errorCode(error, 'WALLET_PREPARE_FAILED') } };
     }
   }
   if (pathname === '/api/wallet/subaccount') {
     if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
-    const parsed = z.object({ owner: z.string(), subaccount: z.string() }).safeParse(input.body);
-    const owner = parsed.success ? optionalAddress(parsed.data.owner) : null;
-    const subaccount = parsed.success ? optionalAddress(parsed.data.subaccount) : null;
-    if (owner === null || subaccount === null)
-      return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
-    if (!(dependencies.isWhitelisted?.(owner) ?? false))
-      return { status: 403, body: { error: 'WALLET_NOT_WHITELISTED' } };
-    let chainOwner: string;
-    try {
-      chainOwner = normalizeDecibelAddressV1(
-        (await dependencies.readSubaccountOwner?.(subaccount)) ?? '',
-      );
-    } catch {
-      return { status: 503, body: { error: 'SUBACCOUNT_OWNER_UNAVAILABLE' } };
-    }
-    if (chainOwner !== owner) return { status: 403, body: { error: 'SUBACCOUNT_NOT_OWNED' } };
-    if (subaccount === optionalAddress(dependencies.environment.DECIBEL_SUBACCOUNT_ADDRESS))
-      return { status: 200, body: { status: 'IN_USE', subaccount } };
+    const target = await provenTarget(input.body, dependencies);
+    if ('status' in target) return target;
+    if (target.subaccount === inUse)
+      return { status: 200, body: { status: 'IN_USE', subaccount: target.subaccount } };
+    const allowed = dependencies.canSwitch();
+    if (allowed === 'SESSION_ACTIVE')
+      return { status: 409, body: { error: 'END_SESSION_BEFORE_SWITCHING' } };
+    if (allowed === 'DISABLED')
+      return { status: 409, body: { error: 'SUBACCOUNT_SWITCH_DISABLED' } };
     writeDecibelSelectedSubaccountV1(
-      { subaccount, owner, selectedAt: dependencies.now() },
+      { subaccount: target.subaccount, owner: target.owner, selectedAt: dependencies.now() },
       dependencies.selectionPath,
     );
-    return { status: 200, body: { status: 'RESTART_REQUIRED', subaccount } };
-  }
-  if (pathname === '/api/wallet') {
-    if (method !== 'GET') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
-    return { status: 200, body: await readDecibelWalletStatusV1(dependencies) };
-  }
-  if (pathname === '/api/wallet/agent') {
-    if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
-    const keystorePath = resolveDecibelAgentKeystorePathFromEnvironmentV1(dependencies.environment);
-    if (keystorePath === null) return { status: 409, body: { error: 'WALLET_OWNER_UNKNOWN' } };
-    try {
-      const material = await dependencies.generateAgentKey();
-      createDecibelAgentKeystoreV1(
-        keystorePath,
-        dependencies.environment.DECIBEL_KEYSTORE_SECRET,
-        () => material,
-        dependencies.now(),
-      );
-    } catch (error) {
-      const code = error instanceof Error ? error.message : 'AGENT_CREATE_FAILED';
-      return {
-        status: code === 'AGENT_KEYSTORE_EXISTS' ? 409 : 400,
-        body: {
-          error: z
-            .string()
-            .regex(/^[A-Z_]+$/)
-            .safeParse(code).success
-            ? code
-            : 'AGENT_CREATE_FAILED',
-        },
-      };
-    }
-    return { status: 201, body: await readDecibelWalletStatusV1(dependencies) };
+    dependencies.switchNow();
+    return { status: 200, body: { status: 'SWITCHING', subaccount: target.subaccount } };
   }
   return null;
 }

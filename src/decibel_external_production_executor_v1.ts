@@ -106,7 +106,6 @@ export function capDecibelProductionMaxGasAmountV1(value?: number): number {
 type decibel_production_executor_environment_v1 = Readonly<{
   DECIBEL_NETWORK?: string;
   DECIBEL_NODE_API_KEY?: string;
-  DECIBEL_PRIVATE_KEY?: string;
   DECIBEL_SUBACCOUNT_ADDRESS?: string;
 }> &
   decibel_executor_signer_environment_v1;
@@ -209,26 +208,18 @@ async function createWriteClient(
     { DecibelWriteDex, MAINNET_CONFIG },
   ] = await Promise.all([import('@aptos-labs/ts-sdk'), loadDecibelSdkRuntimeV1()]);
   // Agent key (delegated by the owner wallet) when one is set up, else the legacy key.
-  const SignerKey = await resolveDecibelExecutorSignerV1(
-    environment,
-    () =>
-      readDecibelDelegationsV1({
-        tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
-        subaccountAddress: subaccount,
-        apiKey: environment.DECIBEL_NODE_API_KEY,
-      }),
-    Date.now,
-    (privateKeyHex) =>
-      Account.fromPrivateKey({
-        privateKey: new Ed25519PrivateKey(privateKeyHex),
-      }).accountAddress.toStringLong(),
+  // The wallet's bot key, authorized in Petra; there is no private-key fallback.
+  const SignerKey = await resolveDecibelExecutorSignerV1(environment, () =>
+    readDecibelDelegationsV1({
+      tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
+      subaccountAddress: subaccount,
+      apiKey: environment.DECIBEL_NODE_API_KEY,
+    }),
   );
   const Signer = Account.fromPrivateKey({
     privateKey: new Ed25519PrivateKey(SignerKey.privateKeyHex),
   });
-  console.log(
-    `DECIBEL_EXECUTOR_SIGNER=${SignerKey.mode} ADDRESS=${Signer.accountAddress.toStringLong()}`,
-  );
+  console.log(`DECIBEL_EXECUTOR_SIGNER=BOT_KEY ADDRESS=${Signer.accountAddress.toStringLong()}`);
   class decibel_capped_gas_write_dex_v1 extends DecibelWriteDex {
     public latestTransactionHash: string | null = null;
     public latestExpirationTimestampMs: number | null = null;

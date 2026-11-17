@@ -138,3 +138,25 @@ export async function generateDecibelAgentKeyV1(): Promise<decibel_agent_key_mat
     address: Agent.accountAddress.toStringLong(),
   });
 }
+
+/** Bot-key secret file used when DECIBEL_KEYSTORE_SECRET is not set (data/ is gitignored). */
+export const DECIBEL_KEYSTORE_SECRET_PATH_V1 = 'data/keystore_secret_v1.key';
+
+/**
+ * Secret that encrypts bot keys: DECIBEL_KEYSTORE_SECRET when set (hosted servers), else a
+ * random secret kept in data/keystore_secret_v1.key, created on first use. Nothing to type.
+ */
+export function resolveDecibelKeystoreSecretV1(
+  environment: NodeJS.ProcessEnv,
+  options: Readonly<{ create: boolean }>,
+): string | undefined {
+  const configured = environment.DECIBEL_KEYSTORE_SECRET?.trim();
+  if (configured) return configured;
+  const path = environment.DECIBEL_KEYSTORE_SECRET_PATH?.trim() || DECIBEL_KEYSTORE_SECRET_PATH_V1;
+  if (existsSync(path)) return readFileSync(path, 'utf8').trim();
+  if (!options.create) return undefined;
+  const secret = randomBytes(32).toString('hex');
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${secret}\n`, { flag: 'wx', mode: 0o600 });
+  return secret;
+}

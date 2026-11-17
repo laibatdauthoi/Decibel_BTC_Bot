@@ -6,6 +6,7 @@ import {
   createDecibelAgentKeystoreV1,
   generateDecibelAgentKeyV1,
   readDecibelAgentKeystoreV1,
+  resolveDecibelKeystoreSecretV1,
   unlockDecibelAgentKeystoreV1,
 } from '../src/decibel_agent_keystore_v1.js';
 import {
@@ -16,10 +17,7 @@ import {
   readDecibelDelegationsV1,
 } from '../src/decibel_agent_delegation_v1.js';
 import { resolveDecibelExecutorSignerV1 } from '../src/decibel_executor_signer_v1.js';
-import {
-  handleDecibelWalletRequestV1,
-  readDecibelAptBalanceOctasV1,
-} from '../src/decibel_wallet_routes_v1.js';
+import { readDecibelAptBalanceOctasV1 } from '../src/decibel_wallet_routes_v1.js';
 
 const SECRET = 'correct horse battery staple';
 const AGENT = `0x${'aa'.repeat(32)}`;
@@ -166,123 +164,60 @@ describe('Agent delegation', () => {
 
 describe('Executor signer', () => {
   const now = () => 1_800_000_000_000;
+  const active = () =>
+    Promise.resolve([{ delegatedAccount: AGENT, permissionType: 'TRADING', expiresAtMs: null }]);
 
-  it('uses the legacy private key when no agent is set up', async () => {
-    const readDelegations = vi.fn(() => Promise.resolve([]));
-    await expect(
-      resolveDecibelExecutorSignerV1(
-        { DECIBEL_PRIVATE_KEY: material.privateKeyHex },
-        readDelegations,
-        now,
-      ),
-    ).resolves.toEqual({
-      mode: 'PRIVATE_KEY',
-      privateKeyHex: material.privateKeyHex,
-      agentAddress: null,
-    });
-    expect(readDelegations).not.toHaveBeenCalled();
-    await expect(resolveDecibelExecutorSignerV1({}, readDelegations, now)).rejects.toThrow(
-      'PRODUCTION_EXECUTOR_SIGNER_REQUIRED',
-    );
-  });
-
-  it('signs with the agent only while it is delegated, never falling back', async () => {
+  it('signs only with the bot key while the wallet authorization is active', async () => {
     const path = keystorePath();
     createDecibelAgentKeystoreV1(path, SECRET, () => material);
-    const environment = {
-      DECIBEL_AGENT_KEYSTORE_PATH: path,
-      DECIBEL_KEYSTORE_SECRET: SECRET,
-      DECIBEL_PRIVATE_KEY: `0x${'33'.repeat(32)}`,
-    };
-    const active = () =>
-      Promise.resolve([{ delegatedAccount: AGENT, permissionType: 'TRADING', expiresAtMs: null }]);
+    const environment = { DECIBEL_AGENT_KEYSTORE_PATH: path, DECIBEL_KEYSTORE_SECRET: SECRET };
     await expect(resolveDecibelExecutorSignerV1(environment, active, now)).resolves.toEqual({
-      mode: 'AGENT',
       privateKeyHex: material.privateKeyHex,
       agentAddress: AGENT,
     });
     await expect(
       resolveDecibelExecutorSignerV1(environment, () => Promise.resolve([]), now),
     ).rejects.toThrow('AGENT_DELEGATION_MISSING');
+  });
+
+  it('has no private-key fallback: no bot key means no session', async () => {
+    const readDelegations = vi.fn(active);
     await expect(
       resolveDecibelExecutorSignerV1(
-        { ...environment, DECIBEL_KEYSTORE_SECRET: undefined },
+        { DECIBEL_AGENT_KEYSTORE_PATH: keystorePath() },
+        readDelegations,
+        now,
+      ),
+    ).rejects.toThrow('BOT_NOT_AUTHORIZED_CONNECT_WALLET');
+    expect(readDelegations).not.toHaveBeenCalled();
+  });
+
+  it('unlocks with the local secret file when DECIBEL_KEYSTORE_SECRET is not set', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'agent-secret-'));
+    const secretPath = join(root, 'keystore_secret_v1.key');
+    const environment = { DECIBEL_KEYSTORE_SECRET_PATH: secretPath };
+    const secret = resolveDecibelKeystoreSecretV1(environment, { create: true })!;
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(resolveDecibelKeystoreSecretV1(environment, { create: false })).toBe(secret);
+    expect(
+      resolveDecibelKeystoreSecretV1(
+        { DECIBEL_KEYSTORE_SECRET_PATH: join(root, 'missing.key') },
+        { create: false },
+      ),
+    ).toBeUndefined();
+    const path = join(root, 'agent_key_v1.json');
+    createDecibelAgentKeystoreV1(path, secret, () => material);
+    await expect(
+      resolveDecibelExecutorSignerV1(
+        { ...environment, DECIBEL_AGENT_KEYSTORE_PATH: path },
         active,
         now,
       ),
-    ).rejects.toThrow('AGENT_KEYSTORE_SECRET_REQUIRED');
+    ).resolves.toMatchObject({ agentAddress: AGENT });
   });
 });
 
-describe('Wallet routes', () => {
-  const dependencies = (environment: NodeJS.ProcessEnv) => ({
-    environment,
-    packageAddress: PACKAGE,
-    now: () => 1_800_000_000_000,
-    readDelegations: vi.fn(() => Promise.resolve([])),
-    readAptBalanceOctas: vi.fn(() => Promise.resolve(12_345)),
-    generateAgentKey: vi.fn(() => Promise.resolve(material)),
-  });
-
-  it('reports the legacy signer and no payloads before an agent exists', async () => {
-    const result = await handleDecibelWalletRequestV1(
-      'GET',
-      '/api/wallet',
-      dependencies({
-        DECIBEL_PRIVATE_KEY: 'never-returned',
-        DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT,
-        DECIBEL_AGENT_KEYSTORE_PATH: keystorePath(),
-        DECIBEL_OWNER_ADDRESS: OWNER,
-      }),
-    );
-    expect(result?.status).toBe(200);
-    expect(result?.body).toMatchObject({
-      signerMode: 'PRIVATE_KEY',
-      agent: null,
-      payloads: null,
-      ownerAddress: OWNER,
-    });
-    expect(JSON.stringify(result?.body)).not.toContain('never-returned');
-  });
-
-  it('creates the agent once and returns the delegation payloads, never the key', async () => {
-    const environment = {
-      DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT,
-      DECIBEL_AGENT_KEYSTORE_PATH: keystorePath(),
-      DECIBEL_KEYSTORE_SECRET: SECRET,
-    };
-    const created = await handleDecibelWalletRequestV1(
-      'POST',
-      '/api/wallet/agent',
-      dependencies(environment),
-    );
-    expect(created?.status).toBe(201);
-    expect(created?.body).toMatchObject({
-      signerMode: 'AGENT',
-      agent: { address: AGENT, aptBalanceOctas: 12_345 },
-      delegation: { status: 'MISSING' },
-      payloads: { delegate: { functionArguments: [SUBACCOUNT, AGENT, expect.any(String)] } },
-    });
-    expect(JSON.stringify(created?.body)).not.toContain('11'.repeat(32));
-    const again = await handleDecibelWalletRequestV1(
-      'POST',
-      '/api/wallet/agent',
-      dependencies(environment),
-    );
-    expect(again).toEqual({ status: 409, body: { error: 'AGENT_KEYSTORE_EXISTS' } });
-    expect(
-      await handleDecibelWalletRequestV1(
-        'POST',
-        '/api/wallet/agent',
-        dependencies({
-          ...environment,
-          DECIBEL_AGENT_KEYSTORE_PATH: keystorePath(),
-          DECIBEL_KEYSTORE_SECRET: undefined,
-        }),
-      ),
-    ).toEqual({ status: 400, body: { error: 'AGENT_KEYSTORE_SECRET_REQUIRED' } });
-  });
-
+describe('APT balance', () => {
   it('reads the agent APT balance through the coin::balance view', async () => {
     const fetchImpl = vi.fn((url: string, init?: RequestInit) => {
       expect(url).toBe('https://node.example/v1/view');

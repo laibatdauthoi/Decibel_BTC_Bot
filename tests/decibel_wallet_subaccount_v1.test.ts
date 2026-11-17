@@ -1,27 +1,53 @@
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { resolveDecibelExecutorSignerV1 } from '../src/decibel_executor_signer_v1.js';
+import {
+  createDecibelAgentKeystoreV1,
+  resolveDecibelAgentKeystorePathV1,
+} from '../src/decibel_agent_keystore_v1.js';
 import {
   handleDecibelWalletRequestV1,
   readDecibelSubaccountsV1,
 } from '../src/decibel_wallet_routes_v1.js';
-import { readDecibelSelectedSubaccountV1 } from '../src/decibel_wallet_workspace_v1.js';
+import {
+  readDecibelSelectedSubaccountV1,
+  resolveDecibelWalletPathsV1,
+} from '../src/decibel_wallet_workspace_v1.js';
 
 const OWNER = `0x${'aa'.repeat(32)}`;
 const OTHER = `0x${'bb'.repeat(32)}`;
+const AGENT = `0x${'cc'.repeat(32)}`;
 const IN_USE = `0x${'01'.repeat(32)}`;
 const SECOND = `0x${'02'.repeat(32)}`;
+const SECRET = 'correct horse battery staple';
+const material = {
+  privateKeyHex: `0x${'11'.repeat(32)}`,
+  publicKeyHex: `0x${'22'.repeat(32)}`,
+  address: AGENT,
+};
 
-function dependencies(selectionPath: string, owners: Record<string, string> = {}) {
-  return {
+function setup(
+  options: { canSwitch?: 'OK' | 'SESSION_ACTIVE' | 'DISABLED'; balance?: number } = {},
+) {
+  const root = mkdtempSync(join(tmpdir(), 'wallet-routes-'));
+  const dataRoot = join(root, 'wallets');
+  const selectionPath = join(root, 'selected.json');
+  const switchNow = vi.fn();
+  const generateAgentKey = vi.fn(() => Promise.resolve(material));
+  const owners: Record<string, string> = { [IN_USE]: OWNER, [SECOND]: OWNER };
+  const deps = {
     environment: { DECIBEL_SUBACCOUNT_ADDRESS: IN_USE } as NodeJS.ProcessEnv,
     packageAddress: `0x${'dd'.repeat(32)}`,
     now: () => 1_800_000_000_000,
-    readDelegations: () => Promise.resolve([]),
-    readAptBalanceOctas: () => Promise.resolve(0),
-    generateAgentKey: () => Promise.reject(new Error('UNUSED')),
+    readDelegations: (subaccount: string) =>
+      Promise.resolve(
+        subaccount === SECOND
+          ? [{ delegatedAccount: AGENT, permissionType: 'TRADING', expiresAtMs: null }]
+          : [],
+      ),
+    readAptBalanceOctas: () => Promise.resolve(options.balance ?? 0),
+    generateAgentKey,
     readSubaccounts: vi.fn(() =>
       Promise.resolve([
         { address: IN_USE, label: null, isPrimary: true },
@@ -30,67 +56,130 @@ function dependencies(selectionPath: string, owners: Record<string, string> = {}
     ),
     readSubaccountOwner: (subaccount: string) => Promise.resolve(owners[subaccount] ?? OTHER),
     isWhitelisted: (owner: string) => owner === OWNER,
+    keystoreSecret: () => SECRET,
+    canSwitch: () => options.canSwitch ?? 'OK',
+    switchNow,
+    dataRoot,
     selectionPath,
   };
+  const keystore = resolveDecibelAgentKeystorePathV1(
+    resolveDecibelWalletPathsV1(OWNER, dataRoot).root,
+  );
+  return { deps, switchNow, generateAgentKey, selectionPath, keystore };
 }
 
-describe('Wallet subaccount routes', () => {
-  it('lists the subaccounts of a whitelisted wallet and marks the one in use', async () => {
-    const deps = dependencies(join(mkdtempSync(join(tmpdir(), 'subaccount-')), 'selected.json'));
-    const result = await handleDecibelWalletRequestV1('GET', '/api/wallet/subaccounts', deps, {
-      query: new URLSearchParams({ owner: OWNER }),
+describe('Wallet subaccounts', () => {
+  it('lists a whitelisted wallet with the bot authorization of each subaccount', async () => {
+    const { deps, keystore } = setup();
+    const query = new URLSearchParams({ owner: OWNER });
+    const before = await handleDecibelWalletRequestV1('GET', '/api/wallet/subaccounts', deps, {
+      query,
     });
-    expect(result).toEqual({
-      status: 200,
-      body: {
-        owner: OWNER,
-        whitelisted: true,
-        inUse: IN_USE,
-        subaccounts: [
-          { address: IN_USE, label: null, isPrimary: true },
-          { address: SECOND, label: 'Farm', isPrimary: false },
-        ],
-      },
+    expect(before?.body).toMatchObject({
+      whitelisted: true,
+      inUse: IN_USE,
+      subaccounts: [{ authorization: null }, { authorization: null }],
+    });
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    const after = await handleDecibelWalletRequestV1('GET', '/api/wallet/subaccounts', deps, {
+      query,
+    });
+    expect(after?.body).toMatchObject({
+      subaccounts: [
+        { address: IN_USE, isPrimary: true, authorization: { status: 'MISSING' } },
+        { address: SECOND, label: 'Farm', authorization: { status: 'ACTIVE' } },
+      ],
     });
   });
 
-  it('shows nothing for a wallet that is not whitelisted', async () => {
-    const deps = dependencies(join(mkdtempSync(join(tmpdir(), 'subaccount-')), 'selected.json'));
+  it('shows nothing to a wallet that is not whitelisted', async () => {
+    const { deps } = setup();
     const result = await handleDecibelWalletRequestV1('GET', '/api/wallet/subaccounts', deps, {
       query: new URLSearchParams({ owner: OTHER }),
     });
     expect(result?.body).toMatchObject({ whitelisted: false, subaccounts: [] });
     expect(deps.readSubaccounts).not.toHaveBeenCalled();
   });
+});
 
-  it('saves another owned subaccount for the next start and refuses foreign ones', async () => {
-    const path = join(mkdtempSync(join(tmpdir(), 'subaccount-')), 'selected.json');
-    const deps = dependencies(path, { [SECOND]: OWNER, [IN_USE]: OWNER });
-    const choose = (owner: string, subaccount: string) =>
-      handleDecibelWalletRequestV1('POST', '/api/wallet/subaccount', deps, {
+describe('Wallet prepare', () => {
+  it('creates the bot key once, automatically, and returns only Petra payloads', async () => {
+    const { deps, generateAgentKey, keystore } = setup();
+    const prepare = () =>
+      handleDecibelWalletRequestV1('POST', '/api/wallet/prepare', deps, {
+        body: { owner: OWNER, subaccount: SECOND },
+      });
+    const first = await prepare();
+    expect(first?.status).toBe(200);
+    expect(first?.body).toMatchObject({
+      payloads: {
+        delegate: { functionArguments: [SECOND, AGENT, expect.any(String)] },
+        revoke: { functionArguments: [SECOND, AGENT] },
+        gasTopUp: { functionArguments: [AGENT, '50000000'] },
+      },
+    });
+    expect(JSON.stringify(first?.body)).not.toContain('11'.repeat(32));
+    expect(existsSync(keystore)).toBe(true);
+    await prepare();
+    expect(generateAgentKey).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the gas top-up when the bot key already has gas', async () => {
+    const { deps } = setup({ balance: 20_000_000 });
+    const result = await handleDecibelWalletRequestV1('POST', '/api/wallet/prepare', deps, {
+      body: { owner: OWNER, subaccount: IN_USE },
+    });
+    expect(result?.body).toMatchObject({ payloads: { gasTopUp: null } });
+  });
+
+  it('refuses foreign subaccounts and wallets outside the whitelist', async () => {
+    const { deps } = setup();
+    const prepare = (owner: string, subaccount: string) =>
+      handleDecibelWalletRequestV1('POST', '/api/wallet/prepare', deps, {
         body: { owner, subaccount },
       });
-    expect(await choose(OWNER, IN_USE)).toEqual({
+    expect((await prepare(OWNER, `0x${'03'.repeat(32)}`))?.body).toEqual({
+      error: 'SUBACCOUNT_NOT_OWNED',
+    });
+    expect((await prepare(OTHER, SECOND))?.body).toEqual({ error: 'WALLET_NOT_WHITELISTED' });
+  });
+});
+
+describe('Wallet subaccount switch', () => {
+  const choose = (deps: ReturnType<typeof setup>['deps'], subaccount: string) =>
+    handleDecibelWalletRequestV1('POST', '/api/wallet/subaccount', deps, {
+      body: { owner: OWNER, subaccount },
+    });
+
+  it('switches the idle runtime to another subaccount without a manual restart', async () => {
+    const { deps, switchNow, selectionPath } = setup();
+    expect(await choose(deps, IN_USE)).toEqual({
       status: 200,
       body: { status: 'IN_USE', subaccount: IN_USE },
     });
-    expect(existsSync(path)).toBe(false);
-    expect(await choose(OWNER, SECOND)).toEqual({
+    expect(switchNow).not.toHaveBeenCalled();
+    expect(await choose(deps, SECOND)).toEqual({
       status: 200,
-      body: { status: 'RESTART_REQUIRED', subaccount: SECOND },
+      body: { status: 'SWITCHING', subaccount: SECOND },
     });
-    expect(readDecibelSelectedSubaccountV1(path)).toEqual({
+    expect(switchNow).toHaveBeenCalledTimes(1);
+    expect(readDecibelSelectedSubaccountV1(selectionPath)).toMatchObject({
       subaccount: SECOND,
       owner: OWNER,
-      selectedAt: 1_800_000_000_000,
     });
-    expect((await choose(OWNER, `0x${'03'.repeat(32)}`))?.body).toEqual({
-      error: 'SUBACCOUNT_NOT_OWNED',
-    });
-    expect((await choose(OTHER, SECOND))?.body).toEqual({ error: 'WALLET_NOT_WHITELISTED' });
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toMatchObject({ subaccount: SECOND });
   });
 
+  it('never switches during a session or in multi-wallet mode', async () => {
+    for (const canSwitch of ['SESSION_ACTIVE', 'DISABLED'] as const) {
+      const { deps, switchNow, selectionPath } = setup({ canSwitch });
+      expect((await choose(deps, SECOND))?.status).toBe(409);
+      expect(switchNow).not.toHaveBeenCalled();
+      expect(existsSync(selectionPath)).toBe(false);
+    }
+  });
+});
+
+describe('Subaccount listing', () => {
   it('reads active subaccounts from the Decibel API', async () => {
     const fetchImpl = vi.fn((url: string) => {
       expect(url).toBe(`https://api.example/decibel/api/v1/subaccounts?owner=${OWNER}`);
@@ -121,43 +210,5 @@ describe('Wallet subaccount routes', () => {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).resolves.toEqual([{ address: IN_USE, label: null, isPrimary: true }]);
-  });
-});
-
-describe('Legacy private key on a chosen subaccount', () => {
-  const key = `0x${'11'.repeat(32)}`;
-  const environment = { DECIBEL_PRIVATE_KEY: key, DECIBEL_OWNER_ADDRESS: OWNER };
-
-  it('signs when the key is the owner or an active delegate', async () => {
-    await expect(
-      resolveDecibelExecutorSignerV1(
-        environment,
-        () => Promise.resolve([]),
-        Date.now,
-        () => OWNER,
-      ),
-    ).resolves.toMatchObject({ mode: 'PRIVATE_KEY' });
-    await expect(
-      resolveDecibelExecutorSignerV1(
-        environment,
-        () =>
-          Promise.resolve([
-            { delegatedAccount: OTHER, permissionType: 'TRADING', expiresAtMs: null },
-          ]),
-        Date.now,
-        () => OTHER,
-      ),
-    ).resolves.toMatchObject({ mode: 'PRIVATE_KEY' });
-  });
-
-  it('refuses a key that cannot trade the subaccount', async () => {
-    await expect(
-      resolveDecibelExecutorSignerV1(
-        environment,
-        () => Promise.resolve([]),
-        Date.now,
-        () => OTHER,
-      ),
-    ).rejects.toThrow('PRIVATE_KEY_NOT_AUTHORIZED_FOR_SUBACCOUNT');
   });
 });

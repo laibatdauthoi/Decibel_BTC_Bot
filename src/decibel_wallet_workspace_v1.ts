@@ -356,17 +356,28 @@ export async function prepareDecibelWalletWorkspaceV1(
     now?: () => number;
     legacyManifestPath?: string;
     selectionPath?: string;
+    readSubaccounts?: (
+      owner: string,
+    ) => Promise<readonly Readonly<{ address: string; isPrimary: boolean }>[]>;
   }>,
 ): Promise<decibel_wallet_workspace_v1> {
   const selected =
     environment.DECIBEL_SUBACCOUNT_SELECTION === 'off'
       ? null
       : readDecibelSelectedSubaccountV1(dependencies.selectionPath);
-  const subaccount = selected?.subaccount ?? environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
-  if (!subaccount) throw new Error('WALLET_SUBACCOUNT_REQUIRED');
   const whitelist = loadDecibelWalletWhitelistV1(
     dependencies.whitelistPath ?? DECIBEL_WALLET_WHITELIST_PATH_V1,
   );
+  // Subaccount: the one picked in the wallet menu, else DECIBEL_SUBACCOUNT_ADDRESS, else the
+  // primary subaccount of the first whitelisted wallet (no account setting needed at all).
+  let subaccount = selected?.subaccount ?? environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
+  if (!subaccount && dependencies.readSubaccounts !== undefined)
+    for (const owner of whitelist) {
+      const rows = await dependencies.readSubaccounts(owner).catch(() => []);
+      subaccount = (rows.find((row) => row.isPrimary) ?? rows[0])?.address;
+      if (subaccount) break;
+    }
+  if (!subaccount) throw new Error('WALLET_SUBACCOUNT_REQUIRED');
   const readOwner = dependencies.readOwner ?? readDecibelSubaccountOwnerV1;
   const attempts = dependencies.attempts ?? 3;
   let ownerAddress: string | null = null;
@@ -458,6 +469,9 @@ export function resolveDecibelToolPathV1(
  * over DECIBEL_SUBACCOUNT_ADDRESS on the next start; the multi-wallet supervisor turns it off.
  */
 export const DECIBEL_SUBACCOUNT_SELECTION_PATH_V1 = 'data/selected_subaccount_v1.json';
+
+/** Runtime exit code that asks the bootstrap to relaunch on the selected subaccount. */
+export const DECIBEL_SUBACCOUNT_SWITCH_EXIT_CODE_V1 = 75;
 
 const SelectionSchema = z.object({
   subaccount: z.string(),

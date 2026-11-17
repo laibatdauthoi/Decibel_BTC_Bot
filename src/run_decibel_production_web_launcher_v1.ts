@@ -25,6 +25,7 @@ import {
   loadDecibelPersistedExecutionModeV1,
 } from './decibel_persisted_execution_mode_v1.js';
 import { prepareDecibelWalletWorkspaceV1 } from './decibel_wallet_workspace_v1.js';
+import { readDecibelSubaccountsV1 } from './decibel_wallet_routes_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
 
 const Secrets = collectDecibelSecretValuesV1(process.env);
@@ -34,8 +35,15 @@ const StderrRedactor = new decibel_line_redactor_v1(Secrets);
 const launcherStartedAt = Date.now();
 const instanceId = `${process.pid}-${launcherStartedAt}`;
 // Per-wallet workspace: whitelist check and the one-time move of the legacy files.
+const { MAINNET_CONFIG } = await loadDecibelSdkRuntimeV1();
 const Workspace = await prepareDecibelWalletWorkspaceV1(process.env, {
-  fullnodeUrl: (await loadDecibelSdkRuntimeV1()).MAINNET_CONFIG.fullnodeUrl,
+  fullnodeUrl: MAINNET_CONFIG.fullnodeUrl,
+  readSubaccounts: (owner) =>
+    readDecibelSubaccountsV1({
+      tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
+      owner,
+      apiKey: process.env.DECIBEL_NODE_API_KEY,
+    }),
 });
 console.log(
   `DECIBEL_WALLET_WORKSPACE=READY OWNER=${Workspace.ownerAddress} MIGRATION=${Workspace.migration.status}${

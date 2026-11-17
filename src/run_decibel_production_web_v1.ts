@@ -56,6 +56,7 @@ import {
 import { emitDecibelControlLoopLogV1 } from './decibel_control_loop_log_v1.js';
 import { createDecibelDashboardAuthFromEnvironmentV1 } from './decibel_dashboard_auth_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
+import { DECIBEL_SUBACCOUNT_SWITCH_EXIT_CODE_V1 } from './decibel_wallet_workspace_v1.js';
 import {
   handleDecibelProductionWebRequestV1,
   type authenticated_account_state,
@@ -1813,6 +1814,22 @@ export async function runDecibelProductionWebV1(
         getTelemetry: () => telemetry,
         auth: DashboardAuth,
         secureCookie: environment.DECIBEL_DASHBOARD_COOKIE_SECURE === 'true',
+        subaccountSwitch: {
+          canSwitch: () =>
+            environment.DECIBEL_SUBACCOUNT_SELECTION === 'off'
+              ? 'DISABLED'
+              : SessionController.getState().activeSession !== null
+                ? 'SESSION_ACTIVE'
+                : 'OK',
+          // Exit code 75 asks the bootstrap to relaunch on the newly selected subaccount.
+          switchNow: () => {
+            setTimeout(() => {
+              console.log('DECIBEL_PRODUCTION_WEB=SUBACCOUNT_SWITCH RELAUNCH=REQUESTED');
+              process.exitCode = DECIBEL_SUBACCOUNT_SWITCH_EXIT_CODE_V1;
+              stop();
+            }, 300);
+          },
+        },
       },
       request,
       response,
