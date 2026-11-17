@@ -11,6 +11,7 @@ import {
   normalizeDecibelAddressV1,
   prepareDecibelWalletWorkspaceV1,
   readDecibelSubaccountOwnerV1,
+  resolveDecibelOwnerRootV1,
   resolveDecibelToolPathV1,
   resolveDecibelWalletPathsV1,
   type decibel_legacy_paths_v1,
@@ -97,12 +98,19 @@ describe('Wallet addresses and whitelist', () => {
     );
   });
 
-  it('keeps one workspace per owner and lets explicit .env paths win', () => {
-    const paths = resolveDecibelWalletPathsV1(OWNER, 'data/wallets');
+  it('keeps one workspace per wallet and subaccount and lets explicit .env paths win', () => {
+    const paths = resolveDecibelWalletPathsV1(OWNER, SUBACCOUNT, 'data/wallets');
     expect(paths.sessionStore).toBe(
-      join('data/wallets', OWNER, 'decibel_production_sessions_v1.sqlite'),
+      join('data/wallets', OWNER, SUBACCOUNT, 'decibel_production_sessions_v1.sqlite'),
     );
-    expect(resolveDecibelWalletPathsV1(OTHER, 'data/wallets').root).not.toBe(paths.root);
+    expect(resolveDecibelOwnerRootV1(OWNER, 'data/wallets')).toBe(join('data/wallets', OWNER));
+    expect(resolveDecibelWalletPathsV1(OTHER, SUBACCOUNT, 'data/wallets').root).not.toBe(
+      paths.root,
+    );
+    // Two subaccounts of one wallet never share a journal.
+    expect(
+      resolveDecibelWalletPathsV1(OWNER, `0x${'34'.repeat(32)}`, 'data/wallets').executionJournal,
+    ).not.toBe(paths.executionJournal);
     const environment = buildDecibelWalletEnvironmentV1(
       { DECIBEL_EXECUTION_JOURNAL_PATH: 'custom.sqlite' },
       OWNER,
@@ -156,7 +164,7 @@ describe('Legacy data migration', () => {
   it('moves the single-wallet files into the owner workspace and backs up small files', () => {
     const { legacy, dataRoot, backupRoot } = makeRoot();
     writeLegacy(legacy, 'ENDED');
-    const paths = resolveDecibelWalletPathsV1(OWNER, dataRoot);
+    const paths = resolveDecibelWalletPathsV1(OWNER, SUBACCOUNT, dataRoot);
     const result = migrateDecibelLegacyDataV1(paths, { legacy, backupRoot, now: 0 });
     expect(result.status).toBe('MIGRATED');
     for (const key of Object.keys(legacy) as (keyof decibel_legacy_paths_v1)[]) {
@@ -179,7 +187,7 @@ describe('Legacy data migration', () => {
     (status) => {
       const { legacy, dataRoot, backupRoot } = makeRoot();
       writeLegacy(legacy, status);
-      const paths = resolveDecibelWalletPathsV1(OWNER, dataRoot);
+      const paths = resolveDecibelWalletPathsV1(OWNER, SUBACCOUNT, dataRoot);
       expect(migrateDecibelLegacyDataV1(paths, { legacy, backupRoot })).toMatchObject({
         status: 'SKIPPED_ACTIVE_SESSION',
       });
@@ -215,7 +223,7 @@ describe('Launcher workspace step', () => {
         selectionPath,
       },
     );
-    const paths = resolveDecibelWalletPathsV1(OWNER, dataRoot);
+    const paths = resolveDecibelWalletPathsV1(OWNER, SUBACCOUNT, dataRoot);
     expect(workspace.migration.status).toBe('MIGRATED');
     expect(workspace.pathEnvironment).toEqual({
       DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT,
@@ -291,7 +299,7 @@ describe('Per-wallet market data and activity baseline', () => {
   it('moves the BBO recording next to the wallet economic evidence', () => {
     const { legacy, dataRoot, backupRoot } = makeRoot();
     writeLegacy(legacy, 'ENDED');
-    const paths = resolveDecibelWalletPathsV1(OWNER, dataRoot);
+    const paths = resolveDecibelWalletPathsV1(OWNER, SUBACCOUNT, dataRoot);
     expect(migrateDecibelLegacyDataV1(paths, { legacy, backupRoot }).status).toBe('MIGRATED');
     expect(existsSync(paths.economicEvidence)).toBe(true);
     expect(readFileSync(join(paths.root, 'decibel_production_raw_ws_bbo_v1.jsonl'), 'utf8')).toBe(
@@ -324,7 +332,7 @@ describe('Per-wallet market data and activity baseline', () => {
     );
     expect(second.migration.status).toBe('NOT_NEEDED');
     expect(existsSync(fresh.legacy.executionJournal)).toBe(true);
-    const otherPaths = resolveDecibelWalletPathsV1(OTHER, fresh.dataRoot);
+    const otherPaths = resolveDecibelWalletPathsV1(OTHER, `0x${'34'.repeat(32)}`, fresh.dataRoot);
     expect(second.pathEnvironment.DECIBEL_ACTIVITY_BASELINE_PATH).toBe(otherPaths.activityBaseline);
     expect(second.pathEnvironment.DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_PATH).toBe(
       otherPaths.economicEvidence,
@@ -366,22 +374,67 @@ describe('Per-wallet market data and activity baseline', () => {
   });
 });
 
+describe('Owner-level layout of 2026-11-17', () => {
+  it('moves the first wallet files from data/wallets/<owner>/ into its subaccount directory', async () => {
+    const made = makeRoot();
+    const ownerRoot = resolveDecibelOwnerRootV1(OWNER, made.dataRoot);
+    const ownerLevel = {
+      executionJournal: join(ownerRoot, 'decibel_execution_v1.sqlite'),
+      sessionStore: join(ownerRoot, 'decibel_production_sessions_v1.sqlite'),
+      operatorSettings: join(ownerRoot, 'decibel_operator_settings_v1.json'),
+      restartSafety: join(ownerRoot, 'decibel_restart_safety_v1.json'),
+      forensics: join(ownerRoot, 'production_runtime'),
+      economicEvidence: join(ownerRoot, 'decibel_production_economic_inputs_v1.json'),
+      rawWsBbo: join(ownerRoot, 'decibel_production_raw_ws_bbo_v1.jsonl'),
+    };
+    mkdirSync(ownerLevel.forensics, { recursive: true });
+    writeLegacy(ownerLevel, 'ENDED');
+    const whitelistPath = join(made.root, 'allowed_wallets.json');
+    writeFileSync(whitelistPath, JSON.stringify({ wallets: [{ address: OWNER }] }));
+    const workspace = await prepareDecibelWalletWorkspaceV1(
+      { DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
+      {
+        fullnodeUrl: 'https://node.example/v1',
+        readOwner: () => Promise.resolve(OWNER),
+        whitelistPath,
+        dataRoot: made.dataRoot,
+        legacy: made.legacy,
+        backupRoot: made.backupRoot,
+        legacyManifestPath: made.legacyManifestPath,
+        selectionPath: made.selectionPath,
+      },
+    );
+    const paths = resolveDecibelWalletPathsV1(OWNER, SUBACCOUNT, made.dataRoot);
+    expect(workspace.migration.status).toBe('MIGRATED');
+    expect(workspace.pathEnvironment.DECIBEL_EXECUTION_JOURNAL_PATH).toBe(paths.executionJournal);
+    expect(existsSync(ownerLevel.executionJournal)).toBe(false);
+    const Journal = new Database(paths.executionJournal, { readonly: true });
+    expect(Journal.prepare('SELECT id FROM intents').get()).toEqual({ id: 'intent-1' });
+    Journal.close();
+    expect(existsSync(join(paths.root, 'decibel_production_raw_ws_bbo_v1.jsonl'))).toBe(true);
+  });
+});
+
 describe('Operator tool paths', () => {
   it('uses the named wallet, else the only workspace, else the legacy path', () => {
     const { dataRoot } = makeRoot();
     expect(resolveDecibelToolPathV1({}, 'executionJournal', dataRoot)).toBe(
       'data/decibel_execution_v1.sqlite',
     );
-    mkdirSync(join(dataRoot, OWNER), { recursive: true });
+    mkdirSync(join(dataRoot, OWNER, SUBACCOUNT), { recursive: true });
     expect(resolveDecibelToolPathV1({}, 'sessionStore', dataRoot)).toBe(
-      resolveDecibelWalletPathsV1(OWNER, dataRoot).sessionStore,
+      resolveDecibelWalletPathsV1(OWNER, SUBACCOUNT, dataRoot).sessionStore,
     );
-    mkdirSync(join(dataRoot, OTHER), { recursive: true });
+    mkdirSync(join(dataRoot, OTHER, SUBACCOUNT), { recursive: true });
     expect(() => resolveDecibelToolPathV1({}, 'sessionStore', dataRoot)).toThrow(
       'WALLET_OWNER_ADDRESS_REQUIRED',
     );
     expect(
-      resolveDecibelToolPathV1({ DECIBEL_OWNER_ADDRESS: OTHER }, 'sessionStore', dataRoot),
-    ).toBe(resolveDecibelWalletPathsV1(OTHER, dataRoot).sessionStore);
+      resolveDecibelToolPathV1(
+        { DECIBEL_OWNER_ADDRESS: OTHER, DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT },
+        'sessionStore',
+        dataRoot,
+      ),
+    ).toBe(resolveDecibelWalletPathsV1(OTHER, SUBACCOUNT, dataRoot).sessionStore);
   });
 });

@@ -82,11 +82,30 @@ export type decibel_wallet_paths_v1 = Readonly<{
   activityBaseline: string;
 }>;
 
-export function resolveDecibelWalletPathsV1(
+/** Wallet (owner) directory: bot key and dashboard sign-in sessions. */
+export function resolveDecibelOwnerRootV1(
   ownerAddress: string,
   dataRoot: string = DECIBEL_WALLET_DATA_ROOT_V1,
+): string {
+  return join(dataRoot, normalizeDecibelAddressV1(ownerAddress));
+}
+
+/** Trading state of one subaccount: data/wallets/<owner>/<subaccount>/. */
+export function resolveDecibelWalletPathsV1(
+  ownerAddress: string,
+  subaccountAddress: string,
+  dataRoot: string = DECIBEL_WALLET_DATA_ROOT_V1,
 ): decibel_wallet_paths_v1 {
-  const root = join(dataRoot, normalizeDecibelAddressV1(ownerAddress));
+  return resolveDecibelPathsAtRootV1(
+    join(
+      resolveDecibelOwnerRootV1(ownerAddress, dataRoot),
+      normalizeDecibelAddressV1(subaccountAddress),
+    ),
+  );
+}
+
+/** The per-subaccount file names under any directory. */
+export function resolveDecibelPathsAtRootV1(root: string): decibel_wallet_paths_v1 {
   return Object.freeze({
     root,
     executionJournal: join(root, 'decibel_execution_v1.sqlite'),
@@ -399,20 +418,48 @@ export async function prepareDecibelWalletWorkspaceV1(
   }
   if (ownerAddress === null) throw new Error('WALLET_OWNER_UNRESOLVED', { cause: lastError });
   assertDecibelWalletWhitelistedV1(whitelist, ownerAddress);
-  const paths = resolveDecibelWalletPathsV1(ownerAddress, dependencies.dataRoot);
-  const legacy = dependencies.legacy ?? DECIBEL_LEGACY_PATHS_V1;
+  const paths = resolveDecibelWalletPathsV1(ownerAddress, subaccount, dependencies.dataRoot);
   const isLegacyWallet =
     readDecibelLegacySubaccountV1(dependencies.legacyManifestPath) ===
     normalizeDecibelAddressV1(subaccount);
-  const migration: decibel_legacy_migration_result_v1 = isLegacyWallet
-    ? migrateDecibelLegacyDataV1(paths, {
-        legacy,
+  // The first wallet's files may sit in the single-wallet layout (legacy) or, from the
+  // 2026-11-17 owner-level layout, directly under data/wallets/<owner>/. Both move into the
+  // subaccount directory; only that wallet's own subaccount may take them.
+  const ownerLevel = resolveDecibelPathsAtRootV1(
+    resolveDecibelOwnerRootV1(ownerAddress, dependencies.dataRoot),
+  );
+  const sources: decibel_legacy_paths_v1[] = [
+    {
+      executionJournal: ownerLevel.executionJournal,
+      sessionStore: ownerLevel.sessionStore,
+      operatorSettings: ownerLevel.operatorSettings,
+      restartSafety: ownerLevel.restartSafety,
+      forensics: ownerLevel.forensics,
+      economicEvidence: ownerLevel.economicEvidence,
+      rawWsBbo: join(ownerLevel.root, 'decibel_production_raw_ws_bbo_v1.jsonl'),
+    },
+    dependencies.legacy ?? DECIBEL_LEGACY_PATHS_V1,
+  ];
+  let migration: decibel_legacy_migration_result_v1 = {
+    status: 'NOT_NEEDED',
+    moved: [],
+    backupDir: null,
+  };
+  let effectiveSource: decibel_legacy_paths_v1 | null = null;
+  if (isLegacyWallet)
+    for (const source of sources) {
+      const result = migrateDecibelLegacyDataV1(paths, {
+        legacy: source,
         ...(dependencies.backupRoot === undefined ? {} : { backupRoot: dependencies.backupRoot }),
-      })
-    : { status: 'NOT_NEEDED', moved: [], backupDir: null };
-  const usesLegacyFiles =
-    migration.status === 'SKIPPED_ACTIVE_SESSION' || migration.status === 'SKIPPED_FAILED';
-  const effective = usesLegacyFiles ? { root: paths.root, ...legacy } : paths;
+      });
+      if (result.status === 'NOT_NEEDED') continue;
+      migration = result;
+      if (result.status !== 'MIGRATED') {
+        effectiveSource = source;
+        break;
+      }
+    }
+  const effective = effectiveSource === null ? paths : { root: paths.root, ...effectiveSource };
   mkdirSync(paths.root, { recursive: true });
   // The first wallet keeps its legacy canary baseline (config/production_state). Any other
   // wallet starts its own baseline at onboarding: only later strategy fills belong to the bot.
@@ -420,8 +467,7 @@ export async function prepareDecibelWalletWorkspaceV1(
   if (!legacyOwner && !existsSync(paths.activityBaseline))
     writeFileSync(
       paths.activityBaseline,
-      `${JSON.stringify({ version: 1, historyStartTimestamp: dependencies.now?.() ?? Date.now() })}
-`,
+      `${JSON.stringify({ version: 1, historyStartTimestamp: dependencies.now?.() ?? Date.now() })}\n`,
       { flag: 'wx' },
     );
   const built = buildDecibelWalletEnvironmentV1(environment, ownerAddress, effective);
@@ -446,8 +492,9 @@ export async function prepareDecibelWalletWorkspaceV1(
 }
 
 /**
- * Default path for operator tools run outside the launcher: the wallet named by
- * DECIBEL_OWNER_ADDRESS, else the only wallet workspace, else the legacy path.
+ * Default path for operator tools run outside the launcher: the wallet and subaccount named by
+ * DECIBEL_OWNER_ADDRESS + DECIBEL_SUBACCOUNT_ADDRESS, else the only subaccount directory, else
+ * the legacy path.
  */
 export function resolveDecibelToolPathV1(
   environment: NodeJS.ProcessEnv,
@@ -455,12 +502,17 @@ export function resolveDecibelToolPathV1(
   dataRoot: string = DECIBEL_WALLET_DATA_ROOT_V1,
 ): string {
   const owner = environment.DECIBEL_OWNER_ADDRESS?.trim();
-  if (owner) return resolveDecibelWalletPathsV1(owner, dataRoot)[key];
-  const wallets = existsSync(dataRoot)
-    ? readdirSync(dataRoot).filter((name) => /^0x[0-9a-f]{64}$/.test(name))
-    : [];
-  if (wallets.length === 1) return resolveDecibelWalletPathsV1(wallets[0]!, dataRoot)[key];
-  if (wallets.length > 1) throw new Error('WALLET_OWNER_ADDRESS_REQUIRED');
+  const subaccount = environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
+  if (owner && subaccount) return resolveDecibelWalletPathsV1(owner, subaccount, dataRoot)[key];
+  const isAddress = (name: string) => /^0x[0-9a-f]{64}$/.test(name);
+  const workspaces = (existsSync(dataRoot) ? readdirSync(dataRoot).filter(isAddress) : []).flatMap(
+    (walletName) =>
+      readdirSync(join(dataRoot, walletName))
+        .filter(isAddress)
+        .map((subaccountName) => resolveDecibelWalletPathsV1(walletName, subaccountName, dataRoot)),
+  );
+  if (workspaces.length === 1) return workspaces[0]![key];
+  if (workspaces.length > 1) throw new Error('WALLET_OWNER_ADDRESS_REQUIRED');
   return DECIBEL_LEGACY_PATHS_V1[key];
 }
 

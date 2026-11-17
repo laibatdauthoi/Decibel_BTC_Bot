@@ -20,7 +20,7 @@ import { z } from 'zod';
 import {
   loadDecibelWalletWhitelistV1,
   normalizeDecibelAddressV1,
-  resolveDecibelWalletPathsV1,
+  resolveDecibelOwnerRootV1,
 } from './decibel_wallet_workspace_v1.js';
 
 export const DECIBEL_DASHBOARD_COOKIE_V1 = 'decibel_session';
@@ -344,6 +344,6 @@ export function createDecibelDashboardAuthFromEnvironmentV1(
         address,
         nodeApiKey: environment.DECIBEL_NODE_API_KEY,
       }),
-    sessionsPath: join(resolveDecibelWalletPathsV1(owner).root, 'dashboard_sessions_v1.json'),
+    sessionsPath: join(resolveDecibelOwnerRootV1(owner), 'dashboard_sessions_v1.json'),
   });
 }

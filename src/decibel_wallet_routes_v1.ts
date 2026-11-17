@@ -25,7 +25,7 @@ import {
 } from './decibel_agent_delegation_v1.js';
 import {
   normalizeDecibelAddressV1,
-  resolveDecibelWalletPathsV1,
+  resolveDecibelOwnerRootV1,
   writeDecibelSelectedSubaccountV1,
 } from './decibel_wallet_workspace_v1.js';
 
@@ -73,9 +73,7 @@ function errorCode(error: unknown, fallback: string): string {
 }
 
 function keystorePathFor(owner: string, dependencies: decibel_wallet_route_dependencies_v1) {
-  return resolveDecibelAgentKeystorePathV1(
-    resolveDecibelWalletPathsV1(owner, dependencies.dataRoot).root,
-  );
+  return resolveDecibelAgentKeystorePathV1(resolveDecibelOwnerRootV1(owner, dependencies.dataRoot));
 }
 
 /** Owner + subaccount from a POST body, proven: whitelisted and owned on-chain. */
