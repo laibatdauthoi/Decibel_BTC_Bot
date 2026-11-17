@@ -4223,84 +4223,6 @@ body:has(.settings-view:not([hidden])) {
   text-transform: uppercase;
 }
 
-/* Wallet (Settings): owner wallet, agent wallet and delegation. */
-.wallet-panel {
-  flex: 0 0 auto;
-  border: 1px solid var(--line);
-  padding: 12px 22px 14px;
-}
-
-.wallet-panel .detail-heading {
-  border-bottom-width: 1px;
-}
-
-.wallet-panel .summary-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 32px;
-  margin-top: 6px;
-  border-top: 0;
-  padding-top: 0;
-}
-
-.wallet-panel .summary-list > div {
-  margin-top: 8px;
-  font-size: 14px;
-}
-
-.wallet-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.wallet-actions button {
-  border: 1px solid var(--line);
-  background: transparent;
-  color: inherit;
-  padding: 7px 14px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-}
-
-.wallet-actions button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.wallet-note {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-@media (max-width: 900px) {
-  .wallet-panel .summary-list {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* Settings scrolls when the Wallet section does not fit below the form. */
-.settings-view {
-  overflow-y: auto;
-}
-
-.settings-view .settings-workspace {
-  flex: 1 0 auto;
-}
-
-.wallet-panel .detail-heading h2 {
-  font-size: 18px;
-}
-
-.wallet-label {
-  text-transform: uppercase;
-}
-
 /* Wallet sign-in (DECIBEL_DASHBOARD_AUTH=wallet). */
 .auth-screen {
   min-height: 100vh;
@@ -4344,4 +4266,96 @@ body:has(.settings-view:not([hidden])) {
 
 .auth-card .auth-error {
   color: var(--color-negative);
+}
+
+/* Wallet control in the top bar, next to the network badge. */
+.wallet-menu {
+  position: relative;
+}
+
+.wallet-control {
+  height: 28px;
+  border: 1px solid #5f625f;
+  background: transparent;
+  color: var(--ice);
+  padding: 0 10px;
+  cursor: pointer;
+  font:
+    600 11px ui-monospace,
+    Consolas,
+    monospace;
+  letter-spacing: 0.08em;
+}
+
+.wallet-control.authorized {
+  border-color: var(--color-positive);
+}
+
+.wallet-control.unauthorized {
+  border-color: var(--color-warning);
+}
+
+.wallet-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 20;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--surface-dark);
+  color: var(--surface-light);
+  border: 1px solid #5f625f;
+  padding: 14px;
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.wallet-dropdown dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 7px 14px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.wallet-dropdown dt {
+  color: #9c9a92;
+  text-transform: uppercase;
+}
+
+.wallet-dropdown dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.wallet-dropdown .wallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.wallet-dropdown .wallet-actions button {
+  border: 1px solid #5f625f;
+  background: transparent;
+  color: var(--ice);
+  padding: 6px 9px;
+  cursor: pointer;
+  font:
+    600 10px ui-monospace,
+    Consolas,
+    monospace;
+  letter-spacing: 0.06em;
+}
+
+.wallet-dropdown .wallet-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wallet-dropdown .wallet-note {
+  margin: 10px 0 0;
+  color: #9c9a92;
+  font-size: 11px;
 }

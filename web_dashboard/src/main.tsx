@@ -16,7 +16,7 @@ import {
   getCostPerMillionDisplayValueV1,
 } from './overview_share_v1';
 import { selectNewerSnapshotV1 } from './snapshot_v1';
-import { WalletPanel } from './wallet_panel_v1';
+import { WalletMenu } from './wallet_panel_v1';
 import { AuthGate } from './auth_gate_v1';
 import type { trading_decision_display_v1 as trading_decision_v1 } from './presentation';
 import {
@@ -1662,7 +1662,6 @@ export const SettingsView = (
           </>
         </aside>
       </div>
-      <WalletPanel />
     </div>
   );
 };
@@ -1846,6 +1845,7 @@ const App = () => {
         <div className="top-state">
           <span>{telemetry.runtime.network}</span>
           <i className={presentation.status.toLowerCase()} />
+          <WalletMenu />
           <button
             className={`alert-control ${hasCriticalAlert ? 'critical' : ''}`}
             aria-label={`${alerts.active.length} active alerts`}

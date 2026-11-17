@@ -4,7 +4,7 @@ import {
   describeDelegationV1,
   describeSignerV1,
   normalizeWalletAddressV1,
-  WalletPanel,
+  WalletMenu,
   type wallet_status_v1,
 } from './wallet_panel_v1';
 
@@ -54,10 +54,12 @@ describe('Wallet panel presentation', () => {
     expect(describeDelegationV1({ ...base, agent: null })).toBe('—');
   });
 
-  it('renders inside Settings without any key material', () => {
-    const html = renderToStaticMarkup(<WalletPanel />);
+  it('renders a compact top-bar button with the menu closed and no key material', () => {
+    const html = renderToStaticMarkup(<WalletMenu />);
     expect(html).toContain('aria-label="Wallet"');
-    expect(html).toContain('CONNECT PETRA');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('>WALLET<');
+    expect(html).not.toContain('wallet-dropdown');
     expect(html).not.toMatch(/private.?key/i);
   });
 });

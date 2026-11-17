@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   findPetraWalletV1,
   shortAddressV1,
@@ -63,12 +63,19 @@ export function describeDelegationV1(status: wallet_status_v1 | null): string {
 const formatApt = (octas: number | null | undefined) =>
   octas == null ? '—' : `${(octas / 100_000_000).toFixed(4)} APT`;
 
-export const WalletPanel = () => {
+/**
+ * Wallet control in the top bar, next to the network badge. The button shows the connected
+ * Petra wallet (or WALLET); its menu holds the owner, agent and delegation status and the
+ * Petra actions.
+ */
+export const WalletMenu = () => {
   const [status, setStatus] = useState<wallet_status_v1 | null>(null);
   const [connected, setConnected] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
+  const [open, setOpen] = useState(false);
+  const Root = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -86,6 +93,21 @@ export const WalletPanel = () => {
     const timer = window.setInterval(() => void refresh(), 30_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!Root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
 
   const run = (
     label: string,
@@ -124,127 +146,124 @@ export const WalletPanel = () => {
     connected !== null && connected === normalizeWalletAddressV1(status?.ownerAddress);
   const authorized =
     status?.delegation?.status === 'ACTIVE' || status?.delegation?.status === 'EXPIRING_SOON';
+  const tone = status?.agent == null ? '' : authorized ? 'authorized' : 'unauthorized';
   return (
-    <section className="wallet-panel" aria-label="Wallet">
-      <div className="detail-heading">
-        <h2>WALLET</h2>
-      </div>
-      <div className="summary-list">
-        <div>
-          <span className="wallet-label">Owner Wallet</span>
-          <strong title={status?.ownerAddress ?? undefined}>
-            {shortAddressV1(status?.ownerAddress)}
-          </strong>
-        </div>
-        <div>
-          <span className="wallet-label">Petra</span>
-          <strong className={connected === null ? '' : ownerMatches ? 'positive' : 'negative'}>
-            {connected === null ? 'NOT CONNECTED' : shortAddressV1(connected)}
-          </strong>
-        </div>
-        <div>
-          <span className="wallet-label">Next Session Signer</span>
-          <strong>{describeSignerV1(status)}</strong>
-        </div>
-        <div>
-          <span className="wallet-label">Agent Wallet</span>
-          <strong title={status?.agent?.address}>{shortAddressV1(status?.agent?.address)}</strong>
-        </div>
-        <div>
-          <span className="wallet-label">Agent Gas</span>
-          <strong>{formatApt(status?.agent?.aptBalanceOctas)}</strong>
-        </div>
-        <div>
-          <span className="wallet-label">Delegation</span>
-          <strong className={authorized ? 'positive' : status?.agent ? 'warning' : ''}>
-            {describeDelegationV1(status)}
-          </strong>
-        </div>
-      </div>
-      <div className="wallet-actions">
-        <button
-          type="button"
-          disabled={busy !== null}
-          onClick={() =>
-            run('connect', async (wallet) => {
-              await requireOwner(wallet);
-            })
-          }
-        >
-          {busy === 'connect' ? 'CONNECTING…' : 'CONNECT PETRA'}
-        </button>
-        {status?.agent == null ? (
-          <button
-            type="button"
-            disabled={busy !== null || !status?.keystoreSecretConfigured}
-            title={
-              status?.keystoreSecretConfigured
-                ? undefined
-                : 'Add DECIBEL_KEYSTORE_SECRET (16+ characters) to .env and restart the bot'
-            }
-            onClick={() =>
-              run('create', async () => {
-                const response = await fetch('/api/wallet/agent', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: '{}',
-                });
-                const body = (await response.json()) as { error?: string };
-                if (!response.ok) throw new Error(body.error ?? 'AGENT_CREATE_FAILED');
-                return 'AGENT WALLET CREATED';
-              })
-            }
-          >
-            CREATE AGENT WALLET
-          </button>
-        ) : (
-          <>
+    <div className="wallet-menu" ref={Root}>
+      <button
+        type="button"
+        className={`wallet-control ${tone}`}
+        aria-label="Wallet"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {connected === null ? 'WALLET' : shortAddressV1(connected)}
+      </button>
+      {open && (
+        <div className="wallet-dropdown" role="dialog" aria-label="Wallet details">
+          <dl>
+            <dt>Owner</dt>
+            <dd title={status?.ownerAddress ?? undefined}>
+              {shortAddressV1(status?.ownerAddress)}
+            </dd>
+            <dt>Petra</dt>
+            <dd className={connected === null ? '' : ownerMatches ? 'positive' : 'negative'}>
+              {connected === null ? 'NOT CONNECTED' : shortAddressV1(connected)}
+            </dd>
+            <dt>Signer</dt>
+            <dd>{describeSignerV1(status)}</dd>
+            <dt>Agent</dt>
+            <dd title={status?.agent?.address}>{shortAddressV1(status?.agent?.address)}</dd>
+            <dt>Agent gas</dt>
+            <dd>{formatApt(status?.agent?.aptBalanceOctas)}</dd>
+            <dt>Delegation</dt>
+            <dd className={authorized ? 'positive' : status?.agent ? 'warning' : ''}>
+              {describeDelegationV1(status)}
+            </dd>
+          </dl>
+          <div className="wallet-actions">
             <button
               type="button"
               disabled={busy !== null}
-              onClick={() => submit('delegate', status.payloads?.delegate)}
+              onClick={() =>
+                run('connect', async (wallet) => {
+                  await requireOwner(wallet);
+                })
+              }
             >
-              {authorized ? 'RENEW' : 'AUTHORIZE'} {status.delegationDays} DAYS
+              {busy === 'connect' ? 'CONNECTING…' : 'CONNECT PETRA'}
             </button>
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => submit('gas', status.payloads?.gasTopUp)}
-            >
-              SEND 0.5 APT GAS
-            </button>
-            <button
-              type="button"
-              disabled={busy !== null || !authorized}
-              onClick={() => submit('revoke', status.payloads?.revoke)}
-            >
-              REVOKE
-            </button>
-          </>
-        )}
-      </div>
-      {signedIn && (
-        <div className="wallet-actions">
-          <button
-            type="button"
-            onClick={() =>
-              void fetch('/api/auth/logout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: '{}',
-              }).then(() => window.location.reload())
-            }
-          >
-            SIGN OUT
-          </button>
+            {status?.agent == null ? (
+              <button
+                type="button"
+                disabled={busy !== null || !status?.keystoreSecretConfigured}
+                title={
+                  status?.keystoreSecretConfigured
+                    ? undefined
+                    : 'Add DECIBEL_KEYSTORE_SECRET (16+ characters) to .env and restart the bot'
+                }
+                onClick={() =>
+                  run('create', async () => {
+                    const response = await fetch('/api/wallet/agent', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: '{}',
+                    });
+                    const body = (await response.json()) as { error?: string };
+                    if (!response.ok) throw new Error(body.error ?? 'AGENT_CREATE_FAILED');
+                    return 'AGENT WALLET CREATED';
+                  })
+                }
+              >
+                CREATE AGENT
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => submit('delegate', status.payloads?.delegate)}
+                >
+                  {authorized ? 'RENEW' : 'AUTHORIZE'} {status.delegationDays}D
+                </button>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => submit('gas', status.payloads?.gasTopUp)}
+                >
+                  SEND 0.5 APT
+                </button>
+                <button
+                  type="button"
+                  disabled={busy !== null || !authorized}
+                  onClick={() => submit('revoke', status.payloads?.revoke)}
+                >
+                  REVOKE
+                </button>
+              </>
+            )}
+            {signedIn && (
+              <button
+                type="button"
+                onClick={() =>
+                  void fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: '{}',
+                  }).then(() => window.location.reload())
+                }
+              >
+                SIGN OUT
+              </button>
+            )}
+          </div>
+          {!status?.keystoreSecretConfigured && status?.agent == null && (
+            <p className="wallet-note">
+              Agent wallet needs DECIBEL_KEYSTORE_SECRET (16+ characters) in .env, then a restart.
+            </p>
+          )}
+          {message && <p className="wallet-note">{message}</p>}
         </div>
       )}
-      {!status?.keystoreSecretConfigured && status?.agent == null && (
-        <p className="wallet-note">
-          Agent wallet needs DECIBEL_KEYSTORE_SECRET (16+ characters) in .env, then a restart.
-        </p>
-      )}
-      {message && <p className="wallet-note">{message}</p>}
-    </section>
+    </div>
   );
 };

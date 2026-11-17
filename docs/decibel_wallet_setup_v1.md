@@ -26,13 +26,13 @@ The owner is read from the subaccount's on-chain `0x1::object::ObjectCore`, so t
 ## Agent wallet
 
 1. Add `DECIBEL_KEYSTORE_SECRET` (16+ characters, keep a copy safe) to `.env`; restart.
-2. Settings > Wallet: Connect Petra with the owner wallet, then Create agent wallet.
+2. top bar WALLET menu (next to MAINNET): Connect Petra with the owner wallet, then Create agent wallet.
 3. Send 0.5 APT gas to the agent (Petra transaction).
 4. Authorize 30 days (Petra transaction). Delegation shows AUTHORIZED.
 5. The next session signs with the agent (`DECIBEL_EXECUTOR_SIGNER=AGENT` in the log). If the delegation is
    missing or expired, the session does not start; it never falls back to `DECIBEL_PRIVATE_KEY`.
 6. After one good session, `DECIBEL_PRIVATE_KEY` can be removed from `.env`.
-7. Revoke any time in Settings > Wallet or on Decibel.
+7. Revoke any time in the WALLET menu or on Decibel.
 
 Losing `DECIBEL_KEYSTORE_SECRET` only loses the agent: revoke it, delete `agent_key_v1.json`, create a new one.
 
