@@ -4,6 +4,13 @@
  */
 import { readDecibelActivityHistoryV1 } from './decibel_activity_history_v1.js';
 import { checkDecibelWebRequestV1 } from './decibel_web_request_guard_v1.js';
+import { readDecibelDelegationsV1 } from './decibel_agent_delegation_v1.js';
+import { generateDecibelAgentKeyV1 } from './decibel_agent_keystore_v1.js';
+import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
+import {
+  handleDecibelWalletRequestV1,
+  readDecibelAptBalanceOctasV1,
+} from './decibel_wallet_routes_v1.js';
 import {
   projectDecibelNextSessionEntrySizeUsdV1,
   handleDecibelOperatorSettingsRequestV1,
@@ -309,6 +316,34 @@ export function handleDecibelProductionWebRequestV1(
         error: error instanceof Error ? error.message : 'EXECUTION_MODE_REQUEST_FAILED',
       }),
     );
+    return;
+  }
+  if (pathname === '/api/wallet' || pathname.startsWith('/api/wallet/')) {
+    request.resume();
+    void (async () => {
+      const { MAINNET_CONFIG } = await loadDecibelSdkRuntimeV1();
+      const apiKey = context.environment.DECIBEL_NODE_API_KEY;
+      const result = await handleDecibelWalletRequestV1(request.method ?? 'GET', pathname, {
+        environment: context.environment,
+        packageAddress: MAINNET_CONFIG.deployment.package,
+        now: Date.now,
+        readDelegations: (subaccountAddress) =>
+          readDecibelDelegationsV1({
+            tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
+            subaccountAddress,
+            apiKey,
+          }),
+        readAptBalanceOctas: (address) =>
+          readDecibelAptBalanceOctasV1({
+            fullnodeUrl: MAINNET_CONFIG.fullnodeUrl,
+            address,
+            nodeApiKey: apiKey,
+          }),
+        generateAgentKey: generateDecibelAgentKeyV1,
+      });
+      if (result === null) return writeJson(response, 404, { error: 'NOT_FOUND' });
+      writeJson(response, result.status, result.body);
+    })().catch(() => writeJson(response, 503, { error: 'WALLET_STATUS_UNAVAILABLE' }));
     return;
   }
   if (pathname === '/api/telemetry') return writeJson(response, 200, context.getTelemetry());

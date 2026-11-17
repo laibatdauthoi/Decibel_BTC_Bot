@@ -4222,3 +4222,81 @@ body:has(.settings-view:not([hidden])) {
 .settings-view .session-configuration-label {
   text-transform: uppercase;
 }
+
+/* Wallet (Settings): owner wallet, agent wallet and delegation. */
+.wallet-panel {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  padding: 12px 22px 14px;
+}
+
+.wallet-panel .detail-heading {
+  border-bottom-width: 1px;
+}
+
+.wallet-panel .summary-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 32px;
+  margin-top: 6px;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.wallet-panel .summary-list > div {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.wallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.wallet-actions button {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.wallet-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wallet-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .wallet-panel .summary-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Settings scrolls when the Wallet section does not fit below the form. */
+.settings-view {
+  overflow-y: auto;
+}
+
+.settings-view .settings-workspace {
+  flex: 1 0 auto;
+}
+
+.wallet-panel .detail-heading h2 {
+  font-size: 18px;
+}
+
+.wallet-label {
+  text-transform: uppercase;
+}

@@ -1,3 +1,8 @@
+import { readDecibelDelegationsV1 } from './decibel_agent_delegation_v1.js';
+import {
+  resolveDecibelExecutorSignerV1,
+  type decibel_executor_signer_environment_v1,
+} from './decibel_executor_signer_v1.js';
 import type { PlaceOrderResult } from '@decibeltrade/sdk';
 import type {
   AccountAuthenticator,
@@ -103,7 +108,8 @@ type decibel_production_executor_environment_v1 = Readonly<{
   DECIBEL_NODE_API_KEY?: string;
   DECIBEL_PRIVATE_KEY?: string;
   DECIBEL_SUBACCOUNT_ADDRESS?: string;
-}>;
+}> &
+  decibel_executor_signer_environment_v1;
 
 function assertIdentity(value: string, blocker: string): void {
   if (value.trim().length === 0) throw new Error(blocker);
@@ -196,17 +202,26 @@ async function createWriteClient(
 ): Promise<decibel_production_write_connection_v1> {
   if (environment.DECIBEL_NETWORK !== 'mainnet')
     throw new Error('PRODUCTION_EXECUTOR_MAINNET_REQUIRED');
-  const privateKey = environment.DECIBEL_PRIVATE_KEY;
   const subaccount = environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
-  if (!privateKey) throw new Error('PRODUCTION_EXECUTOR_PRIVATE_KEY_REQUIRED');
   if (!subaccount) throw new Error('PRODUCTION_EXECUTOR_SUBACCOUNT_REQUIRED');
   const [
     { Account, AccountAddress, Ed25519PrivateKey, MoveString, createObjectAddress },
     { DecibelWriteDex, MAINNET_CONFIG },
   ] = await Promise.all([import('@aptos-labs/ts-sdk'), loadDecibelSdkRuntimeV1()]);
+  // Agent key (delegated by the owner wallet) when one is set up, else the legacy key.
+  const SignerKey = await resolveDecibelExecutorSignerV1(environment, () =>
+    readDecibelDelegationsV1({
+      tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
+      subaccountAddress: subaccount,
+      apiKey: environment.DECIBEL_NODE_API_KEY,
+    }),
+  );
   const Signer = Account.fromPrivateKey({
-    privateKey: new Ed25519PrivateKey(privateKey),
+    privateKey: new Ed25519PrivateKey(SignerKey.privateKeyHex),
   });
+  console.log(
+    `DECIBEL_EXECUTOR_SIGNER=${SignerKey.mode} ADDRESS=${Signer.accountAddress.toStringLong()}`,
+  );
   class decibel_capped_gas_write_dex_v1 extends DecibelWriteDex {
     public latestTransactionHash: string | null = null;
     public latestExpirationTimestampMs: number | null = null;

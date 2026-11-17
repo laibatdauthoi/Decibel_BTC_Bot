@@ -16,6 +16,7 @@ import {
   getCostPerMillionDisplayValueV1,
 } from './overview_share_v1';
 import { selectNewerSnapshotV1 } from './snapshot_v1';
+import { WalletPanel } from './wallet_panel_v1';
 import type { trading_decision_display_v1 as trading_decision_v1 } from './presentation';
 import {
   renderSessionActionButtonV1 as SessionActionButton,
@@ -1660,6 +1661,7 @@ export const SettingsView = (
           </>
         </aside>
       </div>
+      <WalletPanel />
     </div>
   );
 };
