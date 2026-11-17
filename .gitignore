@@ -17,3 +17,6 @@ Thumbs.db
 .tmp*
 *_tmp.ts
 config/production_state/
+
+# Wallet whitelist (addresses allowed to run the bot); see config/allowed_wallets.example.json
+config/allowed_wallets.json

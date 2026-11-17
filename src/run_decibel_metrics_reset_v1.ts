@@ -6,6 +6,7 @@
  * Refused while a session is live. Deletes no session, order or fill; safe while the web
  * process runs (SQLite WAL, single short transaction).
  */
+import { resolveDecibelToolPathV1 } from './decibel_wallet_workspace_v1.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -21,7 +22,7 @@ import {
 
 const sessionPath = resolve(
   process.env.DECIBEL_PRODUCTION_SESSION_STORE_PATH ??
-    'config/production_state/decibel_production_sessions_v1.sqlite',
+    resolveDecibelToolPathV1(process.env, 'sessionStore'),
 );
 if (!existsSync(sessionPath)) throw new Error('METRICS_RESET_SESSION_STORE_MISSING');
 

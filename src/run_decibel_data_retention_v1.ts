@@ -4,6 +4,7 @@
  *   npm run decibel:data-retention-v1 -- --apply (deletes and vacuums; bot must be stopped)
  * Never deletes order intents, reconciliation or fills.
  */
+import { resolveDecibelToolPathV1 } from './decibel_wallet_workspace_v1.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -21,10 +22,11 @@ import {
 
 const sessionPath = resolve(
   process.env.DECIBEL_PRODUCTION_SESSION_STORE_PATH ??
-    'config/production_state/decibel_production_sessions_v1.sqlite',
+    resolveDecibelToolPathV1(process.env, 'sessionStore'),
 );
 const journalPath = resolve(
-  process.env.DECIBEL_EXECUTION_JOURNAL_PATH ?? 'data/decibel_execution_v1.sqlite',
+  process.env.DECIBEL_EXECUTION_JOURNAL_PATH ??
+    resolveDecibelToolPathV1(process.env, 'executionJournal'),
 );
 const apply = process.argv.includes('--apply');
 

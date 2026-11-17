@@ -1,3 +1,4 @@
+import { resolveDecibelToolPathV1 } from './decibel_wallet_workspace_v1.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -513,7 +514,8 @@ export async function runDecibelProductionEconomicInputsAuditV1(
   }
 
   const journalPath = resolve(
-    environment.DECIBEL_EXECUTION_JOURNAL_PATH ?? 'data/decibel_execution_v1.sqlite',
+    environment.DECIBEL_EXECUTION_JOURNAL_PATH ??
+      resolveDecibelToolPathV1(environment, 'executionJournal'),
   );
   let rows: Array<{ outcomeJson: string }> = [];
   let gasJournalDiagnostic = 'READY';

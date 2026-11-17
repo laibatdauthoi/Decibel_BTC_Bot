@@ -24,6 +24,8 @@ import {
   formatDecibelPersistedExecutionModeV1,
   loadDecibelPersistedExecutionModeV1,
 } from './decibel_persisted_execution_mode_v1.js';
+import { prepareDecibelWalletWorkspaceV1 } from './decibel_wallet_workspace_v1.js';
+import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
 
 const Secrets = collectDecibelSecretValuesV1(process.env);
 installDecibelConsoleRedactionV1(Secrets);
@@ -31,7 +33,16 @@ const StdoutRedactor = new decibel_line_redactor_v1(Secrets);
 const StderrRedactor = new decibel_line_redactor_v1(Secrets);
 const launcherStartedAt = Date.now();
 const instanceId = `${process.pid}-${launcherStartedAt}`;
-const logRoot = resolve(resolveDecibelProductionForensicsPathV1(process.env));
+// Per-wallet workspace: whitelist check and the one-time move of the legacy files.
+const Workspace = await prepareDecibelWalletWorkspaceV1(process.env, {
+  fullnodeUrl: (await loadDecibelSdkRuntimeV1()).MAINNET_CONFIG.fullnodeUrl,
+});
+console.log(
+  `DECIBEL_WALLET_WORKSPACE=READY OWNER=${Workspace.ownerAddress} MIGRATION=${Workspace.migration.status}${
+    'detail' in Workspace.migration ? ` DETAIL=${Workspace.migration.detail}` : ''
+  }${Workspace.migration.backupDir ? ` BACKUP=${Workspace.migration.backupDir}` : ''}`,
+);
+const logRoot = resolve(resolveDecibelProductionForensicsPathV1(Workspace.pathEnvironment));
 const productionNodeExecutable = resolveDecibelProductionNode22ExecutableV1(process.env);
 const PersistedExecutionMode = loadDecibelPersistedExecutionModeV1(process.env);
 assertDecibelPersistedExecutionModeV1(
@@ -73,6 +84,7 @@ const Child = spawn(
     cwd: process.cwd(),
     env: {
       ...PersistedExecutionMode.environment,
+      ...Workspace.pathEnvironment,
       DECIBEL_PROCESS_INSTANCE_ID: instanceId,
       DECIBEL_PROCESS_LAUNCHER_PID: String(process.pid),
       DECIBEL_PRODUCTION_FORENSICS_PATH: logRoot,

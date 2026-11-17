@@ -1,3 +1,4 @@
+import { resolveDecibelToolPathV1 } from './decibel_wallet_workspace_v1.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -41,7 +42,8 @@ export function runDecibelExecutionJournalResolvePreSubmissionFailureV1(
   const clientOrderId = getArgumentFrom(argumentsValue, '--client-order-id');
   const proof = getArgumentFrom(argumentsValue, '--proof');
   const journalPath = resolve(
-    environment.DECIBEL_EXECUTION_JOURNAL_PATH ?? 'data/decibel_execution_v1.sqlite',
+    environment.DECIBEL_EXECUTION_JOURNAL_PATH ??
+      resolveDecibelToolPathV1(environment, 'executionJournal'),
   );
   const Journal = new decibel_execution_lifecycle_journal_v1(journalPath);
   try {

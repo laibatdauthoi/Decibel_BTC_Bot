@@ -1,3 +1,4 @@
+import { resolveDecibelToolPathV1 } from './decibel_wallet_workspace_v1.js';
 import {
   DECIBEL_CANDIDATE_ADVERSE_MINIMUM_SAMPLE_COUNT_V1,
   buildDecibelCandidateAdverseSelectionEvidenceV1,
@@ -224,7 +225,8 @@ export async function runDecibelProductionEconomicViabilityV1(
   if (!Number.isSafeInteger(maximumEvidenceAgeMs) || maximumEvidenceAgeMs <= 0)
     throw new Error('DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_MAX_AGE_INVALID');
   const journalPath = resolve(
-    environment.DECIBEL_EXECUTION_JOURNAL_PATH ?? 'data/decibel_execution_v1.sqlite',
+    environment.DECIBEL_EXECUTION_JOURNAL_PATH ??
+      resolveDecibelToolPathV1(environment, 'executionJournal'),
   );
   const journalObservations =
     replaySource === undefined
