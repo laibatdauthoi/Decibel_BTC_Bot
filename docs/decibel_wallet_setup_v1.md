@@ -60,7 +60,6 @@ For a domain: run the gateway behind a TLS reverse proxy that keeps the `Host` h
 ## Not done yet
 
 - Not run with a second real wallet or behind a real domain yet.
-- The bot reads venue history from the baseline start, limited to 180 days. The first wallet's legacy baseline
-  starts 2026-09-01, so it leaves that window on 2027-02-28 and reads would fail from then on; a fresh
-  wallet's baseline has the same limit from its onboarding date. A baseline rollover is needed before then.
+- Venue history is limited to 180 days. Since 2026-11-17 the read window rolls (orders 7 days further back than
+  fills), so an old baseline no longer stops the bot; fills older than the window drop out of the live ledger.
 - One shared `DECIBEL_NODE_API_KEY` serves every wallet; watch the venue rate limits as wallets are added.

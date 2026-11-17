@@ -73,6 +73,33 @@ import {
 export const DECIBEL_PRODUCTION_LIVE_STATE_SOURCE_V1 =
   'DECIBEL_PRODUCTION_LIVE_STATE_SOURCE_V1' as const;
 export const DECIBEL_MAX_HISTORY_RANGE_MS = 15_552_000_000 as const;
+/** The rolled window stays this far inside the venue's 180-day history limit. */
+export const DECIBEL_HISTORY_ROLL_MARGIN_MS_V1 = 60 * 60 * 1000;
+/** Orders are read this much further back than fills, so a fill near the window edge still
+ * finds the strategy order that produced it. */
+export const DECIBEL_ORDER_ATTRIBUTION_LOOKBACK_MS_V1 = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * History window of an authenticated read (added 2026-11-17). Before, a baseline older than
+ * the 180-day venue limit failed every read (the first wallet's baseline of 2026-09-01 would
+ * have stopped the bot on 2027-02-28). The window now rolls: it starts at the baseline while
+ * that is recent enough, else at the oldest instant the venue still serves. Fills that leave
+ * the window are older than any live session, whose volume and PnL come from session fills.
+ */
+export function resolveDecibelHistoryWindowV1(
+  baselineStart: number,
+  now: number,
+): Readonly<{ orderStart: number; tradeStart: number; rolled: boolean }> {
+  if (!Number.isSafeInteger(baselineStart) || baselineStart < 0 || baselineStart > now)
+    throw new Error('PRODUCTION_LIVE_SOURCE_BASELINE_HISTORY_RANGE_INVALID');
+  const earliest = now - DECIBEL_MAX_HISTORY_RANGE_MS + DECIBEL_HISTORY_ROLL_MARGIN_MS_V1;
+  const tradeEarliest = earliest + DECIBEL_ORDER_ATTRIBUTION_LOOKBACK_MS_V1;
+  return Object.freeze({
+    orderStart: Math.max(baselineStart, earliest),
+    tradeStart: Math.max(baselineStart, tradeEarliest),
+    rolled: baselineStart < tradeEarliest,
+  });
+}
 
 const ProductionLiveSourceEnvironmentSchema = z.object({
   DECIBEL_SUBACCOUNT_ADDRESS: z.string().trim().min(1),
@@ -1921,19 +1948,18 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       requestedAt,
       configuration.DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_MAX_AGE_MS,
     );
-    if (
-      baseline.historyStartTimestamp > requestedAt ||
-      requestedAt - baseline.historyStartTimestamp > DECIBEL_MAX_HISTORY_RANGE_MS
-    )
-      throw new Error('PRODUCTION_LIVE_SOURCE_BASELINE_HISTORY_RANGE_INVALID');
-    const historyStart = baseline.historyStartTimestamp;
+    const historyWindow = resolveDecibelHistoryWindowV1(
+      baseline.historyStartTimestamp,
+      requestedAt,
+    );
     let values: Awaited<ReturnType<typeof this.readAll>>;
     try {
       values = await this.readAll(
         configuration.DECIBEL_SUBACCOUNT_ADDRESS,
-        historyStart,
+        historyWindow.tradeStart,
         requestedAt,
         signal,
+        historyWindow.orderStart,
       );
     } catch (error) {
       if (isDecibelSourceRateLimitError(error)) {
@@ -3167,6 +3193,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     startTimestamp: number,
     endTimestamp: number,
     parentSignal?: AbortSignal,
+    orderStartTimestamp: number = startTimestamp,
   ) {
     const [
       accountOverview,
@@ -3195,7 +3222,8 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       ),
       this.readAuthenticatedStage(
         'ORDER_HISTORY',
-        (signal) => this.Reader.readOrderHistory(subaccount, startTimestamp, endTimestamp, signal),
+        (signal) =>
+          this.Reader.readOrderHistory(subaccount, orderStartTimestamp, endTimestamp, signal),
         parentSignal,
       ),
       this.readAuthenticatedStage(
