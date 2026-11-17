@@ -410,6 +410,7 @@ export function handleDecibelProductionWebRequestV1(
           },
           keystoreSecret: () =>
             resolveDecibelKeystoreSecretV1(context.environment, { create: true }) ?? '',
+          gasSponsored: Boolean(context.environment.DECIBEL_GAS_STATION_API_KEY?.trim()),
           canSwitch: context.subaccountSwitch.canSwitch,
           switchNow: context.subaccountSwitch.switchNow,
         },

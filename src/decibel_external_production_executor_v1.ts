@@ -107,6 +107,7 @@ type decibel_production_executor_environment_v1 = Readonly<{
   DECIBEL_NETWORK?: string;
   DECIBEL_NODE_API_KEY?: string;
   DECIBEL_SUBACCOUNT_ADDRESS?: string;
+  DECIBEL_GAS_STATION_API_KEY?: string;
 }> &
   decibel_executor_signer_environment_v1;
 
@@ -253,9 +254,16 @@ async function createWriteClient(
       return pending;
     }
   }
-  const Client = new decibel_capped_gas_write_dex_v1(MAINNET_CONFIG, Signer, {
-    ...(environment.DECIBEL_NODE_API_KEY ? { nodeApiKey: environment.DECIBEL_NODE_API_KEY } : {}),
-  });
+  // With a Geomi Gas Station key the gas of every bot transaction is sponsored, so the bot
+  // key needs no APT. Without it the bot key pays its own gas.
+  const gasStationApiKey = environment.DECIBEL_GAS_STATION_API_KEY?.trim();
+  const Client = new decibel_capped_gas_write_dex_v1(
+    gasStationApiKey ? { ...MAINNET_CONFIG, gasStationApiKey } : MAINNET_CONFIG,
+    Signer,
+    {
+      ...(environment.DECIBEL_NODE_API_KEY ? { nodeApiKey: environment.DECIBEL_NODE_API_KEY } : {}),
+    },
+  );
   const WriteClient: DecibelProductionWriteClientV1 = {
     placeOrder: async (input) => {
       Client.latestTransactionHash = null;
@@ -315,7 +323,9 @@ async function createWriteClient(
     subaccount,
     getGasDiagnostics: async () => {
       const evidence = await readDecibelGasAccountEvidenceV1({
-        readPrimaryBalance: () => getAptBalance(Signer.accountAddress),
+        // Sponsored gas: the bot key balance does not gate entries (NaN is never adopted).
+        readPrimaryBalance: () =>
+          gasStationApiKey ? Promise.resolve(Number.NaN) : getAptBalance(Signer.accountAddress),
         readSubaccountBalance: () => getAptBalance(subaccount),
         readSubaccountExists: () =>
           hasObjectResource(

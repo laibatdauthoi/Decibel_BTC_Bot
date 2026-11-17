@@ -29,7 +29,9 @@ subaccount of the first whitelisted wallet. The owner is read from the subaccoun
 1. Top bar: CONNECT WALLET (next to MAINNET), approve in Petra. After a reload the connection is restored
    without a popup.
 2. The menu lists the wallet's Decibel subaccounts. Pick one and press CONFIRM: Petra asks to authorize the bot
-   (30 days) and, when the bot key has under 0.1 APT, a 0.5 APT gas transfer. Nothing else to set up.
+   (30 days). Without `DECIBEL_GAS_STATION_API_KEY` the bot key pays its own gas, so Petra also asks for a
+   0.5 APT transfer when it holds under 0.1 APT; with a gas station key the bot's gas is sponsored and no APT is
+   asked. (Decibel sponsors gas only for transactions sent from its own web app.)
 3. If it is not the subaccount in use, the bot switches to it by itself (it restarts while idle; the page
    reloads when it is back). A running session must be ended first.
 4. Sessions sign with the bot key (`DECIBEL_EXECUTOR_SIGNER=BOT_KEY` in the log). There is no private-key

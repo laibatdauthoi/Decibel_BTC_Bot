@@ -135,6 +135,17 @@ describe('Wallet prepare', () => {
     expect(result?.body).toMatchObject({ payloads: { gasTopUp: null } });
   });
 
+  it('never asks for APT when a gas station sponsors the bot', async () => {
+    const { deps } = setup({ balance: 0 });
+    const result = await handleDecibelWalletRequestV1(
+      'POST',
+      '/api/wallet/prepare',
+      { ...deps, gasSponsored: true },
+      { body: { owner: OWNER, subaccount: IN_USE } },
+    );
+    expect(result?.body).toMatchObject({ payloads: { gasTopUp: null } });
+  });
+
   it('refuses foreign subaccounts and wallets outside the whitelist', async () => {
     const { deps } = setup();
     const prepare = (owner: string, subaccount: string) =>

@@ -50,6 +50,8 @@ export type decibel_wallet_route_dependencies_v1 = Readonly<{
   isWhitelisted: (owner: string) => boolean;
   /** Secret that encrypts bot keys; created automatically when not configured. */
   keystoreSecret: () => string;
+  /** A gas station sponsors the bot's transactions: no APT top-up is ever asked. */
+  gasSponsored?: boolean;
   /** Whether the runtime may switch now, and the switch itself. */
   canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'OPEN_ORDERS' | 'DISABLED';
   switchNow: () => void;
@@ -169,7 +171,9 @@ export async function handleDecibelWalletRequestV1(
           dependencies.now(),
         );
       }
-      const balance = await dependencies.readAptBalanceOctas(agent.address).catch(() => 0);
+      const balance = dependencies.gasSponsored
+        ? Number.POSITIVE_INFINITY
+        : await dependencies.readAptBalanceOctas(agent.address).catch(() => 0);
       const base = {
         packageAddress: dependencies.packageAddress,
         subaccountAddress: target.subaccount,

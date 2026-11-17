@@ -4268,23 +4268,29 @@ body:has(.settings-view:not([hidden])) {
   color: var(--color-negative);
 }
 
-/* Wallet control in the top bar, next to the network badge. */
+/* Wallet control in the top bar, next to the network badge (same type as MAINNET). */
 .wallet-menu {
   position: relative;
 }
 
 .wallet-control {
-  height: 28px;
-  border: 1px solid #5f625f;
+  height: 30px;
+  border: 1px solid var(--surface-light);
+  border-radius: 0;
   background: transparent;
-  color: var(--ice);
+  color: var(--surface-light);
   padding: 0 12px;
   cursor: pointer;
-  font:
-    600 11px ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.08em;
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.wallet-control:not(:disabled):hover {
+  background: var(--surface-light);
+  color: var(--surface-dark);
 }
 
 .wallet-control.authorized {
@@ -4293,21 +4299,19 @@ body:has(.settings-view:not([hidden])) {
 
 .wallet-dropdown {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 9px);
   right: 0;
   z-index: 20;
-  width: 300px;
+  width: 320px;
   max-width: calc(100vw - 32px);
-  background: var(--surface-dark);
-  color: var(--surface-light);
-  border: 1px solid #5f625f;
-  padding: 14px;
-  text-transform: none;
+  border: 1px solid var(--line);
+  background: var(--surface-light);
+  color: var(--foreground);
+  padding: 16px;
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-size: 14px;
   letter-spacing: 0.04em;
-  font:
-    11px ui-monospace,
-    Consolas,
-    monospace;
+  text-transform: uppercase;
 }
 
 .wallet-head {
@@ -4316,25 +4320,28 @@ body:has(.settings-view:not([hidden])) {
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #2c2e2d;
+  border-bottom: 1px solid var(--line);
 }
 
 .wallet-head strong {
-  font-size: 12px;
+  font-weight: 600;
 }
 
 .wallet-link {
   border: 0;
   background: transparent;
-  color: #9c9a92;
+  color: var(--muted);
   padding: 0;
   cursor: pointer;
   font: inherit;
+  font-size: 12px;
+  font-weight: 500;
   letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .wallet-link:hover:not(:disabled) {
-  color: var(--surface-light);
+  color: var(--foreground);
 }
 
 .wallet-subaccounts {
@@ -4349,59 +4356,76 @@ body:has(.settings-view:not([hidden])) {
   align-items: center;
   gap: 8px;
   border: 1px solid transparent;
-  padding: 6px 8px;
+  padding: 7px 8px;
   cursor: pointer;
 }
 
 .wallet-subaccounts label.selected {
-  border-color: #5f625f;
+  border-color: var(--line);
 }
 
 .wallet-subaccounts input {
   margin: 0;
-  accent-color: var(--ice);
+  accent-color: var(--foreground);
+}
+
+.wallet-subaccounts span {
+  font-weight: 500;
 }
 
 .wallet-subaccounts code {
-  color: #9c9a92;
+  color: var(--muted);
   font: inherit;
+  font-size: 12px;
+  text-transform: none;
 }
 
 .wallet-subaccounts em {
-  color: var(--ice);
+  color: var(--color-active);
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wallet-subaccounts em.positive {
+  color: var(--color-positive);
 }
 
 .wallet-state {
-  margin: 10px 0 0;
+  margin: 12px 0 0;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .wallet-dropdown .wallet-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
   margin-top: 12px;
 }
 
 .wallet-dropdown .wallet-actions > button:first-child {
   flex: 1;
-  border: 1px solid var(--ice);
+  border: 1px solid var(--line);
+  border-radius: 0;
   background: transparent;
-  color: var(--ice);
-  padding: 7px 10px;
+  color: var(--foreground);
+  padding: 9px 12px;
   cursor: pointer;
-  font:
-    600 11px ui-monospace,
-    Consolas,
-    monospace;
-  letter-spacing: 0.08em;
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.wallet-dropdown .wallet-actions > button:first-child:not(:disabled):hover {
+  background: var(--surface-dark);
+  color: var(--surface-light);
 }
 
 .wallet-dropdown .wallet-actions button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: 0.45;
+  cursor: default;
 }
 
 .wallet-signout {
@@ -4410,30 +4434,37 @@ body:has(.settings-view:not([hidden])) {
 
 .wallet-dropdown .wallet-note {
   margin: 10px 0 0;
-  color: #9c9a92;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: none;
 }
 
-/* Alerts: floating bell in the bottom-right corner, above the system footer. */
+/* Alerts: bell in the bottom-right corner, above the system footer, styled like the share
+   button (square, thin line, inverted on hover). */
 .alert-bell {
   position: fixed;
-  right: 16px;
-  bottom: 40px;
+  right: 18px;
+  bottom: 42px;
   z-index: 15;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   display: grid;
   place-items: center;
-  border: 1px solid #5f625f;
-  border-radius: 50%;
-  background: var(--surface-dark);
-  color: var(--ice);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface-light);
+  color: var(--foreground);
   cursor: pointer;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 22%);
+}
+
+.alert-bell:hover {
+  background: var(--surface-dark);
+  color: var(--surface-light);
 }
 
 .alert-bell svg {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.8;
@@ -4443,27 +4474,25 @@ body:has(.settings-view:not([hidden])) {
 
 .alert-bell b {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: -1px;
+  right: -1px;
   min-width: 18px;
   height: 18px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
   background: var(--color-warning);
-  color: #fff;
+  color: var(--surface-light);
   padding: 0 4px;
-  font:
-    700 10px ui-monospace,
-    Consolas,
-    monospace;
+  font-family: 'Fredoka', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .alert-bell.critical {
-  border-color: #ff5577;
-  color: #ff5577;
+  border-color: var(--color-negative);
+  color: var(--color-negative);
 }
 
 .alert-bell.critical b {
-  background: #dc2753;
+  background: var(--color-negative);
 }
