@@ -111,7 +111,8 @@ const SessionFileSchema = z.object({
 });
 
 export type decibel_dashboard_auth_dependencies_v1 = Readonly<{
-  ownerAddress: string;
+  /** Wallets this server runs: one owner for a runtime, every configured owner for the gateway. */
+  isServedOwner: (address: string) => boolean;
   isWhitelisted: (address: string) => boolean;
   readAuthKey: (address: string) => Promise<string>;
   sessionsPath: string;
@@ -124,11 +125,9 @@ export class decibel_dashboard_auth_v1 {
     { address: string; message: string; expiresAt: number }
   >();
   private readonly Sessions = new Map<string, { address: string; expiresAt: number }>();
-  private readonly owner: string;
   private readonly now: () => number;
 
   public constructor(private readonly dependencies: decibel_dashboard_auth_dependencies_v1) {
-    this.owner = normalizeDecibelAddressV1(dependencies.ownerAddress);
     this.now = dependencies.now ?? Date.now;
     if (existsSync(dependencies.sessionsPath)) {
       try {
@@ -183,7 +182,7 @@ export class decibel_dashboard_auth_v1 {
     if (!verifyDecibelEd25519SignatureV1(body.publicKey, body.fullMessage, body.signature))
       throw new Error('AUTH_SIGNATURE_INVALID');
     // Cheap local checks before the network read of the on-chain key.
-    if (address !== this.owner) throw new Error('AUTH_NOT_RUNTIME_OWNER');
+    if (!this.dependencies.isServedOwner(address)) throw new Error('AUTH_NOT_RUNTIME_OWNER');
     if (!this.dependencies.isWhitelisted(address)) throw new Error('WALLET_NOT_WHITELISTED');
     if (
       (await this.dependencies.readAuthKey(address)) !==
@@ -331,7 +330,7 @@ export function createDecibelDashboardAuthFromEnvironmentV1(
   const owner = environment.DECIBEL_OWNER_ADDRESS?.trim();
   if (!owner) throw new Error('DASHBOARD_AUTH_OWNER_REQUIRED');
   return new decibel_dashboard_auth_v1({
-    ownerAddress: owner,
+    isServedOwner: (address) => address === normalizeDecibelAddressV1(owner),
     isWhitelisted: (address) => {
       try {
         return loadDecibelWalletWhitelistV1().has(normalizeDecibelAddressV1(address));

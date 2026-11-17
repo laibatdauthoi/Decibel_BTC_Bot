@@ -42,8 +42,25 @@ Losing `DECIBEL_KEYSTORE_SECRET` only loses the agent: revoke it, delete `agent_
 SameSite=Strict cookie for 7 days. Set `DECIBEL_DASHBOARD_COOKIE_SECURE=true` when served over HTTPS. If Petra
 is unavailable, set it back to `off` and restart; Ctrl+C in the terminal still ends a session.
 
+## Several wallets
+
+1. Each extra wallet: its owner in `config/allowed_wallets.json`, its subaccount and a free local port in
+   `config/wallets.json` (gitignored; see `config/wallets.example.json`).
+2. `npm run decibel:multi-wallet` builds the dashboard, starts one runtime per wallet (normal launcher, own
+   workspace, journal, executor and agent key) and the gateway on `gateway.port`.
+3. Open the gateway URL and sign in with Petra; each owner sees only its own runtime. Runtimes listen on
+   127.0.0.1 only and keep their own sign-in off.
+4. Only the first wallet (the subaccount named in the legacy canary manifest) takes over the old files and
+   baseline. Every other wallet gets `activity_baseline_v1.json`: the bot owns its strategy fills from
+   onboarding on, and the wallet's own market data (economic evidence, BBO recording) lives in its workspace.
+
+For a domain: run the gateway behind a TLS reverse proxy that keeps the `Host` header, set
+`gateway.publicHost` to the domain and `gateway.publicScheme` to `https` (Secure cookie).
+
 ## Not done yet
 
-- Several wallets at once (one runtime process per wallet behind a gateway) and hosting on a domain.
-- New wallets start without the legacy activity baseline in `config/production_state/`; that baseline is
-  specific to the first wallet and must become optional before a second wallet can run.
+- Not run with a second real wallet or behind a real domain yet.
+- The bot reads venue history from the baseline start, limited to 180 days. The first wallet's legacy baseline
+  starts 2026-09-01, so it leaves that window on 2027-02-28 and reads would fail from then on; a fresh
+  wallet's baseline has the same limit from its onboarding date. A baseline rollover is needed before then.
+- One shared `DECIBEL_NODE_API_KEY` serves every wallet; watch the venue rate limits as wallets are added.

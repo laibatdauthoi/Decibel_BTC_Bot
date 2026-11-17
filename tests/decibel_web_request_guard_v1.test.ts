@@ -134,7 +134,7 @@ describe('Dashboard routes apply the guard before any handler', () => {
   it('answers 401 to every API route without a wallet session when sign-in is on', async () => {
     const touched: string[] = [];
     const Auth = new decibel_dashboard_auth_v1({
-      ownerAddress: `0x${'ab'.repeat(32)}`,
+      isServedOwner: (address) => address === `0x${'ab'.repeat(32)}`,
       isWhitelisted: () => true,
       readAuthKey: () => Promise.resolve(''),
       sessionsPath: join(mkdtempSync(join(tmpdir(), 'route-auth-')), 'sessions.json'),

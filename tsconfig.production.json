@@ -8,6 +8,7 @@
     "src/run_decibel_production_economic_inputs_audit_v1.ts",
     "src/run_decibel_production_economic_viability_v1.ts",
     "src/run_decibel_production_web_v1.ts",
+    "src/run_decibel_multi_wallet_v1.ts",
     "src/run_decibel_execution_journal_resolve_pre_submission_failure_v1.ts",
     "src/decibel_external_production_executor_v1.ts",
     "src/decibel_authenticated_http_worker_v1.mjs",

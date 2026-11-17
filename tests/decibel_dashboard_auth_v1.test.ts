@@ -33,7 +33,7 @@ function setup(options: { whitelisted?: boolean; authKeyOverride?: string } = {}
   const Owner = makeWallet();
   let now = 1_800_000_000_000;
   const Auth = new decibel_dashboard_auth_v1({
-    ownerAddress: Owner.address,
+    isServedOwner: (address) => address === Owner.address,
     isWhitelisted: () => options.whitelisted ?? true,
     readAuthKey: () => Promise.resolve(options.authKeyOverride ?? Owner.authKey),
     sessionsPath: join(mkdtempSync(join(tmpdir(), 'dashboard-auth-')), 'sessions.json'),

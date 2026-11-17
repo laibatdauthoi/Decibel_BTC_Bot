@@ -20,3 +20,5 @@ config/production_state/
 
 # Wallet whitelist (addresses allowed to run the bot); see config/allowed_wallets.example.json
 config/allowed_wallets.json
+# Multi-wallet registry (subaccounts and local ports); see config/wallets.example.json
+config/wallets.json
