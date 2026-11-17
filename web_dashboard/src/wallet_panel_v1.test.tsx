@@ -61,3 +61,15 @@ describe('Wallet panel presentation', () => {
     expect(html).not.toMatch(/private.?key/i);
   });
 });
+
+describe('Sign-in screen', () => {
+  it('offers only the Petra sign-in and shows the error', async () => {
+    const { SignInScreen } = await import('./auth_gate_v1');
+    const html = renderToStaticMarkup(
+      <SignInScreen error="AUTH_NOT_RUNTIME_OWNER" busy={false} onSignIn={() => undefined} />,
+    );
+    expect(html).toContain('SIGN IN WITH PETRA');
+    expect(html).toContain('AUTH_NOT_RUNTIME_OWNER');
+    expect(html).not.toContain('<input');
+  });
+});

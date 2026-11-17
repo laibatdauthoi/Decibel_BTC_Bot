@@ -4,6 +4,10 @@
  */
 import { readDecibelActivityHistoryV1 } from './decibel_activity_history_v1.js';
 import { checkDecibelWebRequestV1 } from './decibel_web_request_guard_v1.js';
+import {
+  handleDecibelAuthRequestV1,
+  type decibel_dashboard_auth_v1,
+} from './decibel_dashboard_auth_v1.js';
 import { readDecibelDelegationsV1 } from './decibel_agent_delegation_v1.js';
 import { generateDecibelAgentKeyV1 } from './decibel_agent_keystore_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
@@ -97,6 +101,9 @@ export type decibel_production_web_route_context_v1 = Readonly<{
   refreshAuthenticatedComponents: () => Promise<authenticated_account_state>;
   getSnapshot: () => decibel_production_live_snapshot_v1 | null;
   getTelemetry: () => decibel_production_web_telemetry_v1;
+  /** Wallet sign-in; null when DECIBEL_DASHBOARD_AUTH=off. */
+  auth: decibel_dashboard_auth_v1 | null;
+  secureCookie: boolean;
 }>;
 
 export function handleDecibelProductionWebRequestV1(
@@ -117,6 +124,31 @@ export function handleDecibelProductionWebRequestV1(
   }
   const pathname = new URL(request.url ?? '/', `http://${context.web.DECIBEL_PRODUCTION_WEB_HOST}`)
     .pathname;
+  if (pathname.startsWith('/api/auth/')) {
+    void (async () => {
+      const body = request.method === 'POST' ? await readJsonBody(request) : null;
+      const result = await handleDecibelAuthRequestV1({
+        method: request.method ?? 'GET',
+        pathname,
+        body,
+        cookie: request.headers.cookie,
+        auth: context.auth,
+        secureCookie: context.secureCookie,
+      });
+      if (result === null) return writeJson(response, 404, { error: 'NOT_FOUND' });
+      if (result.setCookie !== undefined) response.setHeader('Set-Cookie', result.setCookie);
+      writeJson(response, result.status, result.body);
+    })().catch(() => writeJson(response, 400, { error: 'AUTH_REQUEST_INVALID' }));
+    return;
+  }
+  if (
+    context.auth !== null &&
+    pathname.startsWith('/api/') &&
+    context.auth.authenticate(request.headers.cookie) === null
+  ) {
+    request.resume();
+    return writeJson(response, 401, { error: 'AUTH_REQUIRED' });
+  }
   if (pathname === '/api/activity-history') {
     if (request.method !== 'GET') return writeJson(response, 405, { error: 'METHOD_NOT_ALLOWED' });
     const sessionId = new URL(request.url ?? '/', 'http://localhost').searchParams.get('sessionId');

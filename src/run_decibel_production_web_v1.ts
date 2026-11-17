@@ -54,6 +54,8 @@ import {
   type decibel_production_web_startup_overrides_v1,
 } from './decibel_production_web_helpers_v1.js';
 import { emitDecibelControlLoopLogV1 } from './decibel_control_loop_log_v1.js';
+import { createDecibelDashboardAuthFromEnvironmentV1 } from './decibel_dashboard_auth_v1.js';
+import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
 import {
   handleDecibelProductionWebRequestV1,
   type authenticated_account_state,
@@ -1787,6 +1789,10 @@ export async function runDecibelProductionWebV1(
     dependencies: RuntimeSupervisor.getSnapshot().dependencies,
     readiness: RuntimeSupervisor.getSnapshot().readiness,
   });
+  const DashboardAuth = createDecibelDashboardAuthFromEnvironmentV1(
+    environment,
+    (await loadDecibelSdkRuntimeV1()).MAINNET_CONFIG.fullnodeUrl,
+  );
   const Server = createServer((request, response) =>
     handleDecibelProductionWebRequestV1(
       {
@@ -1805,6 +1811,8 @@ export async function runDecibelProductionWebV1(
         refreshAuthenticatedComponents,
         getSnapshot: () => snapshot,
         getTelemetry: () => telemetry,
+        auth: DashboardAuth,
+        secureCookie: environment.DECIBEL_DASHBOARD_COOKIE_SECURE === 'true',
       },
       request,
       response,

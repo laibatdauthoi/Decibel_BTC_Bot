@@ -17,6 +17,7 @@ import {
 } from './overview_share_v1';
 import { selectNewerSnapshotV1 } from './snapshot_v1';
 import { WalletPanel } from './wallet_panel_v1';
+import { AuthGate } from './auth_gate_v1';
 import type { trading_decision_display_v1 as trading_decision_v1 } from './presentation';
 import {
   renderSessionActionButtonV1 as SessionActionButton,
@@ -1956,7 +1957,9 @@ if (typeof document !== 'undefined') {
   if (root === null) throw new Error('WEB_DASHBOARD_ROOT_MISSING');
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <AuthGate>
+        <App />
+      </AuthGate>
     </StrictMode>,
   );
 }

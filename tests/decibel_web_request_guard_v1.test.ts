@@ -1,7 +1,11 @@
 import { createServer, request as httpRequest, type Server } from 'node:http';
+import { mkdtempSync } from 'node:fs';
 import { type AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { checkDecibelWebRequestV1 } from '../src/decibel_web_request_guard_v1.js';
+import { decibel_dashboard_auth_v1 } from '../src/decibel_dashboard_auth_v1.js';
 import {
   handleDecibelProductionWebRequestV1,
   type decibel_production_web_route_context_v1,
@@ -125,5 +129,53 @@ describe('Dashboard routes apply the guard before any handler', () => {
       body: '{"error":"CONTENT_TYPE_NOT_JSON"}',
     });
     expect(touched).toBe(false);
+  });
+
+  it('answers 401 to every API route without a wallet session when sign-in is on', async () => {
+    const touched: string[] = [];
+    const Auth = new decibel_dashboard_auth_v1({
+      ownerAddress: `0x${'ab'.repeat(32)}`,
+      isWhitelisted: () => true,
+      readAuthKey: () => Promise.resolve(''),
+      sessionsPath: join(mkdtempSync(join(tmpdir(), 'route-auth-')), 'sessions.json'),
+    });
+    Server = createServer((request, response) => {
+      const address = Server!.address() as AddressInfo;
+      const known: Record<string, unknown> = {
+        web: {
+          DECIBEL_PRODUCTION_WEB_HOST: '127.0.0.1',
+          DECIBEL_PRODUCTION_WEB_PORT: address.port,
+        },
+        auth: Auth,
+        secureCookie: false,
+      };
+      const context = new Proxy(known, {
+        get: (target, key) => {
+          if (typeof key === 'string' && key in target) return target[key];
+          touched.push(String(key));
+          return undefined;
+        },
+      }) as unknown as decibel_production_web_route_context_v1;
+      handleDecibelProductionWebRequestV1(context, request, response);
+    });
+    await new Promise<void>((resolve) => Server!.listen(0, '127.0.0.1', resolve));
+    const { port: actual } = Server.address() as AddressInfo;
+    const get = (path: string) =>
+      new Promise<{ status: number; body: string }>((resolve, reject) => {
+        httpRequest({ host: '127.0.0.1', port: actual, path }, (response) => {
+          let body = '';
+          response.on('data', (chunk: Buffer) => (body += chunk.toString()));
+          response.on('end', () => resolve({ status: response.statusCode ?? 0, body }));
+        })
+          .on('error', reject)
+          .end();
+      });
+    for (const path of ['/api/telemetry', '/api/session', '/api/wallet', '/api/events'])
+      expect(await get(path)).toEqual({ status: 401, body: '{"error":"AUTH_REQUIRED"}' });
+    expect(await get('/api/auth/session')).toEqual({
+      status: 200,
+      body: '{"mode":"wallet","authenticated":false,"address":null}',
+    });
+    expect(touched).toEqual([]);
   });
 });

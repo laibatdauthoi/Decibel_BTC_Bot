@@ -68,12 +68,15 @@ export const WalletPanel = () => {
   const [connected, setConnected] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       const response = await fetch('/api/wallet');
       if (!response.ok) throw new Error('WALLET_STATUS_UNAVAILABLE');
       setStatus((await response.json()) as wallet_status_v1);
+      const session = await fetch('/api/auth/session');
+      if (session.ok) setSignedIn(((await session.json()) as { mode?: string }).mode === 'wallet');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'WALLET_STATUS_UNAVAILABLE');
     }
@@ -220,6 +223,22 @@ export const WalletPanel = () => {
           </>
         )}
       </div>
+      {signedIn && (
+        <div className="wallet-actions">
+          <button
+            type="button"
+            onClick={() =>
+              void fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}',
+              }).then(() => window.location.reload())
+            }
+          >
+            SIGN OUT
+          </button>
+        </div>
+      )}
       {!status?.keystoreSecretConfigured && status?.agent == null && (
         <p className="wallet-note">
           Agent wallet needs DECIBEL_KEYSTORE_SECRET (16+ characters) in .env, then a restart.
