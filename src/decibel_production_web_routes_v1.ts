@@ -3,6 +3,7 @@
  * on 2026-11-16; the route code is unchanged).
  */
 import { readDecibelActivityHistoryV1 } from './decibel_activity_history_v1.js';
+import { checkDecibelWebRequestV1 } from './decibel_web_request_guard_v1.js';
 import {
   projectDecibelNextSessionEntrySizeUsdV1,
   handleDecibelOperatorSettingsRequestV1,
@@ -74,7 +75,7 @@ export type authenticated_account_state = Awaited<
 
 /** What the HTTP routes read from the runtime. Mutable state is read through getters. */
 export type decibel_production_web_route_context_v1 = Readonly<{
-  web: Readonly<{ DECIBEL_PRODUCTION_WEB_HOST: string }>;
+  web: Readonly<{ DECIBEL_PRODUCTION_WEB_HOST: string; DECIBEL_PRODUCTION_WEB_PORT: number }>;
   environment: NodeJS.ProcessEnv;
   configuration: ReturnType<typeof parseDecibelProductionLiveConfigurationV1>;
   loadedExecutionMode: ReturnType<typeof loadDecibelPersistedExecutionModeV1>;
@@ -96,6 +97,17 @@ export function handleDecibelProductionWebRequestV1(
   request: import('node:http').IncomingMessage,
   response: ServerResponse,
 ): void {
+  const rejection = checkDecibelWebRequestV1({
+    method: request.method,
+    host: request.headers.host,
+    origin: request.headers.origin,
+    contentType: request.headers['content-type'],
+    port: context.web.DECIBEL_PRODUCTION_WEB_PORT,
+  });
+  if (rejection !== null) {
+    request.resume();
+    return writeJson(response, rejection.status, { error: rejection.error });
+  }
   const pathname = new URL(request.url ?? '/', `http://${context.web.DECIBEL_PRODUCTION_WEB_HOST}`)
     .pathname;
   if (pathname === '/api/activity-history') {
@@ -376,8 +388,9 @@ export function handleDecibelProductionWebRequestV1(
   response.writeHead(200, {
     'Content-Type': contentTypes[extname(filePath)] ?? 'application/octet-stream',
     'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
     'Content-Security-Policy':
-      "default-src 'self'; img-src 'self' blob:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+      "default-src 'self'; img-src 'self' blob:; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
   });
   createReadStream(filePath).pipe(response);
 }
