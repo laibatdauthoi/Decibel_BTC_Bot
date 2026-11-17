@@ -11,7 +11,6 @@ import {
   decibel_rotating_log_v1,
   isDecibelProductionNodeRuntimeCompatibleV1,
 } from '../src/decibel_process_forensics_v1.js';
-import { decibel_external_process_death_tracker_v1 } from '../src/decibel_external_process_watcher_v1.js';
 import { calculateDecibelSourceBuildFingerprintV1 } from '../src/decibel_source_build_fingerprint_v1.js';
 
 describe('production process forensics V1', () => {
@@ -104,59 +103,5 @@ describe('production process forensics V1', () => {
     expect(() => assertDecibelProductionNodeRuntimeV1('v24.11.1')).toThrow(
       'DECIBEL_PRODUCTION_NODE_RUNTIME_MISMATCH:EXPECTED=v22.23.2:ACTUAL=v24.11.1',
     );
-  });
-
-  it('records Windows identity and the launcher/child disappearance order externally', () => {
-    const Tracker = new decibel_external_process_death_tracker_v1();
-    const launcher = {
-      timestamp: 100,
-      pid: 10,
-      parentPid: 1,
-      creationTime: '2026-09-27T00:00:00.000Z',
-      executable: 'node.exe',
-      commandLine: 'launcher',
-    } as const;
-    const child = {
-      ...launcher,
-      pid: 11,
-      parentPid: 10,
-      creationTime: '2026-09-27T00:00:01.000Z',
-      commandLine: 'production-child',
-    } as const;
-    expect(Tracker.observe('LAUNCHER', 10, launcher, 100)[0]).toMatchObject({
-      event: 'PROCESS_OBSERVED',
-      pid: 10,
-      parentPid: 1,
-      executable: 'node.exe',
-      commandLine: 'launcher',
-    });
-    expect(Tracker.observe('CHILD', 11, child, 100)[0]).toMatchObject({
-      event: 'PROCESS_OBSERVED',
-      pid: 11,
-      parentPid: 10,
-    });
-    expect(Tracker.observe('LAUNCHER', 10, null, 200)).toEqual([]);
-    expect(Tracker.observe('LAUNCHER', 10, null, 300)[0]).toMatchObject({
-      event: 'PROCESS_TERMINATED',
-      pid: 10,
-      exitStatus: null,
-    });
-    expect(Tracker.observe('CHILD', 11, null, 400)).toEqual([]);
-    const childDeath = Tracker.observe('CHILD', 11, null, 500);
-    expect(childDeath[0]).toMatchObject({ event: 'PROCESS_TERMINATED', pid: 11 });
-    expect(childDeath[1]).toMatchObject({
-      event: 'DEATH_ORDER',
-      details: { disappearedFirst: 'LAUNCHER' },
-    });
-    expect(Tracker.complete()).toBe(true);
-  });
-
-  it('keeps the external watcher detached from production control behavior', () => {
-    const runner = readFileSync('src/run_decibel_external_process_watcher_v1.ts', 'utf8');
-    const launcher = readFileSync('scripts/start_decibel_external_process_watcher_v1.ps1', 'utf8');
-    expect(runner).not.toMatch(/placeOrder|cancelOrder|process\.kill|spawn\(/);
-    expect(launcher).toContain('Start-Process');
-    expect(launcher).toContain('independentFromProductionLauncher = $true');
-    expect(launcher).toContain('autoRestart = $false');
   });
 });

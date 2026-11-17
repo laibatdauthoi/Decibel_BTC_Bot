@@ -4,8 +4,6 @@ import {
 } from './decibel_chain_units_v1.js';
 import { createHash } from 'node:crypto';
 
-import Database from 'better-sqlite3';
-
 import {
   calculateDecibelPassiveVolumeQuotesV1,
   type decibel_passive_volume_quote_policy_result_v1,
@@ -2189,91 +2187,4 @@ export function evaluateDecibelAuthenticatedPassiveRecyclingV1(
     liveExecutionEnabled: false,
     venueMutationEnabled: false,
   });
-}
-
-export class decibel_authenticated_passive_recycling_journal_v1 {
-  private readonly database: Database.Database;
-
-  public constructor(path: string) {
-    this.database = new Database(path);
-    this.database.pragma('journal_mode = WAL');
-    this.database.pragma('synchronous = FULL');
-    this.database.exec(`CREATE TABLE IF NOT EXISTS decibel_authenticated_passive_recycling_v1 (
-      session_id TEXT PRIMARY KEY,
-      strategy_config_id TEXT NOT NULL,
-      evaluation_json TEXT NOT NULL,
-      known_fill_ids_json TEXT NOT NULL,
-      volume_cycles_json TEXT NOT NULL,
-      updated_at INTEGER NOT NULL,
-      live_execution_enabled INTEGER NOT NULL CHECK(live_execution_enabled = 0),
-      venue_mutation_enabled INTEGER NOT NULL CHECK(venue_mutation_enabled = 0)
-    )`);
-  }
-
-  public persist(input: {
-    evaluation: DecibelAuthenticatedPassiveRecyclingEvaluationV1;
-    strategyConfigId: string;
-    knownFillIds: readonly string[];
-  }): void {
-    const existing = this.restore(input.evaluation.sessionId);
-    if (existing !== null && existing.strategyConfigId !== input.strategyConfigId)
-      throw new Error('PASSIVE_RECYCLING_JOURNAL_CONFLICT');
-    this.database
-      .prepare(
-        `INSERT INTO decibel_authenticated_passive_recycling_v1 VALUES (?,?,?,?,?,?,0,0)
-        ON CONFLICT(session_id) DO UPDATE SET evaluation_json=excluded.evaluation_json,
-        known_fill_ids_json=excluded.known_fill_ids_json,
-        volume_cycles_json=excluded.volume_cycles_json,updated_at=excluded.updated_at`,
-      )
-      .run(
-        input.evaluation.sessionId,
-        input.strategyConfigId,
-        JSON.stringify(input.evaluation),
-        JSON.stringify([...new Set(input.knownFillIds)].sort()),
-        JSON.stringify(input.evaluation.volumeCycles),
-        input.evaluation.trace.at(-1)?.at ?? Date.now(),
-      );
-  }
-
-  public restore(sessionId: string): Readonly<{
-    strategyConfigId: string;
-    evaluation: DecibelAuthenticatedPassiveRecyclingEvaluationV1;
-    knownFillIds: readonly string[];
-    volumeCycles: decibel_actual_fill_ledger_v1['cycles'];
-  }> | null {
-    const row = this.database
-      .prepare(
-        `SELECT strategy_config_id AS strategyConfigId,evaluation_json AS evaluationJson,
-        known_fill_ids_json AS knownFillIdsJson,volume_cycles_json AS volumeCyclesJson
-        FROM decibel_authenticated_passive_recycling_v1 WHERE session_id=?`,
-      )
-      .get(sessionId) as
-      | {
-          strategyConfigId: string;
-          evaluationJson: string;
-          knownFillIdsJson: string;
-          volumeCyclesJson: string;
-        }
-      | undefined;
-    return row === undefined
-      ? null
-      : Object.freeze({
-          strategyConfigId: row.strategyConfigId,
-          evaluation: JSON.parse(
-            row.evaluationJson,
-          ) as DecibelAuthenticatedPassiveRecyclingEvaluationV1,
-          knownFillIds: Object.freeze(JSON.parse(row.knownFillIdsJson) as string[]),
-          volumeCycles: Object.freeze(
-            JSON.parse(row.volumeCyclesJson) as decibel_actual_fill_ledger_v1['cycles'],
-          ),
-        });
-  }
-
-  public close(): void {
-    this.database.close();
-  }
-}
-
-export function assertPassiveRecyclingVenueMutationUnavailableV1(): never {
-  throw new Error('PASSIVE_RECYCLING_VENUE_MUTATION_DISABLED');
 }

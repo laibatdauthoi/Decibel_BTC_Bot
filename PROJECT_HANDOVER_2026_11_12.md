@@ -4,7 +4,7 @@
 **Workspace:** `D:\study\Decibel_BTC_Bot`
 **Branch:** `chore/production-cleanup-v1` (no upstream configured)
 **HEAD:** `471e9ef` — `feat: establish lean decibel btc market maker production bot` (committed 2026-09-05)
-**Supersedes:** `PROJECT_HANDOVER.md` (audit of 2026-10-21). That file is kept unchanged for history.
+**Supersedes:** `PROJECT_HANDOVER.md` (audit of 2026-10-21). On 2026-11-17 that file and all of `docs/archive/` were deleted from the working tree; every `docs/archive/...` path below refers to git history (`git show 4314389:<path>`).
 **Audit method:** read-only. Source, docs, git state, runtime logs, persisted settings and a copy of the session database were inspected. `.env` was read for configuration _names_ and for non-secret mode/limit values only; no credential value was read into this report. No order, session, journal, setting or process was touched.
 
 Evidence labels used below: **VERIFIED** (checked directly during this audit), **DOCUMENTED** (stated in a repository doc, not re-checked), **INFERRED** (conservative deduction), **UNKNOWN**, **CONFLICT**.

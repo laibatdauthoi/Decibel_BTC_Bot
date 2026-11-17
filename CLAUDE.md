@@ -5,7 +5,7 @@
 ## Start here
 
 - Read `PROJECT_HANDOVER_2026_11_12.md` for the current state, formulas, risks and history.
-  `PROJECT_HANDOVER.md` (2026-10-21) is kept for history only.
+  The older handover and `docs/archive/` were removed on 2026-11-17; they remain in git history.
 - The user speaks Vietnamese. Reply in Vietnamese; code, commits and docs stay in English.
 
 ## Environment
