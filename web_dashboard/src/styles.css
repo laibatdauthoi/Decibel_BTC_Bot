@@ -4304,9 +4304,9 @@ body:has(.settings-view:not([hidden])) {
   z-index: 20;
   width: 320px;
   max-width: calc(100vw - 32px);
-  border: 1px solid var(--line);
-  background: var(--surface-light);
-  color: var(--foreground);
+  border: 1px solid #5f625f;
+  background: var(--surface-dark);
+  color: var(--surface-light);
   padding: 16px;
   font-family: 'Fredoka', system-ui, sans-serif;
   font-size: 14px;
@@ -4320,7 +4320,7 @@ body:has(.settings-view:not([hidden])) {
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid #2c2e2d;
 }
 
 .wallet-head strong {
@@ -4330,7 +4330,7 @@ body:has(.settings-view:not([hidden])) {
 .wallet-link {
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: #9c9a92;
   padding: 0;
   cursor: pointer;
   font: inherit;
@@ -4341,7 +4341,7 @@ body:has(.settings-view:not([hidden])) {
 }
 
 .wallet-link:hover:not(:disabled) {
-  color: var(--foreground);
+  color: var(--surface-light);
 }
 
 .wallet-subaccounts {
@@ -4361,12 +4361,12 @@ body:has(.settings-view:not([hidden])) {
 }
 
 .wallet-subaccounts label.selected {
-  border-color: var(--line);
+  border-color: #5f625f;
 }
 
 .wallet-subaccounts input {
   margin: 0;
-  accent-color: var(--foreground);
+  accent-color: var(--ice);
 }
 
 .wallet-subaccounts span {
@@ -4374,21 +4374,29 @@ body:has(.settings-view:not([hidden])) {
 }
 
 .wallet-subaccounts code {
-  color: var(--muted);
+  color: #9c9a92;
   font: inherit;
   font-size: 12px;
   text-transform: none;
 }
 
 .wallet-subaccounts em {
-  color: var(--color-active);
+  color: var(--ice);
   font-style: normal;
   font-size: 11px;
   font-weight: 600;
 }
 
 .wallet-subaccounts em.positive {
-  color: var(--color-positive);
+  color: #3fbf8f;
+}
+
+.wallet-dropdown .positive {
+  color: #3fbf8f !important;
+}
+
+.wallet-dropdown .warning {
+  color: #e0a43a !important;
 }
 
 .wallet-state {
@@ -4407,10 +4415,10 @@ body:has(.settings-view:not([hidden])) {
 
 .wallet-dropdown .wallet-actions > button:first-child {
   flex: 1;
-  border: 1px solid var(--line);
+  border: 1px solid var(--surface-light);
   border-radius: 0;
   background: transparent;
-  color: var(--foreground);
+  color: var(--surface-light);
   padding: 9px 12px;
   cursor: pointer;
   font: inherit;
@@ -4419,8 +4427,8 @@ body:has(.settings-view:not([hidden])) {
 }
 
 .wallet-dropdown .wallet-actions > button:first-child:not(:disabled):hover {
-  background: var(--surface-dark);
-  color: var(--surface-light);
+  background: var(--surface-light);
+  color: var(--surface-dark);
 }
 
 .wallet-dropdown .wallet-actions button:disabled {
@@ -4434,7 +4442,7 @@ body:has(.settings-view:not([hidden])) {
 
 .wallet-dropdown .wallet-note {
   margin: 10px 0 0;
-  color: var(--muted);
+  color: #9c9a92;
   font-size: 12px;
   text-transform: none;
 }
