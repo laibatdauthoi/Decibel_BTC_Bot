@@ -27,6 +27,7 @@ import {
 import { prepareDecibelWalletWorkspaceV1 } from './decibel_wallet_workspace_v1.js';
 import { readDecibelSubaccountsV1 } from './decibel_wallet_routes_v1.js';
 import { loadDecibelSdkRuntimeV1 } from './decibel_sdk_runtime_v1.js';
+import { decibel_terminal_line_formatter_v1 } from './decibel_terminal_line_v1.js';
 
 const Secrets = collectDecibelSecretValuesV1(process.env);
 installDecibelConsoleRedactionV1(Secrets);
@@ -117,10 +118,14 @@ if (Child.pid !== undefined)
   );
 
 // Child output is redacted line by line before it reaches the log files or the terminal.
-const forwardStdout = (text: string) => {
-  if (text === '') return;
-  Stdout.append(text);
-  process.stdout.write(text);
+// stdout.log keeps every line; the terminal shows a compact view (decibel_terminal_line_v1).
+const TerminalStdout = new decibel_terminal_line_formatter_v1(
+  process.env.DECIBEL_TERMINAL_VERBOSE === 'true',
+);
+const forwardStdout = (text: string, final = false) => {
+  if (text !== '') Stdout.append(text);
+  const view = TerminalStdout.push(text) + (final ? TerminalStdout.flush() : '');
+  if (view !== '') process.stdout.write(view);
 };
 const forwardStderr = (text: string) => {
   if (text === '') return;
@@ -129,7 +134,7 @@ const forwardStderr = (text: string) => {
 };
 Child.stdout?.on('data', (chunk: Buffer) => forwardStdout(StdoutRedactor.push(chunk)));
 Child.stderr?.on('data', (chunk: Buffer) => forwardStderr(StderrRedactor.push(chunk)));
-Child.stdout?.on('end', () => forwardStdout(StdoutRedactor.flush()));
+Child.stdout?.on('end', () => forwardStdout(StdoutRedactor.flush(), true));
 Child.stderr?.on('end', () => forwardStderr(StderrRedactor.flush()));
 
 let parentMissingRecorded = false;
