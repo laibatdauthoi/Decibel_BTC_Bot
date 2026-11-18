@@ -417,7 +417,7 @@ const SubaccountsSchema = z.array(
   }),
 );
 
-/** Active subaccounts of an owner from the Decibel REST API. */
+/** Active subaccounts of an owner from the Decibel REST API, the primary one first. */
 export async function readDecibelSubaccountsV1(
   input: Readonly<{
     tradingHttpUrl: string;
@@ -446,6 +446,7 @@ export async function readDecibelSubaccountsV1(
           label: row.custom_label,
           isPrimary: row.is_primary,
         }),
-      ),
+      )
+      .sort((left, right) => Number(right.isPrimary) - Number(left.isPrimary)),
   );
 }

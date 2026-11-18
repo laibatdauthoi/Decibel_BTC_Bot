@@ -365,4 +365,33 @@ describe('Subaccount listing', () => {
       }),
     ).resolves.toEqual([{ address: IN_USE, label: null, isPrimary: true }]);
   });
+
+  it('lists the primary subaccount first', async () => {
+    const fetchImpl = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify([
+            {
+              subaccount_address: SECOND,
+              primary_account_address: OWNER,
+              is_primary: false,
+              custom_label: null,
+            },
+            {
+              subaccount_address: IN_USE,
+              primary_account_address: OWNER,
+              is_primary: true,
+              custom_label: null,
+            },
+          ]),
+        ),
+      ),
+    );
+    const rows = await readDecibelSubaccountsV1({
+      tradingHttpUrl: 'https://api.example/decibel',
+      owner: OWNER,
+      fetchImpl,
+    });
+    expect(rows.map((row) => row.address)).toEqual([IN_USE, SECOND]);
+  });
 });
