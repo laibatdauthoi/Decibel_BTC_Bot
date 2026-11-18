@@ -282,6 +282,16 @@ describe('Launcher workspace step', () => {
     await expect(
       prepareDecibelWalletWorkspaceV1({}, { ...base, readOwner: () => Promise.resolve(OWNER) }),
     ).rejects.toThrow('WALLET_SUBACCOUNT_REQUIRED');
+    // A leftover .env override at a single-wallet path would split the wallet's files.
+    await expect(
+      prepareDecibelWalletWorkspaceV1(
+        {
+          DECIBEL_SUBACCOUNT_ADDRESS: SUBACCOUNT,
+          DECIBEL_EXECUTION_JOURNAL_PATH: legacy.executionJournal,
+        },
+        { ...base, readOwner: () => Promise.resolve(OWNER) },
+      ),
+    ).rejects.toThrow('LEGACY_PATH_OVERRIDE_REMOVE_FROM_ENV:DECIBEL_EXECUTION_JOURNAL_PATH');
     // Nothing moved for a refused wallet.
     expect(existsSync(legacy.executionJournal)).toBe(true);
   });

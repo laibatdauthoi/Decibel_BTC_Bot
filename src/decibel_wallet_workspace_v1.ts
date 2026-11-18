@@ -153,6 +153,30 @@ export async function readDecibelSubaccountOwnerV1(
   return normalizeDecibelAddressV1(parsed.data.data.owner);
 }
 
+/**
+ * A `.env` path override at a single-wallet (legacy) location would make the runtime write
+ * outside the wallet workspace and every wallet share that file. On 2026-11-18 a leftover
+ * DECIBEL_EXECUTION_JOURNAL_PATH split the journal in two; the launcher now refuses to start.
+ */
+export function assertNoLegacyPathOverridesV1(
+  environment: NodeJS.ProcessEnv,
+  legacy: decibel_legacy_paths_v1 = DECIBEL_LEGACY_PATHS_V1,
+): void {
+  const overrides = [
+    ['DECIBEL_EXECUTION_JOURNAL_PATH', legacy.executionJournal],
+    ['DECIBEL_PRODUCTION_SESSION_STORE_PATH', legacy.sessionStore],
+    ['DECIBEL_OPERATOR_SETTINGS_PATH', legacy.operatorSettings],
+    ['DECIBEL_PRODUCTION_RESTART_SAFETY_PATH', legacy.restartSafety],
+    ['DECIBEL_PRODUCTION_FORENSICS_PATH', legacy.forensics],
+    ['DECIBEL_PRODUCTION_ECONOMIC_EVIDENCE_PATH', legacy.economicEvidence],
+  ] as const;
+  for (const [variable, legacyPath] of overrides) {
+    const value = environment[variable]?.trim();
+    if (value && resolve(value) === resolve(legacyPath))
+      throw new Error(`LEGACY_PATH_OVERRIDE_REMOVE_FROM_ENV:${variable}`);
+  }
+}
+
 /** Files of the single-wallet layout used before 2026-11-17. */
 export type decibel_legacy_paths_v1 = Readonly<{
   executionJournal: string;
@@ -361,6 +385,7 @@ export async function prepareDecibelWalletWorkspaceV1(
     ) => Promise<readonly Readonly<{ address: string; isPrimary: boolean }>[]>;
   }>,
 ): Promise<decibel_wallet_workspace_v1> {
+  assertNoLegacyPathOverridesV1(environment, dependencies.legacy ?? DECIBEL_LEGACY_PATHS_V1);
   const selected =
     environment.DECIBEL_SUBACCOUNT_SELECTION === 'off'
       ? null
