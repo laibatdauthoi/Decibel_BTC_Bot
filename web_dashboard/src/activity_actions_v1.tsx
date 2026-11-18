@@ -293,7 +293,8 @@ export const SessionHistoryContent = (
                 Times are journal timestamps. Fees require an exact authenticated fill identity
                 match. PnL (gross) is the venue's realized PnL of each closing fill, funding
                 included and fees excluded; net PnL also subtracts this fill's fee and the matched
-                opening fees. ? marks an opening fill; UNKNOWN denotes missing evidence.
+                opening fees. — marks an opening fill, which realizes no PnL; UNKNOWN denotes
+                missing evidence.
               </p>
               {history.fills.length === 0 ? (
                 <p>
@@ -352,7 +353,7 @@ export const SessionHistoryContent = (
                           }
                         >
                           {fill.closePnlAvailability === 'N/A'
-                            ? '?'
+                            ? '—'
                             : fill.closePnlAvailability === 'VERIFIED'
                               ? formatValue(fill.pnlAtCloseUsd ?? null, 6, '$')
                               : 'UNKNOWN'}
@@ -370,7 +371,7 @@ export const SessionHistoryContent = (
                           {netByFill.has(fill.fillId)
                             ? formatValue(netByFill.get(fill.fillId) ?? null, 6, '$')
                             : fill.closePnlAvailability === 'N/A'
-                              ? '?'
+                              ? '—'
                               : 'UNKNOWN'}
                         </td>
                       </tr>
