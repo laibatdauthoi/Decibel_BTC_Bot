@@ -26,11 +26,14 @@ export type decibel_actual_fill_truth_v1 = Readonly<{
     amount: number | null;
     currency: string | null;
   }>;
+  /** Venue realized PnL (price PnL plus funding, before fees); null when not reported. */
+  venueRealizedPnlUsd?: number | null;
   executionFragments?: readonly Readonly<{
     fragmentId: string;
     quantity: number;
     price: number;
     feeUsd: number | null;
+    realizedPnlUsd?: number | null;
   }>[];
   executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM';
 }>;

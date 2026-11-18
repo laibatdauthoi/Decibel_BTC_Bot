@@ -291,9 +291,9 @@ export const SessionHistoryContent = (
                       '$',
                     )} / ${formatValue(props.session.totalExecutedVolumeUsd, 2, '$')} saved.`}{' '}
                 Times are journal timestamps. Fees require an exact authenticated fill identity
-                match. N/A denotes a verified opening fill; UNKNOWN denotes missing evidence.
-                Per-fill realized PnL is not persisted in this journal and is never allocated from
-                session PnL.
+                match. PnL (gross) is the venue's realized PnL of each closing fill, funding
+                included and fees excluded; net PnL also subtracts this fill's fee and the matched
+                opening fees. ? marks an opening fill; UNKNOWN denotes missing evidence.
               </p>
               {history.fills.length === 0 ? (
                 <p>

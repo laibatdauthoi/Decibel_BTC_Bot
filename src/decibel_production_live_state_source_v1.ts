@@ -328,6 +328,9 @@ type trade_history_row = Readonly<{
   size: number;
   price: number;
   fee_amount: number;
+  /** Venue realized PnL of a closing fill: price PnL plus realized funding, before fees
+   * (checked against mainnet fills on 2026-11-18); 0 on opening fills. */
+  realized_pnl_amount?: number;
   is_rebate: boolean;
   order_id: string;
   transaction_unix_ms: number;
@@ -378,14 +381,18 @@ export function aggregateDecibelTradeHistoryFragmentsV1(
       prior.is_rebate !== trade.is_rebate
     )
       throw new Error('PRODUCTION_LIVE_SOURCE_FILL_FRAGMENT_IDENTITY_CONFLICT');
-    aggregated.set(
-      key,
-      Object.freeze({
-        ...prior,
-        size: Number((prior.size + trade.size).toFixed(12)),
-        fee_amount: Number((prior.fee_amount + trade.fee_amount).toFixed(12)),
-      }),
-    );
+    // Realized PnL is kept only while every fragment of the fill reports it.
+    const merged: { -readonly [K in keyof trade_history_row]: trade_history_row[K] } = {
+      ...prior,
+      size: Number((prior.size + trade.size).toFixed(12)),
+      fee_amount: Number((prior.fee_amount + trade.fee_amount).toFixed(12)),
+    };
+    if (Number.isFinite(prior.realized_pnl_amount) && Number.isFinite(trade.realized_pnl_amount))
+      merged.realized_pnl_amount = Number(
+        (prior.realized_pnl_amount! + trade.realized_pnl_amount!).toFixed(12),
+      );
+    else delete merged.realized_pnl_amount;
+    aggregated.set(key, Object.freeze(merged));
   }
   return Object.freeze([...aggregated.values()]);
 }
@@ -1361,6 +1368,9 @@ function buildStrategyFillLedger(
         amount: Number.isFinite(trade.fee_amount) ? trade.fee_amount : null,
         currency: Number.isFinite(trade.fee_amount) ? 'USD' : null,
       },
+      venueRealizedPnlUsd: Number.isFinite(trade.realized_pnl_amount)
+        ? trade.realized_pnl_amount!
+        : null,
       rebate: {
         availability: trade.is_rebate ? 'AVAILABLE' : 'UNAVAILABLE',
         amount: null,
@@ -1382,6 +1392,9 @@ function buildStrategyFillLedger(
         quantity: fragment.size,
         price: fragment.price,
         feeUsd: Number.isFinite(fragment.fee_amount) ? fragment.fee_amount : null,
+        realizedPnlUsd: Number.isFinite(fragment.realized_pnl_amount)
+          ? fragment.realized_pnl_amount!
+          : null,
       })),
       executionProvenance: 'AUTHENTICATED_OWN_FILL_STREAM',
     });

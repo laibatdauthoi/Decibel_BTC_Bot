@@ -2601,6 +2601,19 @@ describe('Decibel production live orchestrator V1', () => {
     expect(aggregateDecibelTradeHistoryFragmentsV1(fragments)).toMatchObject([
       { trade_id: fragment.trade_id, size: 0.00027 },
     ]);
+    // Venue realized PnL adds up across fragments, and is dropped when a fragment lacks it.
+    expect(
+      aggregateDecibelTradeHistoryFragmentsV1([
+        { ...fragment, size: 0.0001, realized_pnl_amount: 0.01 },
+        { ...fragment, size: 0.00017, realized_pnl_amount: 0.017 },
+      ])[0]?.realized_pnl_amount,
+    ).toBe(0.027);
+    expect(
+      aggregateDecibelTradeHistoryFragmentsV1([
+        { ...fragment, size: 0.0001, realized_pnl_amount: 0.01 },
+        { ...fragment, size: 0.00017 },
+      ])[0],
+    ).not.toHaveProperty('realized_pnl_amount');
     expect(
       resolveDecibelRecentOrderEvidenceV1(
         [

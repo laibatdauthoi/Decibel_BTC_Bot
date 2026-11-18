@@ -23,7 +23,7 @@ export function enrichDecibelActivityFillV1(
     ...row,
     feeUsd: null as number | null,
     pnlAtCloseUsd: null as number | null,
-    closePnlAvailability: 'UNKNOWN' as 'UNKNOWN' | 'N/A',
+    closePnlAvailability: 'UNKNOWN' as 'UNKNOWN' | 'N/A' | 'VERIFIED',
     direction: null as 'Open Long' | 'Open Short' | 'Close Long' | 'Close Short' | null,
   };
   if (intent.reduceOnly === true && row.side !== 'UNKNOWN')
@@ -104,7 +104,13 @@ export function enrichDecibelActivityFillV1(
     result.closePnlAvailability = 'N/A';
   } else if (fill.executedBaseQuantity <= Math.abs(before) + 1e-12) {
     result.direction = row.side === 'BUY' ? 'Close Short' : 'Close Long';
+    // The venue's realized PnL of this exact fill (or fragment): price PnL plus funding,
+    // before fees. Never derived or allocated from session totals.
+    const realized = identity?.length === 3 ? fragment?.realizedPnlUsd : fill.venueRealizedPnlUsd;
+    if (typeof realized === 'number' && Number.isFinite(realized)) {
+      result.pnlAtCloseUsd = realized;
+      result.closePnlAvailability = 'VERIFIED';
+    }
   }
-  // Applications persist inventory changes, not entry basis or per-fill realized PnL.
   return result;
 }

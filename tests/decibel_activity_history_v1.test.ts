@@ -276,6 +276,46 @@ describe('Activity authenticated fill fee and position evidence', () => {
     expect(unknown.direction).toBeNull();
     expect(unknown.closePnlAvailability).toBe('UNKNOWN');
   });
+  it('shows the venue realized PnL of a proven closing fill and fragment, never on openings', async () => {
+    const { enrichDecibelActivityFillV1 } =
+      await import('../src/decibel_activity_fill_evidence_v1.js');
+    const closing = {
+      ...fill,
+      side: 'SELL' as const,
+      venueRealizedPnlUsd: 0.044175,
+      executionFragments: [
+        { fragmentId: 'a', quantity: 0.02, price: 100, feeUsd: 0.002, realizedPnlUsd: 0.01767 },
+        { fragmentId: 'b', quantity: 0.03, price: 100, feeUsd: 0.003, realizedPnlUsd: 0.026505 },
+      ],
+    };
+    const closeApplication = {
+      ...application,
+      side: 'SELL' as const,
+      inventoryBefore: 0.05,
+      inventoryAfter: 0,
+    };
+    const fragment = enrichDecibelActivityFillV1({ ...row, side: 'SELL' }, intent, {
+      fills: [closing],
+      applications: [closeApplication],
+    });
+    expect(fragment).toMatchObject({
+      direction: 'Close Long',
+      closePnlAvailability: 'VERIFIED',
+      pnlAtCloseUsd: 0.01767,
+    });
+    const whole = enrichDecibelActivityFillV1(
+      { ...row, fillId: JSON.stringify(['order-1', 'fill-1']), side: 'SELL', quantity: 0.05 },
+      intent,
+      { fills: [closing], applications: [closeApplication] },
+    );
+    expect(whole).toMatchObject({ closePnlAvailability: 'VERIFIED', pnlAtCloseUsd: 0.044175 });
+    // An opening fill keeps N/A even if a value were reported.
+    const opening = enrichDecibelActivityFillV1(row, intent, {
+      fills: [{ ...fill, venueRealizedPnlUsd: 0 }],
+      applications: [application],
+    });
+    expect(opening).toMatchObject({ closePnlAvailability: 'N/A', pnlAtCloseUsd: null });
+  });
   it('preserves authenticated fees through the local reader and response schema', () => {
     const root = mkdtempSync(join(tmpdir(), 'activity-fee-'));
     const path = join(root, 'fixture.sqlite');
