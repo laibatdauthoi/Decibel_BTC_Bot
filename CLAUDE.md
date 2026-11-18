@@ -41,8 +41,12 @@ script. CI (`.github/workflows/quality.yml`) runs the same gate on Ubuntu with N
 
 ## Open work (agreed with the user)
 
-1. Review the 6 sessions persisted as `BLOCKED / SESSION_UNWIND_COMPLETION_CONFLICT`.
-2. Phase 5: run the bot on a VPS with a domain and HTTPS. The user still has to choose a Windows
+1. Phase 5: run the bot on a VPS with a domain and HTTPS. The user still has to choose a Windows
    or a Linux VPS; Linux needs the launcher made platform-neutral first.
-3. Catastrophe stop (`decibel_catastrophe_stop_v1.ts`, since 2026-11-13) is not yet observed on
-   mainnet: confirm the trigger reference price and the Stop Limit behaviour in a gap.
+2. Catastrophe stop (`decibel_catastrophe_stop_v1.ts`, since 2026-11-13): placement is verified
+   on mainnet (22 `STOP_SUBMITTED` events, about 2% from the entry, by 2026-11-18). A trigger
+   has never fired: the trigger reference price and the Stop Limit fill in a gap stay unobserved.
+
+The 6 `BLOCKED / SESSION_UNWIND_COMPLETION_CONFLICT` sessions of the handover were reviewed on
+2026-11-18: they lived in the pre-2026-11-13 session store, which no longer exists. `BLOCKED` is
+terminal (not an active status, no ownership held), and the current store has none.
