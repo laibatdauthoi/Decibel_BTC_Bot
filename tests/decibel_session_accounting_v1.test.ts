@@ -571,6 +571,7 @@ describe('Fixed session maker target', () => {
       transaction_unix_ms: 1_500,
     };
     let trades = [trade];
+    const readTradeHistoryExhaustive = vi.fn(() => Promise.resolve(trades));
     const Reader = {
       readOrderHistory: () => Promise.resolve([]),
       readTradeHistory: () => Promise.resolve([]),
@@ -586,7 +587,7 @@ describe('Fixed session maker target', () => {
           },
         ]),
       ),
-      readTradeHistoryExhaustive: vi.fn(() => Promise.resolve(trades)),
+      readTradeHistoryExhaustive,
     } as unknown as DecibelProductionLiveAuthenticatedReaderV1;
     const Source = new decibel_production_live_state_source_v1(
       Reader,
@@ -596,6 +597,21 @@ describe('Fixed session maker target', () => {
     );
     const first = await Source.readAuthenticatedFillLedger(1_000);
     expect(first.ledger.actualExternalMakerVolumeUsd).toBe(20);
+    // An ended session reads only its own window (activity history), never past now.
+    await Source.readAuthenticatedFillLedger(1_000, undefined, 1_600);
+    expect(readTradeHistoryExhaustive).toHaveBeenLastCalledWith(
+      'subaccount',
+      1_000,
+      1_600,
+      expect.anything(),
+    );
+    await Source.readAuthenticatedFillLedger(1_000, undefined, 9_999);
+    expect(readTradeHistoryExhaustive).toHaveBeenLastCalledWith(
+      'subaccount',
+      1_000,
+      2_000,
+      expect.anything(),
+    );
     const partial = synchronizeDecibelSessionAccountingV1(
       f.Journal,
       first.ledger,

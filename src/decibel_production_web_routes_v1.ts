@@ -10,6 +10,7 @@ import {
 } from './decibel_dashboard_auth_v1.js';
 import { readDecibelDelegationsV1 } from './decibel_agent_delegation_v1.js';
 import { checkDecibelBotAuthorizationV1 } from './decibel_executor_signer_v1.js';
+import type { decibel_actual_fill_ledger_v1 } from './decibel_actual_fill_truth_v1.js';
 import {
   generateDecibelAgentKeyV1,
   resolveDecibelKeystoreSecretV1,
@@ -147,6 +148,43 @@ async function checkSessionStartAuthorization(
   }
 }
 
+/** Fill evidence of ended sessions never changes: read it from the venue once per process. */
+const EndedSessionLedgers = new Map<string, decibel_actual_fill_ledger_v1>();
+const ENDED_SESSION_LEDGER_CACHE_LIMIT_V1 = 50;
+/** Venue fills can be timestamped slightly after the session end was recorded. */
+const SESSION_FILL_END_MARGIN_MS_V1 = 60_000;
+
+/**
+ * Authenticated fills covering one session. The live snapshot only holds recent fills, so the
+ * activity history reads the session's own window from the venue; on any read failure it falls
+ * back to the snapshot (rows it cannot prove stay UNKNOWN).
+ */
+async function readSessionFillLedger(
+  context: decibel_production_web_route_context_v1,
+  session: Readonly<{ sessionId: string; startedAt: number | null; endedAt: number | null }>,
+): Promise<decibel_actual_fill_ledger_v1 | undefined> {
+  const fallback = context.getSnapshot()?.input.actualFillLedger;
+  const cached = EndedSessionLedgers.get(session.sessionId);
+  if (cached !== undefined) return cached;
+  if (session.startedAt === null || context.source.readAuthenticatedFillLedger === undefined)
+    return fallback;
+  try {
+    const { ledger } = await context.source.readAuthenticatedFillLedger(
+      session.startedAt,
+      undefined,
+      session.endedAt === null ? undefined : session.endedAt + SESSION_FILL_END_MARGIN_MS_V1,
+    );
+    if (session.endedAt !== null) {
+      if (EndedSessionLedgers.size >= ENDED_SESSION_LEDGER_CACHE_LIMIT_V1)
+        EndedSessionLedgers.delete(EndedSessionLedgers.keys().next().value!);
+      EndedSessionLedgers.set(session.sessionId, ledger);
+    }
+    return ledger;
+  } catch {
+    return fallback;
+  }
+}
+
 export function handleDecibelProductionWebRequestV1(
   context: decibel_production_web_route_context_v1,
   request: import('node:http').IncomingMessage,
@@ -195,21 +233,19 @@ export function handleDecibelProductionWebRequestV1(
     const sessionId = new URL(request.url ?? '/', 'http://localhost').searchParams.get('sessionId');
     if (!sessionId || sessionId.length > 256)
       return writeJson(response, 400, { error: 'SESSION_ID_INVALID' });
-    if (!context.sessionController.getHistory().some((session) => session.sessionId === sessionId))
-      return writeJson(response, 404, { error: 'SESSION_NOT_FOUND' });
-    try {
+    const session = context.sessionController
+      .getHistory()
+      .find((record) => record.sessionId === sessionId);
+    if (session === undefined) return writeJson(response, 404, { error: 'SESSION_NOT_FOUND' });
+    void (async () => {
+      const ledger = await readSessionFillLedger(context, session);
       return writeJson(
         response,
         200,
-        readDecibelActivityHistoryV1(
-          context.configuration.journalPath,
-          sessionId,
-          context.getSnapshot()?.input.actualFillLedger,
-        ),
+        readDecibelActivityHistoryV1(context.configuration.journalPath, sessionId, ledger),
       );
-    } catch {
-      return writeJson(response, 503, { error: 'ACTIVITY_HISTORY_UNAVAILABLE' });
-    }
+    })().catch(() => writeJson(response, 503, { error: 'ACTIVITY_HISTORY_UNAVAILABLE' }));
+    return;
   }
   if (pathname.startsWith('/api/session')) {
     const isStartRequest = request.method === 'POST' && pathname === '/api/session/start';

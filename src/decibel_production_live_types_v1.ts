@@ -200,6 +200,7 @@ export interface DecibelProductionLiveStateSourceV1 {
   readAuthenticatedFillLedger?(
     startedAt?: number,
     signal?: AbortSignal,
+    endedAt?: number,
   ): Promise<
     Readonly<{
       readWindow?: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;

@@ -2464,9 +2464,14 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     }
   }
 
+  /**
+   * Exhaustive authenticated fills from `startedAt` (default: the activity baseline) until
+   * `endedAt` (default: now). The activity history passes an ended session's bounds.
+   */
   public async readAuthenticatedFillLedger(
     startedAt?: number,
     parentSignal?: AbortSignal,
+    endedAt?: number,
   ): Promise<
     Readonly<{
       readWindow: import('./decibel_venue_reconciliation_snapshot_v1.js').decibel_venue_read_window_v1;
@@ -2493,6 +2498,10 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       startedAt ?? baseline.historyStartTimestamp,
       observedAt - DECIBEL_MAX_HISTORY_RANGE_MS + 1,
     );
+    const end =
+      endedAt !== undefined && Number.isSafeInteger(endedAt) && endedAt >= start
+        ? Math.min(endedAt, observedAt)
+        : observedAt;
     const [orders, trades] = await Promise.all([
       this.readAuthenticatedStage(
         'ORDER_HISTORY',
@@ -2501,7 +2510,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
             this.Reader,
             configuration.DECIBEL_SUBACCOUNT_ADDRESS,
             start,
-            observedAt,
+            end,
             signal,
           ),
         parentSignal,
@@ -2513,7 +2522,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
             this.Reader,
             configuration.DECIBEL_SUBACCOUNT_ADDRESS,
             start,
-            observedAt,
+            end,
             signal,
           ),
         parentSignal,
