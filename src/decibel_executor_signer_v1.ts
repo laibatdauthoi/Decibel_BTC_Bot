@@ -39,24 +39,33 @@ export type decibel_executor_signer_v1 = Readonly<{
   agentAddress: string;
 }>;
 
+/**
+ * Whether the wallet's bot key may trade the subaccount now, read without unlocking the key:
+ * null when it may, else the refusal code. Checked before every live session start, because
+ * the owner can revoke the access in Petra while the runtime is idle.
+ */
+export async function checkDecibelBotAuthorizationV1(
+  environment: decibel_executor_signer_environment_v1,
+  readDelegations: () => Promise<readonly decibel_delegation_v1[]>,
+  now: () => number = Date.now,
+): Promise<string | null> {
+  const keystorePath = resolveDecibelAgentKeystorePathFromEnvironmentV1(environment);
+  const record = keystorePath === null ? null : readDecibelAgentKeystoreV1(keystorePath);
+  if (record === null) return 'BOT_NOT_AUTHORIZED_CONNECT_WALLET';
+  const { status } = assessDecibelAgentDelegationV1(await readDelegations(), record.address, now());
+  return status === 'ACTIVE' || status === 'EXPIRING_SOON' ? null : `AGENT_DELEGATION_${status}`;
+}
+
 export async function resolveDecibelExecutorSignerV1(
   environment: decibel_executor_signer_environment_v1,
   readDelegations: () => Promise<readonly decibel_delegation_v1[]>,
   now: () => number = Date.now,
 ): Promise<decibel_executor_signer_v1> {
-  const keystorePath = resolveDecibelAgentKeystorePathFromEnvironmentV1(environment);
-  if (keystorePath === null || readDecibelAgentKeystoreV1(keystorePath) === null)
-    throw new Error('BOT_NOT_AUTHORIZED_CONNECT_WALLET');
+  const refusal = await checkDecibelBotAuthorizationV1(environment, readDelegations, now);
+  if (refusal !== null) throw new Error(refusal);
   const material = unlockDecibelAgentKeystoreV1(
-    keystorePath,
+    resolveDecibelAgentKeystorePathFromEnvironmentV1(environment) ?? '',
     resolveDecibelKeystoreSecretV1(environment, { create: false }),
   );
-  const delegation = assessDecibelAgentDelegationV1(
-    await readDelegations(),
-    material.address,
-    now(),
-  );
-  if (delegation.status !== 'ACTIVE' && delegation.status !== 'EXPIRING_SOON')
-    throw new Error(`AGENT_DELEGATION_${delegation.status}`);
   return Object.freeze({ privateKeyHex: material.privateKeyHex, agentAddress: material.address });
 }

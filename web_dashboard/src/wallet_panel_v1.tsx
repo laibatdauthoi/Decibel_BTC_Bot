@@ -35,10 +35,20 @@ const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
   SUBACCOUNT_NOT_OWNED: 'This wallet does not own the subaccount.',
   END_SESSION_BEFORE_SWITCHING: 'End the running session before switching subaccount.',
   ORDERS_OPEN_BEFORE_SWITCHING: 'Wait until the open orders of this subaccount are settled.',
+  END_SESSION_BEFORE_REVOKING: 'End the running session before revoking the bot.',
+  ORDERS_OPEN_BEFORE_REVOKING: 'Wait until the open orders are settled before revoking.',
+  ALREADY_REVOKED: 'The bot has no access to this subaccount.',
+  BOT_AUTHORIZATION_UNAVAILABLE: 'Decibel did not answer. Try again in a moment.',
 };
 
 export function describeWalletErrorV1(code: string): string {
   return FRIENDLY_ERRORS_V1[code] ?? code;
+}
+
+function withoutAddress(set: ReadonlySet<string>, address: string): ReadonlySet<string> {
+  const next = new Set(set);
+  next.delete(address);
+  return next;
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -71,6 +81,8 @@ export const WalletMenu = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
+  /** Subaccounts revoked from this page; Decibel's index may still list them for a while. */
+  const [revoked, setRevoked] = useState<ReadonlySet<string>>(new Set());
   const Root = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async (owner: string) => {
@@ -171,10 +183,11 @@ export const WalletMenu = () => {
     run(async () => {
       if (connected === null || selected === null) return;
       const { payloads } = await postJson<{
-        payloads: Record<'delegate' | 'revoke' | 'gasTopUp', wallet_payload_v1 | null>;
+        payloads: Record<'delegate' | 'gasTopUp', wallet_payload_v1 | null>;
       }>('/api/wallet/prepare', { owner: connected, subaccount: selected });
       await sign(payloads.delegate);
       await sign(payloads.gasTopUp);
+      setRevoked((current) => withoutAddress(current, selected));
       await load(connected);
       return switchTo(connected, selected);
     });
@@ -185,17 +198,22 @@ export const WalletMenu = () => {
   const revoke = () =>
     run(async () => {
       if (connected === null || selected === null) return;
-      const { payloads } = await postJson<{
-        payloads: Record<'revoke', wallet_payload_v1 | null>;
-      }>('/api/wallet/prepare', { owner: connected, subaccount: selected });
-      await sign(payloads.revoke);
-      await load(connected);
+      const { payload } = await postJson<{ payload: wallet_payload_v1 }>('/api/wallet/revoke', {
+        owner: connected,
+        subaccount: selected,
+      });
+      await sign(payload);
+      setRevoked((current) => new Set(current).add(selected));
+      await load(connected).catch(() => undefined);
       return 'Bot access revoked.';
     });
 
-  const inUseRow = accounts?.subaccounts.find((row) => row.address === accounts.inUse);
-  const selectedRow = accounts?.subaccounts.find((row) => row.address === selected);
-  const selectedAuthorized = isAuthorizedV1(selectedRow?.authorization);
+  const rows = accounts?.subaccounts ?? [];
+  const inUseRow = rows.find((row) => row.address === accounts?.inUse);
+  const selectedRow = rows.find((row) => row.address === selected);
+  const authorized = (row: (typeof rows)[number] | undefined) =>
+    row !== undefined && !revoked.has(row.address) && isAuthorizedV1(row.authorization);
+  const selectedAuthorized = authorized(selectedRow);
   const selectedInUse = selected !== null && selected === accounts?.inUse;
   const expiry =
     selectedRow?.authorization?.expiresAtMs == null
@@ -210,7 +228,7 @@ export const WalletMenu = () => {
     <div className="wallet-menu" ref={Root}>
       <button
         type="button"
-        className={`wallet-control ${isAuthorizedV1(inUseRow?.authorization) ? 'authorized' : ''}`}
+        className={`wallet-control ${authorized(inUseRow) ? 'authorized' : ''}`}
         aria-label="Wallet"
         aria-expanded={open}
         disabled={busy && connected === null}
@@ -255,7 +273,7 @@ export const WalletMenu = () => {
                     <code title={row.address}>{shortAddressV1(row.address)}</code>
                     {row.address === accounts.inUse ? (
                       <em>IN USE</em>
-                    ) : isAuthorizedV1(row.authorization) ? (
+                    ) : authorized(row) ? (
                       <em className="positive">READY</em>
                     ) : (
                       <em />
@@ -272,11 +290,15 @@ export const WalletMenu = () => {
                 <button type="button" disabled={busy || selected === null} onClick={action.run}>
                   {busy ? 'WAITING FOR PETRA…' : action.label}
                 </button>
-                {selectedAuthorized && (
-                  <button type="button" className="wallet-link" disabled={busy} onClick={revoke}>
-                    REVOKE
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="wallet-link"
+                  disabled={busy || !selectedAuthorized}
+                  title={selectedAuthorized ? undefined : 'The bot has no access to revoke.'}
+                  onClick={revoke}
+                >
+                  {selected !== null && revoked.has(selected) ? 'REVOKED' : 'REVOKE'}
+                </button>
               </div>
             </>
           )}

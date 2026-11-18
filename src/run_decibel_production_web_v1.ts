@@ -1816,12 +1816,12 @@ export async function runDecibelProductionWebV1(
         secureCookie: environment.DECIBEL_DASHBOARD_COOKIE_SECURE === 'true',
         subaccountSwitch: {
           canSwitch: () =>
-            environment.DECIBEL_SUBACCOUNT_SELECTION === 'off'
-              ? 'DISABLED'
-              : SessionController.getState().activeSession !== null
-                ? 'SESSION_ACTIVE'
-                : TelemetryJournal.nonTerminal().length > 0
-                  ? 'OPEN_ORDERS'
+            SessionController.getState().activeSession !== null
+              ? 'SESSION_ACTIVE'
+              : TelemetryJournal.nonTerminal().length > 0
+                ? 'OPEN_ORDERS'
+                : environment.DECIBEL_SUBACCOUNT_SELECTION === 'off'
+                  ? 'DISABLED'
                   : 'OK',
           // Exit code 75 asks the bootstrap to relaunch on the newly selected subaccount.
           switchNow: () => {

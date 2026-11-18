@@ -9,6 +9,7 @@ import {
   type decibel_dashboard_auth_v1,
 } from './decibel_dashboard_auth_v1.js';
 import { readDecibelDelegationsV1 } from './decibel_agent_delegation_v1.js';
+import { checkDecibelBotAuthorizationV1 } from './decibel_executor_signer_v1.js';
 import {
   generateDecibelAgentKeyV1,
   resolveDecibelKeystoreSecretV1,
@@ -120,6 +121,32 @@ export type decibel_production_web_route_context_v1 = Readonly<{
   }>;
 }>;
 
+/**
+ * Live mainnet sessions start only while the owner's Petra authorization of the bot key is
+ * active on the subaccount in use; an unreadable authorization fails closed.
+ */
+async function checkSessionStartAuthorization(
+  context: decibel_production_web_route_context_v1,
+): Promise<Readonly<{ status: number; error: string }> | null> {
+  const { mode } = context.loadedExecutionMode;
+  if (mode.tradingMode !== 'mainnet' || !mode.liveTradingEnabled) return null;
+  const subaccountAddress = context.environment.DECIBEL_SUBACCOUNT_ADDRESS?.trim();
+  if (!subaccountAddress) return { status: 409, error: 'BOT_NOT_AUTHORIZED_CONNECT_WALLET' };
+  try {
+    const { MAINNET_CONFIG } = await loadDecibelSdkRuntimeV1();
+    const refusal = await checkDecibelBotAuthorizationV1(context.environment, () =>
+      readDecibelDelegationsV1({
+        tradingHttpUrl: MAINNET_CONFIG.tradingHttpUrl,
+        subaccountAddress,
+        apiKey: context.environment.DECIBEL_NODE_API_KEY,
+      }),
+    );
+    return refusal === null ? null : { status: 409, error: refusal };
+  } catch {
+    return { status: 503, error: 'BOT_AUTHORIZATION_UNAVAILABLE' };
+  }
+}
+
 export function handleDecibelProductionWebRequestV1(
   context: decibel_production_web_route_context_v1,
   request: import('node:http').IncomingMessage,
@@ -189,6 +216,16 @@ export function handleDecibelProductionWebRequestV1(
     if (isStartRequest) context.runtimeForensics.record('SESSION_START_HTTP_REQUEST');
     void (async () => {
       const body = request.method === 'POST' ? await readJsonBody(request) : null;
+      if (isStartRequest) {
+        const refusal = await checkSessionStartAuthorization(context);
+        if (refusal !== null) {
+          context.runtimeForensics.record('SESSION_START_HTTP_RESPONSE', {
+            status: refusal.status,
+            blocker: refusal.error,
+          });
+          return writeJson(response, refusal.status, { error: refusal.error });
+        }
+      }
       const result = await handleDecibelProductionSessionRequestV1(
         request.method ?? 'GET',
         pathname,

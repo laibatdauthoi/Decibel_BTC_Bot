@@ -208,7 +208,6 @@ async function createWriteClient(
     { Account, AccountAddress, Ed25519PrivateKey, MoveString, createObjectAddress },
     { DecibelWriteDex, MAINNET_CONFIG },
   ] = await Promise.all([import('@aptos-labs/ts-sdk'), loadDecibelSdkRuntimeV1()]);
-  // Agent key (delegated by the owner wallet) when one is set up, else the legacy key.
   // The wallet's bot key, authorized in Petra; there is no private-key fallback.
   const SignerKey = await resolveDecibelExecutorSignerV1(environment, () =>
     readDecibelDelegationsV1({

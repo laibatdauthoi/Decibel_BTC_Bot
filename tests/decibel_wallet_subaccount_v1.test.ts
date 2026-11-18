@@ -6,6 +6,7 @@ import {
   createDecibelAgentKeystoreV1,
   resolveDecibelAgentKeystorePathV1,
 } from '../src/decibel_agent_keystore_v1.js';
+import { checkDecibelBotAuthorizationV1 } from '../src/decibel_executor_signer_v1.js';
 import {
   handleDecibelWalletRequestV1,
   readDecibelSubaccountsV1,
@@ -117,7 +118,6 @@ describe('Wallet prepare', () => {
     expect(first?.body).toMatchObject({
       payloads: {
         delegate: { functionArguments: [SECOND, AGENT, expect.any(String)] },
-        revoke: { functionArguments: [SECOND, AGENT] },
         gasTopUp: { functionArguments: [AGENT, '50000000'] },
       },
     });
@@ -190,6 +190,73 @@ describe('Wallet subaccount switch', () => {
       expect(switchNow).not.toHaveBeenCalled();
       expect(existsSync(selectionPath)).toBe(false);
     }
+  });
+});
+
+describe('Wallet revoke', () => {
+  const revoke = (deps: ReturnType<typeof setup>['deps'], subaccount: string) =>
+    handleDecibelWalletRequestV1('POST', '/api/wallet/revoke', deps, {
+      body: { owner: OWNER, subaccount },
+    });
+
+  it('returns the revoke payload only while the bot is authorized', async () => {
+    const { deps, keystore } = setup();
+    expect(await revoke(deps, SECOND)).toEqual({ status: 409, body: { error: 'ALREADY_REVOKED' } });
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    expect(await revoke(deps, SECOND)).toMatchObject({
+      status: 200,
+      body: { payload: { functionArguments: [SECOND, AGENT] } },
+    });
+    // IN_USE has no delegation: nothing to revoke, so the button stays disabled.
+    expect(await revoke(deps, IN_USE)).toEqual({ status: 409, body: { error: 'ALREADY_REVOKED' } });
+  });
+
+  it('never withdraws the running subaccount during a session or with open orders', async () => {
+    for (const [canSwitch, error] of [
+      ['SESSION_ACTIVE', 'END_SESSION_BEFORE_REVOKING'],
+      ['OPEN_ORDERS', 'ORDERS_OPEN_BEFORE_REVOKING'],
+    ] as const) {
+      const { deps, keystore } = setup({ canSwitch });
+      createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+      const inUseAuthorized = {
+        ...deps,
+        readDelegations: () =>
+          Promise.resolve([
+            { delegatedAccount: AGENT, permissionType: 'TRADING', expiresAtMs: null },
+          ]),
+      };
+      expect(await revoke(inUseAuthorized, IN_USE)).toEqual({ status: 409, body: { error } });
+      // Another subaccount of the wallet is not trading and may be revoked.
+      expect((await revoke(inUseAuthorized, SECOND))?.status).toBe(200);
+    }
+  });
+
+  it('fails closed when Decibel cannot report the authorization', async () => {
+    const { deps, keystore } = setup();
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    const unavailable = { ...deps, readDelegations: () => Promise.reject(new Error('HTTP_502')) };
+    expect(await revoke(unavailable, SECOND)).toEqual({
+      status: 503,
+      body: { error: 'BOT_AUTHORIZATION_UNAVAILABLE' },
+    });
+  });
+});
+
+describe('Bot authorization before a session start', () => {
+  it('refuses a session once the owner revoked the bot', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'bot-authorization-'));
+    const keystorePath = join(root, 'agent_key_v1.json');
+    const environment = { DECIBEL_AGENT_KEYSTORE_PATH: keystorePath };
+    const active = () =>
+      Promise.resolve([{ delegatedAccount: AGENT, permissionType: 'TRADING', expiresAtMs: null }]);
+    await expect(checkDecibelBotAuthorizationV1(environment, active)).resolves.toBe(
+      'BOT_NOT_AUTHORIZED_CONNECT_WALLET',
+    );
+    createDecibelAgentKeystoreV1(keystorePath, SECRET, () => material);
+    await expect(checkDecibelBotAuthorizationV1(environment, active)).resolves.toBeNull();
+    await expect(
+      checkDecibelBotAuthorizationV1(environment, () => Promise.resolve([])),
+    ).resolves.toBe('AGENT_DELEGATION_MISSING');
   });
 });
 

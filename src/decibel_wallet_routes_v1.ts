@@ -5,6 +5,7 @@
  *
  *   GET  /api/wallet/subaccounts?owner=  subaccounts with bot authorization (whitelisted only)
  *   POST /api/wallet/prepare             bot key (created once, automatically) + Petra payloads
+ *   POST /api/wallet/revoke              Petra payload that withdraws the bot's access
  *   POST /api/wallet/subaccount          run the bot on this subaccount (switches when idle)
  */
 import { z } from 'zod';
@@ -179,19 +180,57 @@ export async function handleDecibelWalletRequestV1(
         subaccountAddress: target.subaccount,
         agentAddress: agent.address,
       };
-      const payloads: Record<'delegate' | 'revoke' | 'gasTopUp', decibel_wallet_payload_v1 | null> =
-        {
-          delegate: buildDecibelDelegationPayloadV1({ ...base, now: dependencies.now() }),
-          revoke: buildDecibelRevokePayloadV1(base),
-          gasTopUp:
-            balance < DECIBEL_MINIMUM_AGENT_GAS_OCTAS_V1
-              ? buildDecibelGasTopUpPayloadV1(agent.address)
-              : null,
-        };
+      const payloads: Record<'delegate' | 'gasTopUp', decibel_wallet_payload_v1 | null> = {
+        delegate: buildDecibelDelegationPayloadV1({ ...base, now: dependencies.now() }),
+        gasTopUp:
+          balance < DECIBEL_MINIMUM_AGENT_GAS_OCTAS_V1
+            ? buildDecibelGasTopUpPayloadV1(agent.address)
+            : null,
+      };
       return { status: 200, body: { payloads } };
     } catch (error) {
       return { status: 400, body: { error: errorCode(error, 'WALLET_PREPARE_FAILED') } };
     }
+  }
+  if (pathname === '/api/wallet/revoke') {
+    if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
+    const target = await provenTarget(input.body, dependencies);
+    if ('status' in target) return target;
+    // The running subaccount keeps its inventory protected only while the bot can still place
+    // reduce-only TP and unwind orders: never withdraw that access mid-session.
+    if (target.subaccount === inUse) {
+      const state = dependencies.canSwitch();
+      if (state === 'SESSION_ACTIVE')
+        return { status: 409, body: { error: 'END_SESSION_BEFORE_REVOKING' } };
+      if (state === 'OPEN_ORDERS')
+        return { status: 409, body: { error: 'ORDERS_OPEN_BEFORE_REVOKING' } };
+    }
+    let agent: ReturnType<typeof readDecibelAgentKeystoreV1>;
+    try {
+      agent = readDecibelAgentKeystoreV1(keystorePathFor(target.owner, dependencies));
+    } catch (error) {
+      return { status: 400, body: { error: errorCode(error, 'WALLET_REVOKE_FAILED') } };
+    }
+    if (agent === null) return { status: 409, body: { error: 'ALREADY_REVOKED' } };
+    let delegations: readonly decibel_delegation_v1[];
+    try {
+      delegations = await dependencies.readDelegations(target.subaccount);
+    } catch {
+      return { status: 503, body: { error: 'BOT_AUTHORIZATION_UNAVAILABLE' } };
+    }
+    const { status } = assessDecibelAgentDelegationV1(
+      delegations,
+      agent.address,
+      dependencies.now(),
+    );
+    if (status !== 'ACTIVE' && status !== 'EXPIRING_SOON')
+      return { status: 409, body: { error: 'ALREADY_REVOKED' } };
+    const payload = buildDecibelRevokePayloadV1({
+      packageAddress: dependencies.packageAddress,
+      subaccountAddress: target.subaccount,
+      agentAddress: agent.address,
+    });
+    return { status: 200, body: { payload } };
   }
   if (pathname === '/api/wallet/subaccount') {
     if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };

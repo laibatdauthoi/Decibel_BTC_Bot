@@ -16,6 +16,9 @@ describe('Wallet panel presentation', () => {
     expect(describeWalletErrorV1('WALLET_NOT_WHITELISTED')).toBe(
       'This wallet is not allowed to use this bot.',
     );
+    expect(describeWalletErrorV1('END_SESSION_BEFORE_REVOKING')).toBe(
+      'End the running session before revoking the bot.',
+    );
     expect(describeWalletErrorV1('SOMETHING_NEW')).toBe('SOMETHING_NEW');
   });
 
