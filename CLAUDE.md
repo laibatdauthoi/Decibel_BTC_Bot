@@ -31,15 +31,18 @@ npm test
 npm run build
 ```
 
-New test files must be added to the explicit list in the `package.json` `test` script.
+New test files must be added to the explicit list in the `package.json` `test:production-core`
+script. CI (`.github/workflows/quality.yml`) runs the same gate on Ubuntu with Node 22.23.2.
+
+## Git
+
+- `main` on GitHub is the published code. Work on a branch, then fast-forward `main` when the
+  user asks to publish. Never force-push.
 
 ## Open work (agreed with the user)
 
-1. Run the full verification above on Windows. The 2026-11-12 changes (settings Max Loss
-   warning, `decibel_capacity_policy_v1.ts` extraction) were typechecked and linted, but the
-   tests have not run yet.
-2. Implement the wide venue-side catastrophe stop described in `AGENTS.md`. First verify
-   whether the Decibel SDK/venue supports a resting reduce-only stop alongside the TP, and how
-   it interacts with exclusivity, TP coverage and reconciliation. Propose the design before coding.
-3. Review the 6 sessions persisted as `BLOCKED / SESSION_UNWIND_COMPLETION_CONFLICT`.
-4. Push the branch `chore/production-cleanup-v1` to the remote (no upstream is set yet).
+1. Review the 6 sessions persisted as `BLOCKED / SESSION_UNWIND_COMPLETION_CONFLICT`.
+2. Phase 5: run the bot on a VPS with a domain and HTTPS. The user still has to choose a Windows
+   or a Linux VPS; Linux needs the launcher made platform-neutral first.
+3. Catastrophe stop (`decibel_catastrophe_stop_v1.ts`, since 2026-11-13) is not yet observed on
+   mainnet: confirm the trigger reference price and the Stop Limit behaviour in a gap.
