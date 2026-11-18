@@ -332,7 +332,7 @@ export const WalletMenu = () => {
                 </button>
                 <button
                   type="button"
-                  className="wallet-link"
+                  className="wallet-link wallet-danger"
                   disabled={busy || !selectedAuthorized}
                   title={selectedAuthorized ? undefined : 'The bot has no access to revoke.'}
                   onClick={revoke}

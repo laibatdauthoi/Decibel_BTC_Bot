@@ -4327,20 +4327,40 @@ body:has(.settings-view:not([hidden])) {
   font-weight: 600;
 }
 
+/* Secondary actions: outlined so they read as buttons next to the filled primary action. */
 .wallet-link {
-  border: 0;
+  border: 1px solid #6f6d66;
+  border-radius: 0;
   background: transparent;
-  color: #9c9a92;
-  padding: 0;
+  color: var(--surface-light);
+  padding: 6px 10px;
   cursor: pointer;
   font: inherit;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .wallet-link:hover:not(:disabled) {
+  border-color: var(--surface-light);
+  background: var(--surface-light);
+  color: var(--surface-dark);
+}
+
+.wallet-link:focus-visible {
+  outline: 2px solid var(--surface-light);
+  outline-offset: 2px;
+}
+
+/* REVOKE removes the bot's access: marked as the destructive action. */
+.wallet-link.wallet-danger:not(:disabled) {
+  border-color: #c4554d;
+  color: #e07a72;
+}
+
+.wallet-link.wallet-danger:hover:not(:disabled) {
+  background: #c4554d;
   color: var(--surface-light);
 }
 
