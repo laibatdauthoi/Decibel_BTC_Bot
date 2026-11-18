@@ -8,7 +8,9 @@ import {
 } from '../src/decibel_agent_keystore_v1.js';
 import { checkDecibelBotAuthorizationV1 } from '../src/decibel_executor_signer_v1.js';
 import {
+  DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1,
   handleDecibelWalletRequestV1,
+  planDecibelAgentGasWithdrawalV1,
   readDecibelSubaccountsV1,
 } from '../src/decibel_wallet_routes_v1.js';
 import {
@@ -38,6 +40,9 @@ function setup(
   const dataRoot = join(root, 'wallets');
   const selectionPath = join(root, 'selected.json');
   const switchNow = vi.fn();
+  const withdrawAgentGas = vi.fn(() =>
+    Promise.resolve({ transactionHash: '0xfeed', amountOctas: 49_500_000 }),
+  );
   const generateAgentKey = vi.fn(() => Promise.resolve(material));
   const owners: Record<string, string> = { [IN_USE]: OWNER, [SECOND]: OWNER };
   const deps = {
@@ -63,13 +68,14 @@ function setup(
     keystoreSecret: () => SECRET,
     canSwitch: () => options.canSwitch ?? 'OK',
     switchNow,
+    withdrawAgentGas,
     dataRoot,
     selectionPath,
   };
   const keystore = resolveDecibelAgentKeystorePathV1(
     resolveDecibelWalletPathsV1(OWNER, dataRoot).root,
   );
-  return { deps, switchNow, generateAgentKey, selectionPath, keystore };
+  return { deps, switchNow, withdrawAgentGas, generateAgentKey, selectionPath, keystore };
 }
 
 describe('Wallet subaccounts', () => {
@@ -82,6 +88,7 @@ describe('Wallet subaccounts', () => {
     expect(before?.body).toMatchObject({
       whitelisted: true,
       inUse: IN_USE,
+      botGasOctas: null,
       subaccounts: [{ authorization: null }, { authorization: null }],
     });
     createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
@@ -239,6 +246,72 @@ describe('Wallet revoke', () => {
       status: 503,
       body: { error: 'BOT_AUTHORIZATION_UNAVAILABLE' },
     });
+  });
+});
+
+describe('Wallet gas withdrawal', () => {
+  const withdraw = (deps: ReturnType<typeof setup>['deps'], owner: string = OWNER) =>
+    handleDecibelWalletRequestV1('POST', '/api/wallet/withdraw-gas', deps, { body: { owner } });
+
+  it('sends the bot gas back to the whitelisted owner, never elsewhere', async () => {
+    const { deps, withdrawAgentGas, keystore } = setup({ balance: 50_000_000 });
+    expect(await withdraw(deps)).toEqual({ status: 409, body: { error: 'NO_BOT_KEY' } });
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    const listed = await handleDecibelWalletRequestV1('GET', '/api/wallet/subaccounts', deps, {
+      query: new URLSearchParams({ owner: OWNER }),
+    });
+    expect(listed?.body).toMatchObject({ botGasOctas: 50_000_000 });
+    expect(await withdraw(deps)).toEqual({
+      status: 200,
+      body: { transactionHash: '0xfeed', amountOctas: 49_500_000 },
+    });
+    expect(withdrawAgentGas).toHaveBeenCalledWith(
+      expect.objectContaining({ address: AGENT }),
+      OWNER,
+    );
+    expect(await withdraw(deps, OTHER)).toEqual({
+      status: 403,
+      body: { error: 'WALLET_NOT_WHITELISTED' },
+    });
+    expect(withdrawAgentGas).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the gas while a session runs or orders are open', async () => {
+    for (const [canSwitch, error] of [
+      ['SESSION_ACTIVE', 'END_SESSION_BEFORE_WITHDRAWING_GAS'],
+      ['OPEN_ORDERS', 'ORDERS_OPEN_BEFORE_WITHDRAWING_GAS'],
+    ] as const) {
+      const { deps, withdrawAgentGas, keystore } = setup({ canSwitch });
+      createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+      expect(await withdraw(deps)).toEqual({ status: 409, body: { error } });
+      expect(withdrawAgentGas).not.toHaveBeenCalled();
+    }
+  });
+
+  it('reports an empty bot wallet and refuses a wrong keystore secret', async () => {
+    const { deps, keystore } = setup();
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    const empty = {
+      ...deps,
+      withdrawAgentGas: () => Promise.reject(new Error('NOTHING_TO_WITHDRAW')),
+    };
+    expect(await withdraw(empty)).toEqual({ status: 409, body: { error: 'NOTHING_TO_WITHDRAW' } });
+    expect(await withdraw({ ...deps, keystoreSecret: () => 'wrong secret entirely' })).toEqual({
+      status: 400,
+      body: { error: 'AGENT_KEYSTORE_UNLOCK_FAILED' },
+    });
+  });
+
+  it('keeps only the transfer fee on the bot key', () => {
+    const fee = DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1 * 100;
+    expect(planDecibelAgentGasWithdrawalV1(50_000_000, 100)).toEqual({
+      amountOctas: 50_000_000 - fee,
+      maxGasAmount: DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1,
+      gasUnitPrice: 100,
+    });
+    expect(planDecibelAgentGasWithdrawalV1(fee, 100)).toBeNull();
+    expect(planDecibelAgentGasWithdrawalV1(50_000_000, 0)).toBeNull();
+    expect(planDecibelAgentGasWithdrawalV1(Number.NaN, 100)).toBeNull();
   });
 });
 

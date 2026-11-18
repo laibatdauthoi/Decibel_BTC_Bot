@@ -37,6 +37,8 @@ subaccount of the first whitelisted wallet. The owner is read from the subaccoun
 4. Sessions sign with the bot key (`DECIBEL_EXECUTOR_SIGNER=BOT_KEY` in the log). There is no private-key
    fallback: without an active authorization the session does not start.
 5. REVOKE in the menu (or on Decibel) removes the bot's access at any time.
+   WITHDRAW GAS sends the bot key's APT back to the owner wallet, minus a few thousandths of an APT
+   kept for the transfer fee. It is refused while a session runs or orders are open.
 
 ## Dashboard sign-in
 

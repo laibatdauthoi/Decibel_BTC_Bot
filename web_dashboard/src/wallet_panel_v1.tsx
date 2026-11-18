@@ -11,6 +11,8 @@ export type wallet_subaccounts_v1 = Readonly<{
   owner: string;
   whitelisted: boolean;
   inUse: string | null;
+  /** APT on the bot key (gas), in octas; null when unknown. */
+  botGasOctas: number | null;
   subaccounts: readonly Readonly<{
     address: string;
     label: string | null;
@@ -39,7 +41,17 @@ const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
   ORDERS_OPEN_BEFORE_REVOKING: 'Wait until the open orders are settled before revoking.',
   ALREADY_REVOKED: 'The bot has no access to this subaccount.',
   BOT_AUTHORIZATION_UNAVAILABLE: 'Decibel did not answer. Try again in a moment.',
+  END_SESSION_BEFORE_WITHDRAWING_GAS: 'End the running session before withdrawing gas.',
+  ORDERS_OPEN_BEFORE_WITHDRAWING_GAS:
+    'Wait until the open orders are settled before withdrawing gas.',
+  NOTHING_TO_WITHDRAW: 'The bot wallet has no spare APT to withdraw.',
+  NO_BOT_KEY: 'This wallet has no bot key yet.',
 };
+
+/** APT amount from octas, for display. */
+export function formatAptV1(octas: number): string {
+  return `${(octas / 100_000_000).toFixed(4)} APT`;
+}
 
 export function describeWalletErrorV1(code: string): string {
   return FRIENDLY_ERRORS_V1[code] ?? code;
@@ -207,6 +219,21 @@ export const WalletMenu = () => {
       await load(connected).catch(() => undefined);
       return 'Bot access revoked.';
     });
+  /** The bot key signs this transfer itself; the APT always goes back to the connected owner. */
+  const withdrawGas = () =>
+    run(async () => {
+      if (connected === null || accounts?.botGasOctas == null) return;
+      const proceed = window.confirm(
+        `Send about ${formatAptV1(accounts.botGasOctas)} from the bot wallet back to ${shortAddressV1(connected)}? ` +
+          'New entries pause until the bot has gas again (CONFIRM offers a top-up).',
+      );
+      if (!proceed) return;
+      const { amountOctas } = await postJson<{ amountOctas: number }>('/api/wallet/withdraw-gas', {
+        owner: connected,
+      });
+      await load(connected).catch(() => undefined);
+      return `Withdrew ${formatAptV1(amountOctas)} to your wallet.`;
+    });
 
   const rows = accounts?.subaccounts ?? [];
   const inUseRow = rows.find((row) => row.address === accounts?.inUse);
@@ -281,6 +308,19 @@ export const WalletMenu = () => {
                   </label>
                 ))}
               </div>
+              {accounts.botGasOctas !== null && (
+                <div className="wallet-gas">
+                  <span>Bot gas {formatAptV1(accounts.botGasOctas)}</span>
+                  <button
+                    type="button"
+                    className="wallet-link"
+                    disabled={busy || accounts.botGasOctas <= 0}
+                    onClick={withdrawGas}
+                  >
+                    WITHDRAW GAS
+                  </button>
+                </div>
+              )}
               <p className={`wallet-state ${selectedAuthorized ? 'positive' : 'warning'}`}>
                 {selectedAuthorized
                   ? `Bot authorized${expiry ? ` until ${expiry}` : ''}`

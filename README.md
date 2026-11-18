@@ -36,6 +36,9 @@ No private key is stored in `.env`. The owner connects **Petra** in the dashboar
    Geomi Gas Station key sponsors it.
 4. **RENEW** extends the authorization; **REVOKE** withdraws it on-chain. Switching or revoking
    the running subaccount waits until no session is active and no order is open.
+5. **WITHDRAW GAS** sends the bot key's spare APT back to the owner wallet (only while no session
+   runs and no order is open). The bot key signs this transfer; the destination is always the
+   connected owner.
 
 Each wallet has its own data set in `data/wallets/<owner>/`. The wallet's subaccounts share it.
 Details: [docs/decibel_wallet_setup_v1.md](docs/decibel_wallet_setup_v1.md).

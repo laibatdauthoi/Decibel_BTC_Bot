@@ -7,12 +7,15 @@
  *   POST /api/wallet/prepare             bot key (created once, automatically) + Petra payloads
  *   POST /api/wallet/revoke              Petra payload that withdraws the bot's access
  *   POST /api/wallet/subaccount          run the bot on this subaccount (switches when idle)
+ *   POST /api/wallet/withdraw-gas        send the bot key's spare APT back to the owner (idle only)
  */
+import type { Network } from '@aptos-labs/ts-sdk';
 import { z } from 'zod';
 import {
   createDecibelAgentKeystoreV1,
   readDecibelAgentKeystoreV1,
   resolveDecibelAgentKeystorePathV1,
+  unlockDecibelAgentKeystoreV1,
   type decibel_agent_key_material_v1,
 } from './decibel_agent_keystore_v1.js';
 import {
@@ -56,6 +59,11 @@ export type decibel_wallet_route_dependencies_v1 = Readonly<{
   /** Whether the runtime may switch now, and the switch itself. */
   canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'OPEN_ORDERS' | 'DISABLED';
   switchNow: () => void;
+  /** Sends the bot key's APT, minus the transfer's gas, to `destination` (always the owner). */
+  withdrawAgentGas: (
+    agent: decibel_agent_key_material_v1,
+    destination: string,
+  ) => Promise<Readonly<{ transactionHash: string; amountOctas: number }>>;
   dataRoot?: string;
   selectionPath?: string;
 }>;
@@ -107,6 +115,8 @@ export type decibel_wallet_subaccounts_response_v1 = Readonly<{
   owner: string;
   whitelisted: boolean;
   inUse: string | null;
+  /** APT held by the wallet's bot key (gas), in octas; null without a key or on a read error. */
+  botGasOctas: number | null;
   subaccounts: readonly (decibel_wallet_subaccount_v1 &
     Readonly<{ authorization: decibel_agent_delegation_status_v1 | null }>)[];
 }>;
@@ -123,7 +133,10 @@ export async function handleDecibelWalletRequestV1(
     const owner = optionalAddress(input.query?.get('owner'));
     if (owner === null) return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
     if (!dependencies.isWhitelisted(owner))
-      return { status: 200, body: { owner, whitelisted: false, inUse, subaccounts: [] } };
+      return {
+        status: 200,
+        body: { owner, whitelisted: false, inUse, botGasOctas: null, subaccounts: [] },
+      };
     let subaccounts: readonly decibel_wallet_subaccount_v1[];
     try {
       subaccounts = await dependencies.readSubaccounts(owner);
@@ -131,6 +144,10 @@ export async function handleDecibelWalletRequestV1(
       return { status: 503, body: { error: 'SUBACCOUNTS_UNAVAILABLE' } };
     }
     const agent = readDecibelAgentKeystoreV1(keystorePathFor(owner, dependencies));
+    const botGas =
+      agent === null
+        ? Promise.resolve(null)
+        : dependencies.readAptBalanceOctas(agent.address).catch(() => null);
     const authorizations = await Promise.all(
       subaccounts.map(async (row) => {
         if (agent === null) return null;
@@ -149,6 +166,7 @@ export async function handleDecibelWalletRequestV1(
       owner,
       whitelisted: true,
       inUse,
+      botGasOctas: await botGas,
       subaccounts: subaccounts.map((row, index) => ({
         ...row,
         authorization: authorizations[index] ?? null,
@@ -254,7 +272,109 @@ export async function handleDecibelWalletRequestV1(
     dependencies.switchNow();
     return { status: 200, body: { status: 'SWITCHING', subaccount: target.subaccount } };
   }
+  if (pathname === '/api/wallet/withdraw-gas') {
+    if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
+    const parsed = z.object({ owner: z.string() }).safeParse(input.body);
+    const owner = parsed.success ? optionalAddress(parsed.data.owner) : null;
+    if (owner === null) return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
+    if (!dependencies.isWhitelisted(owner))
+      return { status: 403, body: { error: 'WALLET_NOT_WHITELISTED' } };
+    // Exits (TP, unwind) and cancels pay gas from this key: keep it while anything can trade.
+    const state = dependencies.canSwitch();
+    if (state === 'SESSION_ACTIVE')
+      return { status: 409, body: { error: 'END_SESSION_BEFORE_WITHDRAWING_GAS' } };
+    if (state === 'OPEN_ORDERS')
+      return { status: 409, body: { error: 'ORDERS_OPEN_BEFORE_WITHDRAWING_GAS' } };
+    let agent: decibel_agent_key_material_v1;
+    try {
+      const path = keystorePathFor(owner, dependencies);
+      if (readDecibelAgentKeystoreV1(path) === null)
+        return { status: 409, body: { error: 'NO_BOT_KEY' } };
+      agent = unlockDecibelAgentKeystoreV1(path, dependencies.keystoreSecret());
+    } catch (error) {
+      return { status: 400, body: { error: errorCode(error, 'AGENT_KEYSTORE_UNLOCK_FAILED') } };
+    }
+    try {
+      // The destination is the whitelisted owner, never another address from the request.
+      const result = await dependencies.withdrawAgentGas(agent, owner);
+      return { status: 200, body: result };
+    } catch (error) {
+      const code = errorCode(error, 'GAS_WITHDRAW_FAILED');
+      return { status: code === 'NOTHING_TO_WITHDRAW' ? 409 : 502, body: { error: code } };
+    }
+  }
   return null;
+}
+
+/** Gas limit of the APT transfer that returns the bot's gas; a plain transfer uses far less. */
+export const DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1 = 5_000;
+
+/**
+ * Amount of a gas withdrawal: the whole balance minus the transfer's maximum fee (a sender
+ * that cannot cover `maxGasAmount x gasUnitPrice` is rejected). The unused part of that fee,
+ * a few thousandths of an APT, stays on the bot key. Null: nothing worth sending.
+ */
+export function planDecibelAgentGasWithdrawalV1(
+  balanceOctas: number,
+  gasUnitPrice: number,
+): Readonly<{ amountOctas: number; maxGasAmount: number; gasUnitPrice: number }> | null {
+  if (!Number.isSafeInteger(balanceOctas) || !Number.isSafeInteger(gasUnitPrice)) return null;
+  if (gasUnitPrice <= 0) return null;
+  const amountOctas = balanceOctas - DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1 * gasUnitPrice;
+  return amountOctas > 0
+    ? Object.freeze({
+        amountOctas,
+        maxGasAmount: DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1,
+        gasUnitPrice,
+      })
+    : null;
+}
+
+/** Signs and submits the gas withdrawal with the bot key, then waits for it on-chain. */
+export async function withdrawDecibelAgentGasV1(
+  input: Readonly<{
+    network: Network;
+    fullnodeUrl: string;
+    nodeApiKey?: string | undefined;
+    agent: decibel_agent_key_material_v1;
+    destination: string;
+    readBalanceOctas: () => Promise<number>;
+  }>,
+): Promise<Readonly<{ transactionHash: string; amountOctas: number }>> {
+  const { Account, Aptos, AptosConfig, Ed25519PrivateKey } = await import('@aptos-labs/ts-sdk');
+  const Client = new Aptos(
+    new AptosConfig({
+      network: input.network,
+      fullnode: input.fullnodeUrl,
+      ...(input.nodeApiKey ? { clientConfig: { API_KEY: input.nodeApiKey } } : {}),
+    }),
+  );
+  const Agent = Account.fromPrivateKey({
+    privateKey: new Ed25519PrivateKey(input.agent.privateKeyHex),
+  });
+  if (
+    normalizeDecibelAddressV1(Agent.accountAddress.toStringLong()) !==
+    normalizeDecibelAddressV1(input.agent.address)
+  )
+    throw new Error('AGENT_KEY_ADDRESS_MISMATCH');
+  const [balance, gas] = await Promise.all([
+    input.readBalanceOctas(),
+    Client.getGasPriceEstimation(),
+  ]);
+  const plan = planDecibelAgentGasWithdrawalV1(balance, gas.gas_estimate);
+  if (plan === null) throw new Error('NOTHING_TO_WITHDRAW');
+  const transaction = await Client.transaction.build.simple({
+    sender: Agent.accountAddress,
+    data: {
+      function: '0x1::aptos_account::transfer',
+      functionArguments: [normalizeDecibelAddressV1(input.destination), plan.amountOctas],
+    },
+    options: { maxGasAmount: plan.maxGasAmount, gasUnitPrice: plan.gasUnitPrice },
+  });
+  const pending = await Client.signAndSubmitTransaction({ signer: Agent, transaction });
+  const committed = await Client.waitForTransaction({ transactionHash: pending.hash });
+  if (!committed.success) throw new Error('GAS_WITHDRAW_TRANSACTION_FAILED');
+  return Object.freeze({ transactionHash: pending.hash, amountOctas: plan.amountOctas });
 }
 
 /** APT balance through the `0x1::coin::balance` view (covers coin and fungible-asset APT). */

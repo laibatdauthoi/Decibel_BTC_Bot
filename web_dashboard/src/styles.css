@@ -4405,6 +4405,20 @@ body:has(.settings-view:not([hidden])) {
   font-weight: 500;
 }
 
+.wallet-dropdown .wallet-gas {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.wallet-dropdown .wallet-gas button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .wallet-dropdown .wallet-actions {
   display: flex;
   align-items: center;

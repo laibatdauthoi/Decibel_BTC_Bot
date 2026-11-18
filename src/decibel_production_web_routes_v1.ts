@@ -20,6 +20,7 @@ import {
   handleDecibelWalletRequestV1,
   readDecibelAptBalanceOctasV1,
   readDecibelSubaccountsV1,
+  withdrawDecibelAgentGasV1,
 } from './decibel_wallet_routes_v1.js';
 import {
   loadDecibelWalletWhitelistV1,
@@ -486,6 +487,20 @@ export function handleDecibelProductionWebRequestV1(
           gasSponsored: Boolean(context.environment.DECIBEL_GAS_STATION_API_KEY?.trim()),
           canSwitch: context.subaccountSwitch.canSwitch,
           switchNow: context.subaccountSwitch.switchNow,
+          withdrawAgentGas: (agent, destination) =>
+            withdrawDecibelAgentGasV1({
+              network: MAINNET_CONFIG.network,
+              fullnodeUrl: MAINNET_CONFIG.fullnodeUrl,
+              nodeApiKey: apiKey,
+              agent,
+              destination,
+              readBalanceOctas: () =>
+                readDecibelAptBalanceOctasV1({
+                  fullnodeUrl: MAINNET_CONFIG.fullnodeUrl,
+                  address: agent.address,
+                  nodeApiKey: apiKey,
+                }),
+            }),
         },
         { query: new URL(request.url ?? '/', 'http://localhost').searchParams, body },
       );
