@@ -473,12 +473,27 @@ export const WalletMenu = () => {
             </button>
           )}
           {message && (
-            <p
+            <div
               className={`wallet-notice wallet-notice-${message.tone}`}
               role={message.tone === 'error' ? 'alert' : 'status'}
             >
-              {message.text}
-            </p>
+              <p>{message.text}</p>
+              <button
+                type="button"
+                className="wallet-notice-close"
+                aria-label="Dismiss"
+                onClick={() => setMessage(null)}
+              >
+                ×
+              </button>
+              {noticeLifetimeMsV1(message.tone) !== null && (
+                // Shrinks over the notice's lifetime so it is clear it will hide by itself.
+                <span
+                  className="wallet-notice-timer"
+                  style={{ animationDuration: `${noticeLifetimeMsV1(message.tone)}ms` }}
+                />
+              )}
+            </div>
           )}
         </div>
       )}

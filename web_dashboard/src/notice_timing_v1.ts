@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 /** How long a transient dashboard notice stays visible. Errors stay longer to be read. */
-export const DASHBOARD_NOTICE_MS_V1 = Object.freeze({ success: 5_000, error: 10_000 });
+export const DASHBOARD_NOTICE_MS_V1 = Object.freeze({ success: 4_000, error: 6_000 });
 
 export type dashboard_notice_tone_v1 = 'success' | 'error' | 'info';
 

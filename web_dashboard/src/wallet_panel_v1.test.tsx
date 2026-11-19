@@ -11,8 +11,8 @@ import {
 
 describe('Wallet panel presentation', () => {
   it('fades success and error notices but keeps work in progress', () => {
-    expect(noticeLifetimeMsV1('success')).toBe(5_000);
-    expect(noticeLifetimeMsV1('error')).toBe(10_000);
+    expect(noticeLifetimeMsV1('success')).toBe(4_000);
+    expect(noticeLifetimeMsV1('error')).toBe(6_000);
     expect(noticeLifetimeMsV1('info')).toBeNull();
   });
 
