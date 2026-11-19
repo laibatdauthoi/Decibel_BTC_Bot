@@ -17,9 +17,9 @@ describe('Wallet panel presentation', () => {
     expect(noticeLifetimeMsV1('info')).toBeNull();
   });
 
-  it('reopens a stream that is not open when the tab is shown again', () => {
+  it('reopens only a closed stream when the tab is shown again', () => {
     expect(shouldReopenEventStreamV1(1)).toBe(false);
-    expect(shouldReopenEventStreamV1(0)).toBe(true);
+    expect(shouldReopenEventStreamV1(0)).toBe(false);
     expect(shouldReopenEventStreamV1(2)).toBe(true);
     expect(shouldReopenEventStreamV1(undefined)).toBe(true);
   });

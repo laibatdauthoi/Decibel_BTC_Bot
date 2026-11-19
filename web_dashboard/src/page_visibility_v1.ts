@@ -1,29 +1,43 @@
 import { useEffect, useRef } from 'react';
 
+export type page_visibility_handlers_v1 = Readonly<{
+  onVisible: () => void;
+  onHidden?: () => void;
+}>;
+
 /**
- * Browsers throttle timers in a hidden tab (to once a minute after a few minutes) and may drop
- * its event stream. Calls `onVisible` when the tab is shown again, so the dashboard reads fresh
- * state at once instead of waiting for the next throttled poll or stream reconnect.
+ * Calls `onHidden` when the tab is hidden and `onVisible` when it is shown again (also after a
+ * back/forward cache restore). A hidden tab gets throttled or frozen timers, and a telemetry
+ * stream left open meanwhile piles up snapshots that all have to be parsed on return.
  */
-export function useOnPageVisibleV1(onVisible: () => void): void {
-  const OnVisible = useRef(onVisible);
+export function usePageVisibilityV1(handlers: page_visibility_handlers_v1): void {
+  const Handlers = useRef(handlers);
   useEffect(() => {
-    OnVisible.current = onVisible;
+    Handlers.current = handlers;
   });
   useEffect(() => {
-    const handle = (): void => {
-      if (document.visibilityState === 'visible') OnVisible.current();
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') Handlers.current.onVisible();
+      else Handlers.current.onHidden?.();
     };
-    document.addEventListener('visibilitychange', handle);
-    window.addEventListener('pageshow', handle);
+    const onPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) Handlers.current.onVisible();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pageshow', onPageShow);
     return () => {
-      document.removeEventListener('visibilitychange', handle);
-      window.removeEventListener('pageshow', handle);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
     };
   }, []);
 }
 
-/** True when a hidden tab's event stream must be reopened rather than left to its retry delay. */
+/** True when the telemetry stream was closed (by the hidden tab or the browser) and must reopen. */
 export function shouldReopenEventStreamV1(readyState: number | undefined): boolean {
-  return readyState !== 1; // EventSource.OPEN
+  return readyState === undefined || readyState === 2; // EventSource.CLOSED
+}
+
+/** Polls skip a hidden tab; the visible handler reads fresh state on return. */
+export function isPageHiddenV1(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden';
 }
