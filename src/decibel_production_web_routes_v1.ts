@@ -487,13 +487,14 @@ export function handleDecibelProductionWebRequestV1(
           gasSponsored: Boolean(context.environment.DECIBEL_GAS_STATION_API_KEY?.trim()),
           canSwitch: context.subaccountSwitch.canSwitch,
           switchNow: context.subaccountSwitch.switchNow,
-          withdrawAgentGas: (agent, destination) =>
+          withdrawAgentGas: (agent, destination, amountOctas) =>
             withdrawDecibelAgentGasV1({
               network: MAINNET_CONFIG.network,
               fullnodeUrl: MAINNET_CONFIG.fullnodeUrl,
               nodeApiKey: apiKey,
               agent,
               destination,
+              amountOctas,
               readBalanceOctas: () =>
                 readDecibelAptBalanceOctasV1({
                   fullnodeUrl: MAINNET_CONFIG.fullnodeUrl,

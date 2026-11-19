@@ -1,8 +1,27 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { describeWalletErrorV1, normalizeWalletAddressV1, WalletMenu } from './wallet_panel_v1';
+import {
+  checkWithdrawAmountV1,
+  describeWalletErrorV1,
+  normalizeWalletAddressV1,
+  parseAptToOctasV1,
+  WalletMenu,
+} from './wallet_panel_v1';
 
 describe('Wallet panel presentation', () => {
+  it('reads a typed APT amount without floating-point drift', () => {
+    expect(parseAptToOctasV1('0.1')).toBe(10_000_000);
+    expect(parseAptToOctasV1('0,25')).toBe(25_000_000);
+    expect(parseAptToOctasV1('1.00000001')).toBe(100_000_001);
+    expect(parseAptToOctasV1('0.123456789')).toBeNull();
+    expect(parseAptToOctasV1('-1')).toBeNull();
+    expect(parseAptToOctasV1('abc')).toBeNull();
+    expect(checkWithdrawAmountV1('0.1', 46_550_000)).toBeNull();
+    expect(checkWithdrawAmountV1('0', 46_550_000)).toBe('Enter an amount above zero.');
+    expect(checkWithdrawAmountV1('0.4655', 46_550_000)).toMatch(/Use MAX/);
+    expect(checkWithdrawAmountV1('', 46_550_000)).toMatch(/Enter an amount/);
+  });
+
   it('normalizes Petra addresses for the owner comparison', () => {
     expect(normalizeWalletAddressV1('0xAB')).toBe(`0x${'0'.repeat(62)}ab`);
     expect(normalizeWalletAddressV1('not-an-address')).toBeNull();

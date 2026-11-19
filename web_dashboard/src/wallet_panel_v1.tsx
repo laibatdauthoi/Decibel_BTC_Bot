@@ -47,6 +47,9 @@ const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
     'Wait until the open orders are settled before withdrawing gas.',
   NOTHING_TO_WITHDRAW: 'The bot wallet has no spare APT to withdraw.',
   NO_BOT_KEY: 'This wallet has no bot key yet.',
+  WITHDRAW_AMOUNT_INVALID: 'The withdrawal amount is not valid.',
+  WITHDRAW_AMOUNT_ABOVE_AVAILABLE:
+    'The amount is above what the bot wallet can send after the fee. Use MAX for everything.',
   GAS_WITHDRAW_FAILED: 'The withdrawal did not go through. Nothing was sent; try again.',
   GAS_WITHDRAW_SIMULATION_FAILED:
     'The node rejected the withdrawal in simulation. Nothing was sent.',
@@ -56,6 +59,24 @@ const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
 /** APT amount from octas, for display. */
 export function formatAptV1(octas: number): string {
   return `${(octas / 100_000_000).toFixed(4)} APT`;
+}
+
+/** Octas from an APT amount typed by the operator (up to 8 decimals); null when invalid. */
+export function parseAptToOctasV1(text: string): number | null {
+  const match = /^(\d{1,12})(?:[.,](\d{1,8}))?$/.exec(text.trim());
+  if (match === null) return null;
+  const octas = Number(match[1]) * 100_000_000 + Number((match[2] ?? '').padEnd(8, '0'));
+  return Number.isSafeInteger(octas) ? octas : null;
+}
+
+/** Why a typed withdrawal amount cannot be sent, or null when it can. */
+export function checkWithdrawAmountV1(text: string, balanceOctas: number | null): string | null {
+  const octas = parseAptToOctasV1(text);
+  if (octas === null) return 'Enter an amount in APT, for example 0.1.';
+  if (octas <= 0) return 'Enter an amount above zero.';
+  if (balanceOctas !== null && octas >= balanceOctas)
+    return 'Above what the bot wallet can send after the fee. Use MAX for everything.';
+  return null;
 }
 
 export function describeWalletErrorV1(code: string): string {
@@ -105,6 +126,8 @@ export const WalletMenu = () => {
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
   const [confirmingWithdraw, setConfirmingWithdraw] = useState(false);
+  const [withdrawText, setWithdrawText] = useState('');
+  const [withdrawAll, setWithdrawAll] = useState(false);
   /** Subaccounts revoked from this page; Decibel's index may still list them for a while. */
   const [revoked, setRevoked] = useState<ReadonlySet<string>>(new Set());
   const Root = useRef<HTMLDivElement | null>(null);
@@ -243,13 +266,19 @@ export const WalletMenu = () => {
     run(async () => {
       setConfirmingWithdraw(false);
       if (connected === null) return;
+      // MAX sends no amount: the server withdraws everything above the transfer fee.
+      const requested = withdrawAll ? null : parseAptToOctasV1(withdrawText);
       const { amountOctas } = await postJson<{ amountOctas: number }>('/api/wallet/withdraw-gas', {
         owner: connected,
+        ...(requested === null ? {} : { amountOctas: requested }),
       });
       await load(connected).catch(() => undefined);
       return `Withdrew ${formatAptV1(amountOctas)} to your wallet.`;
     });
 
+  const withdrawCheck = withdrawAll
+    ? null
+    : checkWithdrawAmountV1(withdrawText, accounts?.botGasOctas ?? null);
   const rows = accounts?.subaccounts ?? [];
   const inUseRow = rows.find((row) => row.address === accounts?.inUse);
   const selectedRow = rows.find((row) => row.address === selected);
@@ -330,7 +359,11 @@ export const WalletMenu = () => {
                     type="button"
                     className="wallet-link"
                     disabled={busy || accounts.botGasOctas <= 0}
-                    onClick={() => setConfirmingWithdraw(true)}
+                    onClick={() => {
+                      setWithdrawText('');
+                      setWithdrawAll(false);
+                      setConfirmingWithdraw(true);
+                    }}
                   >
                     WITHDRAW GAS
                   </button>
@@ -340,14 +373,59 @@ export const WalletMenu = () => {
                 <ConfirmDialog
                   title="WITHDRAW GAS"
                   message={
-                    `Send about ${formatAptV1(accounts.botGasOctas)} from the bot wallet back to ` +
-                    `${shortAddressV1(connected)}? New entries pause until the bot has gas again ` +
-                    '(CONFIRM offers a top-up).'
+                    `Send APT from the bot wallet back to ${shortAddressV1(connected)}. ` +
+                    'New entries pause while the bot wallet holds too little gas (CONFIRM offers ' +
+                    'a top-up).'
                   }
                   confirmLabel="WITHDRAW"
+                  confirmDisabled={withdrawCheck !== null}
                   onConfirm={withdrawGas}
                   onCancel={() => setConfirmingWithdraw(false)}
-                />
+                >
+                  <label className="confirm-dialog-field">
+                    <span>Amount</span>
+                    <span className="confirm-dialog-input">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        placeholder="0.1000"
+                        value={withdrawText}
+                        autoFocus
+                        aria-invalid={withdrawText !== '' && withdrawCheck !== null}
+                        onChange={(event) => {
+                          setWithdrawText(event.target.value.trim());
+                          setWithdrawAll(false);
+                        }}
+                      />
+                      <em>APT</em>
+                      <button
+                        type="button"
+                        className="confirm-dialog-max"
+                        aria-pressed={withdrawAll}
+                        onClick={() => {
+                          setWithdrawText(
+                            (accounts.botGasOctas ?? 0) > 0
+                              ? ((accounts.botGasOctas ?? 0) / 100_000_000).toFixed(4)
+                              : '',
+                          );
+                          setWithdrawAll(true);
+                        }}
+                      >
+                        MAX
+                      </button>
+                    </span>
+                  </label>
+                  <p
+                    className={`confirm-dialog-hint ${withdrawText !== '' && withdrawCheck ? 'invalid' : ''}`}
+                  >
+                    {withdrawText !== '' && withdrawCheck
+                      ? withdrawCheck
+                      : withdrawAll
+                        ? 'MAX sends everything except about 0.006 APT kept for the transfer fee.'
+                        : `Bot wallet holds ${formatAptV1(accounts.botGasOctas)}.`}
+                  </p>
+                </ConfirmDialog>
               )}
               <p className={`wallet-state ${selectedAuthorized ? 'positive' : 'warning'}`}>
                 {selectedAuthorized

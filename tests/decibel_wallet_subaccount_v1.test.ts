@@ -12,6 +12,7 @@ import {
   handleDecibelWalletRequestV1,
   planDecibelAgentGasWithdrawalV1,
   readDecibelSubaccountsV1,
+  resolveDecibelAgentGasWithdrawalAmountV1,
   sizeDecibelAgentGasWithdrawalMaxGasV1,
 } from '../src/decibel_wallet_routes_v1.js';
 import {
@@ -269,12 +270,56 @@ describe('Wallet gas withdrawal', () => {
     expect(withdrawAgentGas).toHaveBeenCalledWith(
       expect.objectContaining({ address: AGENT }),
       OWNER,
+      undefined,
     );
     expect(await withdraw(deps, OTHER)).toEqual({
       status: 403,
       body: { error: 'WALLET_NOT_WHITELISTED' },
     });
     expect(withdrawAgentGas).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes a typed amount through and rejects an invalid one before unlocking', async () => {
+    const { deps, withdrawAgentGas, keystore } = setup({ balance: 50_000_000 });
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    const send = (amountOctas: unknown) =>
+      handleDecibelWalletRequestV1('POST', '/api/wallet/withdraw-gas', deps, {
+        body: { owner: OWNER, amountOctas },
+      });
+    expect((await send(10_000_000))?.status).toBe(200);
+    expect(withdrawAgentGas).toHaveBeenLastCalledWith(
+      expect.objectContaining({ address: AGENT }),
+      OWNER,
+      10_000_000,
+    );
+    for (const invalid of [0, -1, 1.5, '10000000', Number.MAX_SAFE_INTEGER + 1])
+      expect(await send(invalid)).toEqual({
+        status: 400,
+        body: { error: 'WITHDRAW_AMOUNT_INVALID' },
+      });
+    expect(withdrawAgentGas).toHaveBeenCalledTimes(1);
+    withdrawAgentGas.mockRejectedValueOnce(new Error('WITHDRAW_AMOUNT_ABOVE_AVAILABLE'));
+    expect(await send(49_999_999)).toEqual({
+      status: 409,
+      body: { error: 'WITHDRAW_AMOUNT_ABOVE_AVAILABLE' },
+    });
+  });
+
+  it('caps a typed amount at what the full-balance plan can send', () => {
+    const plan = planDecibelAgentGasWithdrawalV1(46_550_000, 100, 5_981);
+    expect(resolveDecibelAgentGasWithdrawalAmountV1(plan, undefined)).toEqual(plan);
+    expect(resolveDecibelAgentGasWithdrawalAmountV1(plan, 10_000_000)).toEqual({
+      amountOctas: 10_000_000,
+      maxGasAmount: 5_981,
+      gasUnitPrice: 100,
+    });
+    expect(() => resolveDecibelAgentGasWithdrawalAmountV1(plan, 46_550_000 - 598_099)).toThrow(
+      'WITHDRAW_AMOUNT_ABOVE_AVAILABLE',
+    );
+    expect(() => resolveDecibelAgentGasWithdrawalAmountV1(plan, 0)).toThrow(
+      'WITHDRAW_AMOUNT_INVALID',
+    );
+    expect(() => resolveDecibelAgentGasWithdrawalAmountV1(null, 1)).toThrow('NOTHING_TO_WITHDRAW');
   });
 
   it('keeps the gas while a session runs or orders are open', async () => {

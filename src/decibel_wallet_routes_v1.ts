@@ -59,10 +59,14 @@ export type decibel_wallet_route_dependencies_v1 = Readonly<{
   /** Whether the runtime may switch now, and the switch itself. */
   canSwitch: () => 'OK' | 'SESSION_ACTIVE' | 'OPEN_ORDERS' | 'DISABLED';
   switchNow: () => void;
-  /** Sends the bot key's APT, minus the transfer's gas, to `destination` (always the owner). */
+  /**
+   * Sends `amountOctas` of the bot key's APT (all of it minus the transfer's gas when omitted)
+   * to `destination`, which is always the owner.
+   */
   withdrawAgentGas: (
     agent: decibel_agent_key_material_v1,
     destination: string,
+    amountOctas?: number,
   ) => Promise<Readonly<{ transactionHash: string; amountOctas: number }>>;
   dataRoot?: string;
   selectionPath?: string;
@@ -274,9 +278,14 @@ export async function handleDecibelWalletRequestV1(
   }
   if (pathname === '/api/wallet/withdraw-gas') {
     if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
-    const parsed = z.object({ owner: z.string() }).safeParse(input.body);
+    const parsed = z
+      .object({ owner: z.string(), amountOctas: z.unknown().optional() })
+      .safeParse(input.body);
     const owner = parsed.success ? optionalAddress(parsed.data.owner) : null;
     if (owner === null) return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
+    const amount = z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional();
+    const requested = amount.safeParse(parsed.data?.amountOctas);
+    if (!requested.success) return { status: 400, body: { error: 'WITHDRAW_AMOUNT_INVALID' } };
     if (!dependencies.isWhitelisted(owner))
       return { status: 403, body: { error: 'WALLET_NOT_WHITELISTED' } };
     // Exits (TP, unwind) and cancels pay gas from this key: keep it while anything can trade.
@@ -296,14 +305,15 @@ export async function handleDecibelWalletRequestV1(
     }
     try {
       // The destination is the whitelisted owner, never another address from the request.
-      const result = await dependencies.withdrawAgentGas(agent, owner);
+      const result = await dependencies.withdrawAgentGas(agent, owner, requested.data);
       return { status: 200, body: result };
     } catch (error) {
       const code = errorCode(error, 'GAS_WITHDRAW_FAILED');
       // The node's own message (no key material) explains a generic failure in the log.
       const detail = error instanceof Error ? error.message.replace(/\s+/g, ' ').slice(0, 400) : '';
       console.error(`DECIBEL_WALLET_GAS_WITHDRAW=FAILED CODE=${code} DETAIL=${detail}`);
-      return { status: code === 'NOTHING_TO_WITHDRAW' ? 409 : 502, body: { error: code } };
+      const refused = code === 'NOTHING_TO_WITHDRAW' || code === 'WITHDRAW_AMOUNT_ABOVE_AVAILABLE';
+      return { status: refused ? 409 : 502, body: { error: code } };
     }
   }
   return null;
@@ -343,6 +353,22 @@ export function planDecibelAgentGasWithdrawalV1(
   return amountOctas > 0 ? Object.freeze({ amountOctas, maxGasAmount, gasUnitPrice }) : null;
 }
 
+/**
+ * Applies the operator's amount to a full-balance plan: the amount may not exceed what the
+ * plan could send, since the sender must still cover the transfer's maximum fee.
+ */
+export function resolveDecibelAgentGasWithdrawalAmountV1(
+  plan: ReturnType<typeof planDecibelAgentGasWithdrawalV1>,
+  requestedOctas: number | undefined,
+): NonNullable<ReturnType<typeof planDecibelAgentGasWithdrawalV1>> {
+  if (plan === null) throw new Error('NOTHING_TO_WITHDRAW');
+  if (requestedOctas === undefined) return plan;
+  if (!Number.isSafeInteger(requestedOctas) || requestedOctas <= 0)
+    throw new Error('WITHDRAW_AMOUNT_INVALID');
+  if (requestedOctas > plan.amountOctas) throw new Error('WITHDRAW_AMOUNT_ABOVE_AVAILABLE');
+  return Object.freeze({ ...plan, amountOctas: requestedOctas });
+}
+
 /** Signs and submits the gas withdrawal with the bot key, then waits for it on-chain. */
 export async function withdrawDecibelAgentGasV1(
   input: Readonly<{
@@ -351,6 +377,8 @@ export async function withdrawDecibelAgentGasV1(
     nodeApiKey?: string | undefined;
     agent: decibel_agent_key_material_v1;
     destination: string;
+    /** Omitted: everything above the transfer's maximum fee. */
+    amountOctas?: number | undefined;
     readBalanceOctas: () => Promise<number>;
   }>,
 ): Promise<Readonly<{ transactionHash: string; amountOctas: number }>> {
@@ -394,8 +422,10 @@ export async function withdrawDecibelAgentGasV1(
     throw new Error(`GAS_WITHDRAW_SIMULATION_FAILED:${simulated?.vm_status ?? 'NO_RESULT'}`);
   const maxGasAmount = sizeDecibelAgentGasWithdrawalMaxGasV1(Number(simulated.gas_used));
   if (maxGasAmount === null) throw new Error('GAS_WITHDRAW_SIMULATION_FAILED:NO_GAS_USED');
-  const plan = planDecibelAgentGasWithdrawalV1(balance, gas.gas_estimate, maxGasAmount);
-  if (plan === null) throw new Error('NOTHING_TO_WITHDRAW');
+  const plan = resolveDecibelAgentGasWithdrawalAmountV1(
+    planDecibelAgentGasWithdrawalV1(balance, gas.gas_estimate, maxGasAmount),
+    input.amountOctas,
+  );
   const transaction = await build(plan);
   const pending = await Client.signAndSubmitTransaction({ signer: Agent, transaction });
   const committed = await Client.waitForTransaction({ transactionHash: pending.hash });

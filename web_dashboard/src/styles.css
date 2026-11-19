@@ -4027,6 +4027,71 @@ body:has(.settings-view:not([hidden])) {
   background: var(--surface-dark);
   color: var(--surface-light);
 }
+.confirm-dialog button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.confirm-dialog-body {
+  padding: 0 24px 20px;
+}
+.confirm-dialog-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.confirm-dialog-input {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.confirm-dialog-input:focus-within {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+.confirm-dialog-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: normal;
+  outline: none;
+}
+.confirm-dialog-input input[aria-invalid='true'] {
+  color: #b3392f;
+}
+.confirm-dialog-input em {
+  align-self: center;
+  padding-right: 10px;
+  font-style: normal;
+  color: #6f6d66;
+}
+.confirm-dialog .confirm-dialog-input .confirm-dialog-max {
+  min-width: 64px;
+  min-height: 0;
+  border: 0;
+  border-left: 1px solid var(--line);
+}
+.confirm-dialog .confirm-dialog-input .confirm-dialog-max[aria-pressed='true'] {
+  background: var(--surface-dark);
+  color: var(--surface-light);
+}
+.confirm-dialog-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #5c5a54;
+}
+.confirm-dialog-hint.invalid {
+  color: #b3392f;
+}
 .confirm-dialog button:focus-visible {
   outline: 2px solid var(--foreground);
   outline-offset: 3px;

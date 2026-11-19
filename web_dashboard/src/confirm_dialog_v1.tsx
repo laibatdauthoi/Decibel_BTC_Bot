@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 import { isOutsideDialogV1, shouldCloseBackdropV1 } from './session_modal_v1';
 
@@ -13,6 +13,9 @@ export const ConfirmDialog = (
     message: string;
     confirmLabel: string;
     cancelLabel?: string;
+    /** Extra fields between the message and the buttons (for example an amount). */
+    children?: ReactNode;
+    confirmDisabled?: boolean;
     onConfirm: () => void;
     onCancel: () => void;
   }>,
@@ -73,11 +76,22 @@ export const ConfirmDialog = (
         <h2 id="confirm-dialog-title">{props.title}</h2>
       </header>
       <p id="confirm-dialog-message">{props.message}</p>
+      {props.children !== undefined && <div className="confirm-dialog-body">{props.children}</div>}
       <footer>
-        <button type="button" className="confirm-dialog-cancel" onClick={props.onCancel} autoFocus>
+        <button
+          type="button"
+          className="confirm-dialog-cancel"
+          onClick={props.onCancel}
+          autoFocus={props.children === undefined}
+        >
           {props.cancelLabel ?? 'CANCEL'}
         </button>
-        <button type="button" className="confirm-dialog-confirm" onClick={props.onConfirm}>
+        <button
+          type="button"
+          className="confirm-dialog-confirm"
+          disabled={props.confirmDisabled === true}
+          onClick={props.onConfirm}
+        >
           {props.confirmLabel}
         </button>
       </footer>
