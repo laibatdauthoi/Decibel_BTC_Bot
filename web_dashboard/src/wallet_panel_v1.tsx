@@ -61,6 +61,9 @@ export function formatAptV1(octas: number): string {
   return `${(octas / 100_000_000).toFixed(4)} APT`;
 }
 
+/** How long a wallet success notice stays visible. */
+export const WALLET_SUCCESS_NOTICE_MS_V1 = 5_000;
+
 /** Octas from an APT amount typed by the operator (up to 8 decimals); null when invalid. */
 export function parseAptToOctasV1(text: string): number | null {
   const match = /^(\d{1,12})(?:[.,](\d{1,8}))?$/.exec(text.trim());
@@ -181,6 +184,15 @@ export const WalletMenu = () => {
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [open]);
+  // A success notice fades after a few seconds; errors stay until the next action.
+  useEffect(() => {
+    if (message?.tone !== 'success') return;
+    const timer = setTimeout(
+      () => setMessage((current) => (current === message ? null : current)),
+      WALLET_SUCCESS_NOTICE_MS_V1,
+    );
+    return () => clearTimeout(timer);
+  }, [message]);
 
   const run = (action: () => Promise<string | void>) => {
     if (busy) return;
