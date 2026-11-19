@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useOnPageVisibleV1 } from './page_visibility_v1';
 import { findPetraWalletV1 } from './petra_wallet_v1';
 
 /** Mirrors GET /api/auth/session (src/decibel_dashboard_auth_v1.ts). */
@@ -72,6 +73,7 @@ export const AuthGate = (props: { children: ReactNode }) => {
     const timer = window.setInterval(() => void refresh(), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+  useOnPageVisibleV1(() => void refresh());
   if (session === null) return null;
   if (session.mode === 'off' || session.authenticated) return <>{props.children}</>;
   return (

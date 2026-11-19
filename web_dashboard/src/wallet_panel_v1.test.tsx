@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { noticeLifetimeMsV1 } from './notice_timing_v1';
+import { shouldReopenEventStreamV1 } from './page_visibility_v1';
 import {
   checkWithdrawAmountV1,
   describeWalletErrorV1,
@@ -14,6 +15,13 @@ describe('Wallet panel presentation', () => {
     expect(noticeLifetimeMsV1('success')).toBe(4_000);
     expect(noticeLifetimeMsV1('error')).toBe(6_000);
     expect(noticeLifetimeMsV1('info')).toBeNull();
+  });
+
+  it('reopens a stream that is not open when the tab is shown again', () => {
+    expect(shouldReopenEventStreamV1(1)).toBe(false);
+    expect(shouldReopenEventStreamV1(0)).toBe(true);
+    expect(shouldReopenEventStreamV1(2)).toBe(true);
+    expect(shouldReopenEventStreamV1(undefined)).toBe(true);
   });
 
   it('reads a typed APT amount without floating-point drift', () => {

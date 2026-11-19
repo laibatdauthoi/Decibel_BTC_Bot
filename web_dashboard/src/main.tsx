@@ -2,6 +2,7 @@ import { useSessionSharePreviewV1 } from './share_preview_v1';
 import { DECIBEL_STRATEGY_POLICY_V1 } from '../../src/decibel_strategy_policy_v1.js';
 import { ConfirmDialog } from './confirm_dialog_v1';
 import { noticeLifetimeMsV1, useDismissNoticeV1 } from './notice_timing_v1';
+import { shouldReopenEventStreamV1, useOnPageVisibleV1 } from './page_visibility_v1';
 
 const SETTINGS_SAVE_FAILED_NOTICE_V1 = 'Unable to confirm save; check settings and session status';
 import { SessionHistoryActions } from './activity_actions_v1';
@@ -1118,6 +1119,7 @@ export const SettingsView = (
     const timer = window.setInterval(() => setEtaNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useOnPageVisibleV1(() => setEtaNow(Date.now()));
 
   useEffect(() => {
     setPending({
@@ -1729,8 +1731,19 @@ const App = () => {
     window.addEventListener('popstate', syncTab);
     return () => window.removeEventListener('popstate', syncTab);
   }, []);
+  const [eventStreamEpoch, setEventStreamEpoch] = useState(0);
+  const EventStream = useRef<EventSource | null>(null);
+  useOnPageVisibleV1(() => {
+    setNow(Date.now());
+    void refreshSession().catch(() => setSession(null));
+    void refreshSettings().catch(() => undefined);
+    // A stream dropped while hidden waits for the browser's retry delay; reopen it now.
+    if (shouldReopenEventStreamV1(EventStream.current?.readyState))
+      setEventStreamEpoch((epoch) => epoch + 1);
+  });
   useEffect(() => {
     const Source = new EventSource('/api/events');
+    EventStream.current = Source;
     Source.onopen = () => {
       setConnected(false);
       void refreshSettings().catch(() => undefined);
@@ -1759,7 +1772,7 @@ const App = () => {
       setTelemetry((current) => selectNewerSnapshotV1(current, next));
     };
     return () => Source.close();
-  }, []);
+  }, [eventStreamEpoch]);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent): void => {
       if (event.key === 'Escape')
