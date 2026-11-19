@@ -1,6 +1,9 @@
 import { useSessionSharePreviewV1 } from './share_preview_v1';
 import { DECIBEL_STRATEGY_POLICY_V1 } from '../../src/decibel_strategy_policy_v1.js';
 import { ConfirmDialog } from './confirm_dialog_v1';
+import { noticeLifetimeMsV1, useDismissNoticeV1 } from './notice_timing_v1';
+
+const SETTINGS_SAVE_FAILED_NOTICE_V1 = 'Unable to confirm save; check settings and session status';
 import { SessionHistoryActions } from './activity_actions_v1';
 import { parseSavedSettingsV1, selectSavedSettingsV1 } from './settings_state_v1';
 import { validateSettingsCapitalMarginV1 } from '../../src/settings_capital_margin_v1';
@@ -1045,6 +1048,16 @@ export const SettingsView = (
     current.targetVolume === null || (current.targetVolume ?? -1) < 0 ? 'UNTIL_LIMIT' : 'FIXED',
   );
   const [applyResult, setApplyResult] = useState('READY');
+  // The save result fades; SAVING stays while the request runs.
+  useDismissNoticeV1(
+    applyResult,
+    applyResult === 'CHANGES SAVED'
+      ? noticeLifetimeMsV1('success')
+      : applyResult === SETTINGS_SAVE_FAILED_NOTICE_V1
+        ? noticeLifetimeMsV1('error')
+        : null,
+    () => setApplyResult('READY'),
+  );
   const [saving, setSaving] = useState(false);
   const SaveInFlight = useRef(false);
   const [startRequest, setStartRequest] = useState<session_start_request_state_v1>({
@@ -1550,9 +1563,7 @@ export const SettingsView = (
                     await props.refreshSettings(confirmed);
                     setApplyResult('CHANGES SAVED');
                   })
-                  .catch(() =>
-                    setApplyResult('Unable to confirm save; check settings and session status'),
-                  )
+                  .catch(() => setApplyResult(SETTINGS_SAVE_FAILED_NOTICE_V1))
                   .finally(() => {
                     SaveInFlight.current = false;
                     setSaving(false);

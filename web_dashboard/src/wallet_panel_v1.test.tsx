@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import { noticeLifetimeMsV1 } from './notice_timing_v1';
 import {
   checkWithdrawAmountV1,
   describeWalletErrorV1,
@@ -9,6 +10,12 @@ import {
 } from './wallet_panel_v1';
 
 describe('Wallet panel presentation', () => {
+  it('fades success and error notices but keeps work in progress', () => {
+    expect(noticeLifetimeMsV1('success')).toBe(5_000);
+    expect(noticeLifetimeMsV1('error')).toBe(10_000);
+    expect(noticeLifetimeMsV1('info')).toBeNull();
+  });
+
   it('reads a typed APT amount without floating-point drift', () => {
     expect(parseAptToOctasV1('0.1')).toBe(10_000_000);
     expect(parseAptToOctasV1('0,25')).toBe(25_000_000);

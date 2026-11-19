@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ConfirmDialog } from './confirm_dialog_v1';
+import {
+  noticeLifetimeMsV1,
+  useDismissNoticeV1,
+  type dashboard_notice_tone_v1,
+} from './notice_timing_v1';
 import { shortAddressV1, waitForPetraWalletV1, type wallet_payload_v1 } from './petra_wallet_v1';
 
 type authorization_v1 = Readonly<{
@@ -61,9 +66,6 @@ export function formatAptV1(octas: number): string {
   return `${(octas / 100_000_000).toFixed(4)} APT`;
 }
 
-/** How long a wallet success notice stays visible. */
-export const WALLET_SUCCESS_NOTICE_MS_V1 = 5_000;
-
 /** Octas from an APT amount typed by the operator (up to 8 decimals); null when invalid. */
 export function parseAptToOctasV1(text: string): number | null {
   const match = /^(\d{1,12})(?:[.,](\d{1,8}))?$/.exec(text.trim());
@@ -124,7 +126,7 @@ export const WalletMenu = () => {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Readonly<{
     text: string;
-    tone: 'error' | 'success' | 'info';
+    tone: dashboard_notice_tone_v1;
   }> | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
@@ -184,15 +186,10 @@ export const WalletMenu = () => {
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [open]);
-  // A success notice fades after a few seconds; errors stay until the next action.
-  useEffect(() => {
-    if (message?.tone !== 'success') return;
-    const timer = setTimeout(
-      () => setMessage((current) => (current === message ? null : current)),
-      WALLET_SUCCESS_NOTICE_MS_V1,
-    );
-    return () => clearTimeout(timer);
-  }, [message]);
+  // Success and error notices fade; an info notice (switching) stays until the page reloads.
+  useDismissNoticeV1(message, message === null ? null : noticeLifetimeMsV1(message.tone), () =>
+    setMessage(null),
+  );
 
   const run = (action: () => Promise<string | void>) => {
     if (busy) return;
