@@ -20,6 +20,13 @@ describe('Wallet panel presentation', () => {
       'End the running session before revoking the bot.',
     );
     expect(describeWalletErrorV1('SOMETHING_NEW')).toBe('SOMETHING_NEW');
+    expect(
+      describeWalletErrorV1(
+        'GAS_WITHDRAW_SIMULATION_FAILED:MAX_GAS_UNITS_BELOW_MIN_TRANSACTION_GAS_UNITS',
+      ),
+    ).toBe(
+      'The node rejected the withdrawal in simulation. Nothing was sent. (MAX_GAS_UNITS_BELOW_MIN_TRANSACTION_GAS_UNITS)',
+    );
   });
 
   it('renders a compact top-bar button with the menu closed and no key material', () => {

@@ -4488,9 +4488,37 @@ body:has(.settings-view:not([hidden])) {
 
 .wallet-dropdown .wallet-note {
   margin: 10px 0 0;
-  color: #9c9a92;
-  font-size: 12px;
+  color: #c9c6bc;
+  font-size: 13px;
   text-transform: none;
+}
+
+/* Result of a wallet action: a tinted box with a coloured edge so it reads at a glance. */
+.wallet-dropdown .wallet-notice {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid #6f6d66;
+  border-left-width: 4px;
+  background: rgb(255 255 255 / 6%);
+  color: var(--surface-light);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.wallet-dropdown .wallet-notice-error {
+  border-color: #e07a72;
+  background: rgb(224 122 114 / 14%);
+  color: #ffb3ac;
+}
+
+.wallet-dropdown .wallet-notice-success {
+  border-color: #3fbf8f;
+  background: rgb(63 191 143 / 14%);
+  color: #8fe3c2;
 }
 
 /* Alerts: bell in the bottom-right corner, above the system footer, styled like the share

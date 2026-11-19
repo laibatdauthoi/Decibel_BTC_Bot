@@ -8,10 +8,11 @@ import {
 } from '../src/decibel_agent_keystore_v1.js';
 import { checkDecibelBotAuthorizationV1 } from '../src/decibel_executor_signer_v1.js';
 import {
-  DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1,
+  DECIBEL_AGENT_GAS_WITHDRAW_PROBE_MAX_GAS_V1,
   handleDecibelWalletRequestV1,
   planDecibelAgentGasWithdrawalV1,
   readDecibelSubaccountsV1,
+  sizeDecibelAgentGasWithdrawalMaxGasV1,
 } from '../src/decibel_wallet_routes_v1.js';
 import {
   readDecibelSelectedSubaccountV1,
@@ -303,15 +304,25 @@ describe('Wallet gas withdrawal', () => {
   });
 
   it('keeps only the transfer fee on the bot key', () => {
-    const fee = DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1 * 100;
+    const fee = DECIBEL_AGENT_GAS_WITHDRAW_PROBE_MAX_GAS_V1 * 100;
     expect(planDecibelAgentGasWithdrawalV1(50_000_000, 100)).toEqual({
       amountOctas: 50_000_000 - fee,
-      maxGasAmount: DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1,
+      maxGasAmount: DECIBEL_AGENT_GAS_WITHDRAW_PROBE_MAX_GAS_V1,
       gasUnitPrice: 100,
     });
     expect(planDecibelAgentGasWithdrawalV1(fee, 100)).toBeNull();
     expect(planDecibelAgentGasWithdrawalV1(50_000_000, 0)).toBeNull();
     expect(planDecibelAgentGasWithdrawalV1(Number.NaN, 100)).toBeNull();
+    // Mainnet 2026-11-19: a transfer used 4,984 gas units, above the old fixed 5,000 limit's margin.
+    const maxGas = sizeDecibelAgentGasWithdrawalMaxGasV1(4_984);
+    expect(maxGas).toBe(5_981);
+    expect(planDecibelAgentGasWithdrawalV1(46_550_000, 100, maxGas ?? 0)).toEqual({
+      amountOctas: 46_550_000 - 598_100,
+      maxGasAmount: 5_981,
+      gasUnitPrice: 100,
+    });
+    expect(sizeDecibelAgentGasWithdrawalMaxGasV1(0)).toBeNull();
+    expect(planDecibelAgentGasWithdrawalV1(46_550_000, 100, 0)).toBeNull();
   });
 });
 

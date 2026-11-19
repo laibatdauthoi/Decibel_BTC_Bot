@@ -47,6 +47,10 @@ const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
     'Wait until the open orders are settled before withdrawing gas.',
   NOTHING_TO_WITHDRAW: 'The bot wallet has no spare APT to withdraw.',
   NO_BOT_KEY: 'This wallet has no bot key yet.',
+  GAS_WITHDRAW_FAILED: 'The withdrawal did not go through. Nothing was sent; try again.',
+  GAS_WITHDRAW_SIMULATION_FAILED:
+    'The node rejected the withdrawal in simulation. Nothing was sent.',
+  GAS_WITHDRAW_TRANSACTION_FAILED: 'The withdrawal transaction failed on-chain.',
 };
 
 /** APT amount from octas, for display. */
@@ -55,7 +59,10 @@ export function formatAptV1(octas: number): string {
 }
 
 export function describeWalletErrorV1(code: string): string {
-  return FRIENDLY_ERRORS_V1[code] ?? code;
+  // A code may carry the node's status after a colon (CODE:VM_STATUS).
+  const [base = code, detail] = code.split(/:(.*)/s);
+  const friendly = FRIENDLY_ERRORS_V1[base];
+  return friendly === undefined ? code : detail ? `${friendly} (${detail})` : friendly;
 }
 
 function withoutAddress(set: ReadonlySet<string>, address: string): ReadonlySet<string> {
@@ -91,7 +98,10 @@ export const WalletMenu = () => {
   const [accounts, setAccounts] = useState<wallet_subaccounts_v1 | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<Readonly<{
+    text: string;
+    tone: 'error' | 'success' | 'info';
+  }> | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
   const [confirmingWithdraw, setConfirmingWithdraw] = useState(false);
@@ -155,12 +165,15 @@ export const WalletMenu = () => {
     setMessage(null);
     void action()
       .then((done) => {
-        if (done) setMessage(done);
+        if (done) setMessage({ text: done, tone: 'success' });
       })
       .catch((error: unknown) =>
-        setMessage(
-          describeWalletErrorV1(error instanceof Error ? error.message : 'WALLET_ACTION_FAILED'),
-        ),
+        setMessage({
+          text: describeWalletErrorV1(
+            error instanceof Error ? error.message : 'WALLET_ACTION_FAILED',
+          ),
+          tone: 'error',
+        }),
       )
       .finally(() => setBusy(false));
   };
@@ -187,7 +200,10 @@ export const WalletMenu = () => {
       subaccount,
     });
     if (result.status !== 'SWITCHING') return 'Confirmed. The bot can trade this subaccount.';
-    setMessage('Switching subaccount. The bot restarts; this page reloads when it is back.');
+    setMessage({
+      text: 'Switching subaccount. The bot restarts; this page reloads when it is back.',
+      tone: 'info',
+    });
     for (;;) {
       await new Promise((resolve) => setTimeout(resolve, 3_000));
       const back = await readSubaccounts(owner).catch(() => null);
@@ -369,7 +385,14 @@ export const WalletMenu = () => {
               SIGN OUT
             </button>
           )}
-          {message && <p className="wallet-note">{message}</p>}
+          {message && (
+            <p
+              className={`wallet-notice wallet-notice-${message.tone}`}
+              role={message.tone === 'error' ? 'alert' : 'status'}
+            >
+              {message.text}
+            </p>
+          )}
         </div>
       )}
     </div>

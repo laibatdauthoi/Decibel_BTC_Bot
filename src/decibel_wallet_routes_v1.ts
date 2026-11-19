@@ -300,34 +300,47 @@ export async function handleDecibelWalletRequestV1(
       return { status: 200, body: result };
     } catch (error) {
       const code = errorCode(error, 'GAS_WITHDRAW_FAILED');
+      // The node's own message (no key material) explains a generic failure in the log.
+      const detail = error instanceof Error ? error.message.replace(/\s+/g, ' ').slice(0, 400) : '';
+      console.error(`DECIBEL_WALLET_GAS_WITHDRAW=FAILED CODE=${code} DETAIL=${detail}`);
       return { status: code === 'NOTHING_TO_WITHDRAW' ? 409 : 502, body: { error: code } };
     }
   }
   return null;
 }
 
-/** Gas limit of the APT transfer that returns the bot's gas; a plain transfer uses far less. */
-export const DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1 = 5_000;
+/**
+ * Gas limit of the simulation that sizes a gas withdrawal. A mainnet APT transfer from the
+ * bot key used about 5,000 gas units (2026-11-19), so a fixed 5,000 limit was rejected.
+ */
+export const DECIBEL_AGENT_GAS_WITHDRAW_PROBE_MAX_GAS_V1 = 20_000;
+
+/** Gas limit of the submitted withdrawal: the simulated gas plus 20% headroom. */
+export function sizeDecibelAgentGasWithdrawalMaxGasV1(simulatedGasUsed: number): number | null {
+  return Number.isSafeInteger(simulatedGasUsed) && simulatedGasUsed > 0
+    ? Math.ceil(simulatedGasUsed * 1.2)
+    : null;
+}
 
 /**
  * Amount of a gas withdrawal: the whole balance minus the transfer's maximum fee (a sender
- * that cannot cover `maxGasAmount x gasUnitPrice` is rejected). The unused part of that fee,
- * a few thousandths of an APT, stays on the bot key. Null: nothing worth sending.
+ * that cannot cover `maxGasAmount x gasUnitPrice` is rejected). The unused part of that fee
+ * stays on the bot key. Null: nothing worth sending.
  */
 export function planDecibelAgentGasWithdrawalV1(
   balanceOctas: number,
   gasUnitPrice: number,
+  maxGasAmount: number = DECIBEL_AGENT_GAS_WITHDRAW_PROBE_MAX_GAS_V1,
 ): Readonly<{ amountOctas: number; maxGasAmount: number; gasUnitPrice: number }> | null {
-  if (!Number.isSafeInteger(balanceOctas) || !Number.isSafeInteger(gasUnitPrice)) return null;
-  if (gasUnitPrice <= 0) return null;
-  const amountOctas = balanceOctas - DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1 * gasUnitPrice;
-  return amountOctas > 0
-    ? Object.freeze({
-        amountOctas,
-        maxGasAmount: DECIBEL_AGENT_GAS_WITHDRAW_MAX_GAS_V1,
-        gasUnitPrice,
-      })
-    : null;
+  if (
+    !Number.isSafeInteger(balanceOctas) ||
+    !Number.isSafeInteger(gasUnitPrice) ||
+    !Number.isSafeInteger(maxGasAmount)
+  )
+    return null;
+  if (gasUnitPrice <= 0 || maxGasAmount <= 0) return null;
+  const amountOctas = balanceOctas - maxGasAmount * gasUnitPrice;
+  return amountOctas > 0 ? Object.freeze({ amountOctas, maxGasAmount, gasUnitPrice }) : null;
 }
 
 /** Signs and submits the gas withdrawal with the bot key, then waits for it on-chain. */
@@ -361,19 +374,32 @@ export async function withdrawDecibelAgentGasV1(
     input.readBalanceOctas(),
     Client.getGasPriceEstimation(),
   ]);
-  const plan = planDecibelAgentGasWithdrawalV1(balance, gas.gas_estimate);
-  if (plan === null) throw new Error('NOTHING_TO_WITHDRAW');
-  const transaction = await Client.transaction.build.simple({
-    sender: Agent.accountAddress,
-    data: {
-      function: '0x1::aptos_account::transfer',
-      functionArguments: [normalizeDecibelAddressV1(input.destination), plan.amountOctas],
-    },
-    options: { maxGasAmount: plan.maxGasAmount, gasUnitPrice: plan.gasUnitPrice },
+  const build = (plan: NonNullable<ReturnType<typeof planDecibelAgentGasWithdrawalV1>>) =>
+    Client.transaction.build.simple({
+      sender: Agent.accountAddress,
+      data: {
+        function: '0x1::aptos_account::transfer',
+        functionArguments: [normalizeDecibelAddressV1(input.destination), plan.amountOctas],
+      },
+      options: { maxGasAmount: plan.maxGasAmount, gasUnitPrice: plan.gasUnitPrice },
+    });
+  // Simulate first: the gas a transfer needs is measured, not guessed.
+  const probe = planDecibelAgentGasWithdrawalV1(balance, gas.gas_estimate);
+  if (probe === null) throw new Error('NOTHING_TO_WITHDRAW');
+  const [simulated] = await Client.transaction.simulate.simple({
+    signerPublicKey: Agent.publicKey,
+    transaction: await build(probe),
   });
+  if (simulated?.success !== true)
+    throw new Error(`GAS_WITHDRAW_SIMULATION_FAILED:${simulated?.vm_status ?? 'NO_RESULT'}`);
+  const maxGasAmount = sizeDecibelAgentGasWithdrawalMaxGasV1(Number(simulated.gas_used));
+  if (maxGasAmount === null) throw new Error('GAS_WITHDRAW_SIMULATION_FAILED:NO_GAS_USED');
+  const plan = planDecibelAgentGasWithdrawalV1(balance, gas.gas_estimate, maxGasAmount);
+  if (plan === null) throw new Error('NOTHING_TO_WITHDRAW');
+  const transaction = await build(plan);
   const pending = await Client.signAndSubmitTransaction({ signer: Agent, transaction });
   const committed = await Client.waitForTransaction({ transactionHash: pending.hash });
-  if (!committed.success) throw new Error('GAS_WITHDRAW_TRANSACTION_FAILED');
+  if (!committed.success) throw new Error(`GAS_WITHDRAW_TRANSACTION_FAILED:${committed.vm_status}`);
   return Object.freeze({ transactionHash: pending.hash, amountOctas: plan.amountOctas });
 }
 
