@@ -4425,6 +4425,18 @@ body:has(.settings-view:not([hidden])) {
   font-weight: 500;
 }
 
+/* The withdraw confirmation renders inside the dropdown; keep the dashboard dialog type. */
+.wallet-dropdown .confirm-dialog {
+  font-size: 16px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.wallet-dropdown .confirm-dialog h2,
+.wallet-dropdown .confirm-dialog button {
+  text-transform: uppercase;
+}
+
 .wallet-dropdown .wallet-gas {
   display: flex;
   align-items: center;

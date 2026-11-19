@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ConfirmDialog } from './confirm_dialog_v1';
 import { shortAddressV1, waitForPetraWalletV1, type wallet_payload_v1 } from './petra_wallet_v1';
 
 type authorization_v1 = Readonly<{
@@ -93,6 +94,7 @@ export const WalletMenu = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [open, setOpen] = useState(false);
+  const [confirmingWithdraw, setConfirmingWithdraw] = useState(false);
   /** Subaccounts revoked from this page; Decibel's index may still list them for a while. */
   const [revoked, setRevoked] = useState<ReadonlySet<string>>(new Set());
   const Root = useRef<HTMLDivElement | null>(null);
@@ -136,7 +138,8 @@ export const WalletMenu = () => {
       if (!Root.current?.contains(event.target as Node)) setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      // Escape inside the withdraw confirmation only closes that dialog.
+      if (event.key === 'Escape' && !Root.current?.querySelector('dialog[open]')) setOpen(false);
     };
     document.addEventListener('mousedown', closeOnOutsideClick);
     document.addEventListener('keydown', closeOnEscape);
@@ -222,12 +225,8 @@ export const WalletMenu = () => {
   /** The bot key signs this transfer itself; the APT always goes back to the connected owner. */
   const withdrawGas = () =>
     run(async () => {
-      if (connected === null || accounts?.botGasOctas == null) return;
-      const proceed = window.confirm(
-        `Send about ${formatAptV1(accounts.botGasOctas)} from the bot wallet back to ${shortAddressV1(connected)}? ` +
-          'New entries pause until the bot has gas again (CONFIRM offers a top-up).',
-      );
-      if (!proceed) return;
+      setConfirmingWithdraw(false);
+      if (connected === null) return;
       const { amountOctas } = await postJson<{ amountOctas: number }>('/api/wallet/withdraw-gas', {
         owner: connected,
       });
@@ -315,11 +314,24 @@ export const WalletMenu = () => {
                     type="button"
                     className="wallet-link"
                     disabled={busy || accounts.botGasOctas <= 0}
-                    onClick={withdrawGas}
+                    onClick={() => setConfirmingWithdraw(true)}
                   >
                     WITHDRAW GAS
                   </button>
                 </div>
+              )}
+              {confirmingWithdraw && accounts.botGasOctas !== null && (
+                <ConfirmDialog
+                  title="WITHDRAW GAS"
+                  message={
+                    `Send about ${formatAptV1(accounts.botGasOctas)} from the bot wallet back to ` +
+                    `${shortAddressV1(connected)}? New entries pause until the bot has gas again ` +
+                    '(CONFIRM offers a top-up).'
+                  }
+                  confirmLabel="WITHDRAW"
+                  onConfirm={withdrawGas}
+                  onCancel={() => setConfirmingWithdraw(false)}
+                />
               )}
               <p className={`wallet-state ${selectedAuthorized ? 'positive' : 'warning'}`}>
                 {selectedAuthorized
