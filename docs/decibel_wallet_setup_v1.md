@@ -41,6 +41,14 @@ subaccount of the first whitelisted wallet. The owner is read from the subaccoun
    for the transfer fee) from the bot key back to the owner wallet. The transfer is simulated
    first to size its gas. It is refused while a session runs or orders are open.
 
+## Collateral
+
+A subaccount may hold collateral other than USDC (for example another stablecoin). Decibel haircuts it, so
+the bot sizes capital, capacity and the liquidation buffer from the haircutted equity
+(`perp_equity_haircutted`), and the dashboard shows that value as account equity. If the venue reports
+secondary collateral without a haircutted equity, the account read fails closed. Session Max Loss counts
+only BTC trading PnL, not price moves of the collateral itself.
+
 ## Dashboard sign-in
 
 `DECIBEL_DASHBOARD_AUTH=wallet` requires a Petra signature for every API route. The session is an HttpOnly,

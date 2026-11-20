@@ -5,6 +5,10 @@ import {
   parseDecibelSelectedLeverageV1,
   parseDecibelAccountFeeRatesV1,
 } from '../src/decibel_authenticated_http_reader_v1.js';
+import {
+  getDecibelRiskEquityUsdV1,
+  hasDecibelSecondaryCollateralV1,
+} from '../src/decibel_production_live_state_source_v1.js';
 
 function response(body: unknown) {
   return Object.freeze({
@@ -195,5 +199,63 @@ describe('production authenticated HTTP reader', () => {
     await expect(
       Reader.readAccountOverview('subaccount', AbortSignal.timeout(100)),
     ).rejects.toThrow();
+  });
+});
+
+describe('Secondary collateral', () => {
+  const secondary = [
+    { asset_type: '0xabc', amount: 47.7, value_in_usdc: 46.27, haircut_bps: 1000 },
+  ];
+
+  it('keeps the haircutted equity and the secondary collateral from the overview', async () => {
+    const overview = (body: Record<string, unknown>) =>
+      createDecibelAuthenticatedHttpReaderV1({
+        baseUrl: 'https://api.example/decibel',
+        request: () =>
+          Promise.resolve(
+            response({
+              perp_equity_balance: 38.18,
+              total_margin: 33.04,
+              cross_available_to_trade: 33.04,
+              ...body,
+            }),
+          ),
+      }).readAccountOverview('subaccount', AbortSignal.timeout(100));
+    await expect(
+      overview({ perp_equity_haircutted: 33.04, secondary_collateral: secondary }),
+    ).resolves.toMatchObject({ perp_equity_haircutted: 33.04, secondary_collateral: secondary });
+    await expect(overview({ secondary_collateral: null })).resolves.toMatchObject({
+      secondary_collateral: null,
+    });
+    expect(await overview({})).not.toHaveProperty('secondary_collateral');
+  });
+
+  it('sizes risk from the haircutted equity when collateral is not only USDC', () => {
+    expect(hasDecibelSecondaryCollateralV1({ secondary_collateral: secondary })).toBe(true);
+    expect(hasDecibelSecondaryCollateralV1({ secondary_collateral: null })).toBe(false);
+    expect(hasDecibelSecondaryCollateralV1({ secondary_collateral: [] })).toBe(false);
+    expect(hasDecibelSecondaryCollateralV1({})).toBe(false);
+    expect(
+      getDecibelRiskEquityUsdV1({
+        perp_equity_balance: 38.18,
+        perp_equity_haircutted: 33.04,
+        secondary_collateral: secondary,
+      }),
+    ).toBe(33.04);
+    // Never above the raw equity, and unchanged for a USDC-only account.
+    expect(
+      getDecibelRiskEquityUsdV1({
+        perp_equity_balance: 20,
+        perp_equity_haircutted: 25,
+        secondary_collateral: null,
+      }),
+    ).toBe(20);
+    expect(getDecibelRiskEquityUsdV1({ perp_equity_balance: 20, secondary_collateral: null })).toBe(
+      20,
+    );
+    // Secondary collateral without a haircutted equity fails closed.
+    expect(
+      getDecibelRiskEquityUsdV1({ perp_equity_balance: 38.18, secondary_collateral: secondary }),
+    ).toBeNaN();
   });
 });

@@ -8,6 +8,8 @@ export const DECIBEL_AUTHENTICATED_HTTP_TRANSPORT_ID_V1 =
 const AccountOverviewSchema = z
   .object({
     perp_equity_balance: z.number(),
+    perp_equity_haircutted: z.number().optional(),
+    secondary_collateral: z.unknown().optional(),
     total_margin: z.number(),
     cross_available_to_trade: z.number().finite().nonnegative(),
     unrealized_pnl: z.number().optional(),
@@ -119,6 +121,8 @@ export type decibel_account_fee_rates_v1 = ReturnType<typeof parseDecibelAccount
 
 export type decibel_authenticated_http_account_overview_v1 = Readonly<{
   perp_equity_balance: number;
+  perp_equity_haircutted?: number;
+  secondary_collateral?: unknown;
   total_margin: number;
   cross_available_to_trade: number;
   unrealized_pnl?: number;
@@ -300,6 +304,13 @@ export function createDecibelAuthenticatedHttpReaderV1(
           : { cross_margin_ratio: value.cross_margin_ratio }),
         ...(value.margin_deficit === undefined ? {} : { margin_deficit: value.margin_deficit }),
         perp_equity_balance: value.perp_equity_balance,
+        ...(value.perp_equity_haircutted === undefined
+          ? {}
+          : { perp_equity_haircutted: value.perp_equity_haircutted }),
+        // null (USDC only) is kept apart from a missing field.
+        ...('secondary_collateral' in value
+          ? { secondary_collateral: value.secondary_collateral }
+          : {}),
         total_margin: value.total_margin,
         cross_available_to_trade: value.cross_available_to_trade,
         ...(value.unrealized_pnl === undefined ? {} : { unrealized_pnl: value.unrealized_pnl }),

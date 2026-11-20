@@ -270,6 +270,7 @@ type position_row = Readonly<{
 type account_overview_row = Readonly<{
   secondary_collateral?: unknown;
   perp_equity_balance: number;
+  perp_equity_haircutted?: number;
   total_margin: number;
   cross_available_to_trade: number;
   unrealized_pnl?: number;
@@ -277,6 +278,34 @@ type account_overview_row = Readonly<{
   cross_margin_ratio?: number;
   margin_deficit?: number;
 }>;
+
+/** True when the subaccount holds collateral other than USDC, which the venue haircuts. */
+export function hasDecibelSecondaryCollateralV1(
+  accountOverview: Pick<account_overview_row, 'secondary_collateral'>,
+): boolean {
+  const value = accountOverview.secondary_collateral;
+  return value !== null && value !== undefined && !(Array.isArray(value) && value.length === 0);
+}
+
+/**
+ * Equity the venue margins and liquidates against. With secondary collateral (for example
+ * another stablecoin) that is the haircutted equity, below the raw equity; capital, capacity
+ * and liquidation buffers use it so the bot never counts collateral the venue does not.
+ * Secondary collateral without a haircutted equity is NaN, which fails the account read closed.
+ */
+export function getDecibelRiskEquityUsdV1(
+  accountOverview: Pick<
+    account_overview_row,
+    'perp_equity_balance' | 'perp_equity_haircutted' | 'secondary_collateral'
+  >,
+): number {
+  const haircutted = accountOverview.perp_equity_haircutted;
+  const haircuttedKnown = typeof haircutted === 'number' && Number.isFinite(haircutted);
+  if (hasDecibelSecondaryCollateralV1(accountOverview) && !haircuttedKnown) return Number.NaN;
+  return haircuttedKnown
+    ? Math.min(accountOverview.perp_equity_balance, haircutted)
+    : accountOverview.perp_equity_balance;
+}
 
 export function getDecibelAuthoritativeAvailableMarginUsdV1(
   accountOverview: Pick<account_overview_row, 'cross_available_to_trade'>,
@@ -1680,7 +1709,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       )
     )
       return null;
-    if (this.CapacityVenueRules && account.data.primaryCollateralOnly !== true) return null;
+    // Secondary collateral is accepted: equityUsd is already the venue's haircutted equity.
     const positions = filterDecibelBTCMarketActivityV1(account.data.positions);
     const risk = this.CapacitySettings;
     if (
@@ -2025,9 +2054,9 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     signal?.throwIfAborted();
     this.CapacityAccountObservation = {
       source: 'AUTHENTICATED_ACCOUNT_OVERVIEW',
-      primaryCollateralOnly: values.accountOverview.secondary_collateral === null,
+      primaryCollateralOnly: !hasDecibelSecondaryCollateralV1(values.accountOverview),
       observedAt: requestedAt,
-      equityUsd: values.accountOverview.perp_equity_balance,
+      equityUsd: getDecibelRiskEquityUsdV1(values.accountOverview),
       freeMarginUsd: values.accountOverview.cross_available_to_trade,
       totalMarginUsd: values.accountOverview.total_margin,
       maintenanceMarginUsd: values.accountOverview.maintenance_margin ?? null,
@@ -2061,6 +2090,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
     );
     if (
       !Number.isFinite(values.accountOverview.perp_equity_balance) ||
+      !Number.isFinite(getDecibelRiskEquityUsdV1(values.accountOverview)) ||
       !Number.isFinite(values.accountOverview.total_margin) ||
       !Number.isFinite(values.accountOverview.cross_available_to_trade) ||
       values.accountOverview.perp_equity_balance < 0 ||
@@ -2253,7 +2283,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
           : []),
       ]),
       accountMetrics: Object.freeze({
-        collateralUsd: values.accountOverview.perp_equity_balance,
+        collateralUsd: getDecibelRiskEquityUsdV1(values.accountOverview),
         totalMarginUsd: values.accountOverview.total_margin,
         unrealizedPnlUsd: Number.isFinite(values.accountOverview.unrealized_pnl)
           ? (values.accountOverview.unrealized_pnl ?? null)
@@ -2377,8 +2407,8 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       this.CapacityAccountObservation = {
         source: 'AUTHENTICATED_ACCOUNT_OVERVIEW',
         observedAt: startedAt,
-        equityUsd: accountOverview.perp_equity_balance,
-        primaryCollateralOnly: accountOverview.secondary_collateral === null,
+        equityUsd: getDecibelRiskEquityUsdV1(accountOverview),
+        primaryCollateralOnly: !hasDecibelSecondaryCollateralV1(accountOverview),
         freeMarginUsd: accountOverview.cross_available_to_trade,
         totalMarginUsd: accountOverview.total_margin,
         maintenanceMarginUsd: accountOverview.maintenance_margin ?? null,
@@ -2402,6 +2432,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
       if (BTCPositions.length > 1) throw new Error('PRODUCTION_LIVE_SOURCE_POSITION_AMBIGUOUS');
       if (
         !Number.isFinite(accountOverview.perp_equity_balance) ||
+        !Number.isFinite(getDecibelRiskEquityUsdV1(accountOverview)) ||
         !Number.isFinite(accountOverview.total_margin) ||
         !Number.isFinite(accountOverview.cross_available_to_trade) ||
         accountOverview.perp_equity_balance < 0 ||
@@ -2416,7 +2447,7 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
         readWindow: Object.freeze({ startedAt, completedAt: observedAt }),
         availableMarginUsd,
         accountMetrics: Object.freeze({
-          collateralUsd: accountOverview.perp_equity_balance,
+          collateralUsd: getDecibelRiskEquityUsdV1(accountOverview),
           totalMarginUsd: accountOverview.total_margin,
           unrealizedPnlUsd: Number.isFinite(accountOverview.unrealized_pnl)
             ? (accountOverview.unrealized_pnl ?? null)
