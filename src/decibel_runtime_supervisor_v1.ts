@@ -23,7 +23,7 @@ export type decibel_runtime_economic_snapshot_v1 = Readonly<{
     | 'DECIBEL_AUTHENTICATED_REST_USER_FEE_RATES'
     | 'DECIBEL_AUTHENTICATED_STRATEGY_MAKER_FILL_HISTORY';
   estimatedGasCostUsd: number;
-  estimatedGasCostSource: 'HISTORICAL_SUCCESSFUL_TX_P95';
+  estimatedGasCostSource: 'HISTORICAL_SUCCESSFUL_TX_P95' | 'BOOTSTRAP_CONSERVATIVE_PRIOR';
   aptUsd: number;
   aptUsdSource: string;
   adverseSelectionBufferBps: number | null;

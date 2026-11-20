@@ -152,6 +152,7 @@ import {
   loadFreshDecibelJournalBboObservationsV1,
 } from '../src/run_decibel_production_economic_viability_v1.js';
 import {
+  DECIBEL_BOOTSTRAP_GAS_APT_V1,
   deriveAuthenticatedMakerFeeEvidenceV1,
   loadLastKnownGoodEconomicInputsV1,
   resolveAptUsdEvidenceChainV1,
@@ -1144,6 +1145,31 @@ describe('Decibel production live orchestrator V1', () => {
       medianGasApt: 0.000589,
       p95GasApt: 0.000648,
       reused: true,
+      source: 'HISTORICAL_SUCCESSFUL_TX_P95',
+    });
+  });
+
+  it('costs a wallet that never transacted with the conservative bootstrap gas', () => {
+    expect(resolveDecibelHistoricalGasEvidenceV1([], null, 0)).toEqual({
+      observedGasTxCount: 0,
+      medianGasApt: DECIBEL_BOOTSTRAP_GAS_APT_V1,
+      p95GasApt: DECIBEL_BOOTSTRAP_GAS_APT_V1,
+      reused: false,
+      source: 'BOOTSTRAP_CONSERVATIVE_PRIOR',
+    });
+    // An unreadable journal (count unknown) never falls back to the prior.
+    expect(resolveDecibelHistoricalGasEvidenceV1([], null).p95GasApt).toBeNull();
+    // Measured gas replaces the prior, and a stored prior is not reused once transactions exist.
+    const bootstrap = { p95GasApt: 0.002, gasCostSource: 'BOOTSTRAP_CONSERVATIVE_PRIOR' };
+    expect(resolveDecibelHistoricalGasEvidenceV1([0.0006], bootstrap, 1)).toMatchObject({
+      p95GasApt: 0.0006,
+      source: 'HISTORICAL_SUCCESSFUL_TX_P95',
+    });
+    expect(resolveDecibelHistoricalGasEvidenceV1([], bootstrap, 3).p95GasApt).toBeNull();
+    // Measured evidence of a wallet whose journal was reset is still preferred to the prior.
+    expect(resolveDecibelHistoricalGasEvidenceV1([], { p95GasApt: 0.000648 }, 0)).toMatchObject({
+      p95GasApt: 0.000648,
+      source: 'HISTORICAL_SUCCESSFUL_TX_P95',
     });
   });
 

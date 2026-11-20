@@ -434,6 +434,26 @@ export function diffDecibelOperatorSettingsV1(
   );
 }
 
+/** Settings a wallet starts with before its first save; the operator edits them in Settings. */
+export const DECIBEL_OPERATOR_DEFAULT_SETTINGS_V1: decibel_operator_settings_values_v1 =
+  Object.freeze({ capitalToUseUsd: 20, maxLossUsd: 5, targetMakerVolumeUsd: 4_999 });
+
+/** First-run settings: the defaults above, each overridable from the environment. */
+export function resolveDecibelInitialOperatorSettingsV1(
+  environment: Readonly<Record<string, string | undefined>>,
+): decibel_operator_settings_values_v1 {
+  const Defaults = DECIBEL_OPERATOR_DEFAULT_SETTINGS_V1;
+  return parseDecibelOperatorSettingsValuesV1({
+    capitalToUseUsd: Number(
+      environment.DECIBEL_PRODUCTION_CAPITAL_TO_USE_USD ?? Defaults.capitalToUseUsd,
+    ),
+    maxLossUsd: Number(environment.DECIBEL_PRODUCTION_MAX_DRAWDOWN_USD ?? Defaults.maxLossUsd),
+    targetMakerVolumeUsd: Number(
+      environment.DECIBEL_PASSIVE_RECYCLING_TARGET_VOLUME_USD ?? Defaults.targetMakerVolumeUsd,
+    ),
+  });
+}
+
 export function parseDecibelOperatorSettingsValuesV1(
   value: unknown,
 ): decibel_operator_settings_values_v1 {

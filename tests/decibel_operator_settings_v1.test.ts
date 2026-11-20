@@ -13,6 +13,7 @@ import {
   validateDecibelCapitalAllocationV1,
   diffDecibelOperatorSettingsV1,
   parseDecibelOperatorSettingsValuesV1,
+  resolveDecibelInitialOperatorSettingsV1,
 } from '../src/decibel_operator_settings_v1.js';
 import { handleDecibelOperatorSettingsRequestV1 } from '../src/decibel_production_web_helpers_v1.js';
 
@@ -23,6 +24,25 @@ const baseline = Object.freeze({
 });
 
 describe('Decibel operator settings V1', () => {
+  it('starts a new wallet at capital 20, max loss 5 and a 4,999 target unless configured', () => {
+    expect(resolveDecibelInitialOperatorSettingsV1({})).toEqual({
+      capitalToUseUsd: 20,
+      maxLossUsd: 5,
+      targetMakerVolumeUsd: 4_999,
+    });
+    // The venue notional cap no longer doubles as the starting capital.
+    expect(
+      resolveDecibelInitialOperatorSettingsV1({ DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD: '50' }),
+    ).toMatchObject({ capitalToUseUsd: 20 });
+    expect(
+      resolveDecibelInitialOperatorSettingsV1({
+        DECIBEL_PRODUCTION_CAPITAL_TO_USE_USD: '30',
+        DECIBEL_PRODUCTION_MAX_DRAWDOWN_USD: '10',
+        DECIBEL_PASSIVE_RECYCLING_TARGET_VOLUME_USD: '-1',
+      }),
+    ).toEqual({ capitalToUseUsd: 30, maxLossUsd: 10, targetMakerVolumeUsd: -1 });
+  });
+
   it('prevents collateral allocation from exceeding authenticated account equity', () => {
     expect(() => validateDecibelCapitalAllocationV1(12, 12.74)).not.toThrow();
     expect(() => validateDecibelCapitalAllocationV1(49, 12.74)).toThrow(

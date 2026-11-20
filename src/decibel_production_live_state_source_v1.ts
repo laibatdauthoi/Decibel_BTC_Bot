@@ -147,7 +147,7 @@ const EconomicEvidenceSchema = z.object({
   takerFeeObservedAt: z.number().int().positive().optional(),
   conservativeGasCostUsd: z.number().nonnegative(),
   gasCostObservedAt: z.number().int().positive().optional(),
-  gasCostSource: z.literal('HISTORICAL_SUCCESSFUL_TX_P95'),
+  gasCostSource: z.enum(['HISTORICAL_SUCCESSFUL_TX_P95', 'BOOTSTRAP_CONSERVATIVE_PRIOR']),
   aptUsd: z.number().positive().optional(),
   aptUsdObservedAt: z.number().int().positive().optional(),
   aptUsdSource: z.string().trim().min(1).optional(),

@@ -48,6 +48,7 @@ type last_known_good_economic_inputs_v1 = Readonly<{
   makerFeeBps?: number;
   makerFeeSource?: string;
   gasCostObservedAt?: number;
+  gasCostSource?: string;
   observedGasTxCount?: number;
   medianGasApt?: number;
   p95GasApt?: number;
@@ -358,21 +359,50 @@ export function resolveAptUsdFromAllMarketPricesV1(
   return Object.freeze({ aptUsd, observedAt });
 }
 
+/**
+ * Gas per transaction assumed for a wallet that has never sent one, so its first session can
+ * be costed at all (without it the wallet could never start, and so never measure its gas).
+ * About 3x the P95 measured on this market (0.000627 APT on 2026-11-20): overstating gas only
+ * makes entries stricter. Replaced by the measured P95 once the journal holds a transaction.
+ */
+export const DECIBEL_BOOTSTRAP_GAS_APT_V1 = 0.002;
+
+export type decibel_gas_cost_source_v1 =
+  'HISTORICAL_SUCCESSFUL_TX_P95' | 'BOOTSTRAP_CONSERVATIVE_PRIOR';
+
 export function resolveDecibelHistoricalGasEvidenceV1(
   freshGasApt: readonly number[],
   persisted: Readonly<{
     observedGasTxCount?: number;
     medianGasApt?: number;
     p95GasApt?: number;
+    gasCostSource?: string;
   }> | null,
+  journalTransactionCount = Number.POSITIVE_INFINITY,
 ): Readonly<{
   observedGasTxCount: number;
   medianGasApt: number | null;
   p95GasApt: number | null;
   reused: boolean;
+  source: decibel_gas_cost_source_v1;
 }> {
   const freshMedian = percentile(freshGasApt, 0.5);
   const freshP95 = percentile(freshGasApt, 0.95);
+  // A bootstrap prior is never reused once the wallet has transactions of its own to measure.
+  const persistedIsBootstrap = persisted?.gasCostSource === 'BOOTSTRAP_CONSERVATIVE_PRIOR';
+  if (
+    freshP95 === null &&
+    journalTransactionCount === 0 &&
+    (persisted?.p95GasApt === undefined || persistedIsBootstrap)
+  )
+    return Object.freeze({
+      observedGasTxCount: 0,
+      medianGasApt: DECIBEL_BOOTSTRAP_GAS_APT_V1,
+      p95GasApt: DECIBEL_BOOTSTRAP_GAS_APT_V1,
+      reused: false,
+      source: 'BOOTSTRAP_CONSERVATIVE_PRIOR',
+    });
+  if (persistedIsBootstrap) persisted = null;
   const persistedP95 =
     typeof persisted?.p95GasApt === 'number' &&
     Number.isFinite(persisted.p95GasApt) &&
@@ -391,6 +421,7 @@ export function resolveDecibelHistoricalGasEvidenceV1(
     medianGasApt: freshMedian ?? persistedMedian,
     p95GasApt: freshP95 ?? persistedP95,
     reused: freshP95 === null && persistedP95 !== null,
+    source: 'HISTORICAL_SUCCESSFUL_TX_P95',
   });
 }
 
@@ -541,6 +572,8 @@ export async function runDecibelProductionEconomicInputsAuditV1(
     ),
   ];
   const persistedGasIsFresh =
+    (lastKnownGood?.gasCostSource !== 'BOOTSTRAP_CONSERVATIVE_PRIOR' ||
+      transactionHashes.length === 0) &&
     typeof lastKnownGood?.p95GasApt === 'number' &&
     lastKnownGood.p95GasApt > 0 &&
     isFresh(lastKnownGood.gasCostObservedAt ?? lastKnownGood.observedAt, observedAt, maximumAgeMs);
@@ -665,7 +698,11 @@ export async function runDecibelProductionEconomicInputsAuditV1(
   const aptUsdObservedAt = aptUsdResolution.observedAt;
   const aptUsdSource = aptUsdResolution.source;
   const aptUsdDiagnostic = aptUsdResolution.diagnostic;
-  const gasEvidence = resolveDecibelHistoricalGasEvidenceV1(gasApt, lastKnownGood);
+  const gasEvidence = resolveDecibelHistoricalGasEvidenceV1(
+    gasApt,
+    lastKnownGood,
+    gasJournalDiagnostic === 'READY' ? transactionHashes.length : Number.POSITIVE_INFINITY,
+  );
   const { p95GasApt, medianGasApt, observedGasTxCount } = gasEvidence;
   const gasEvidenceReused = gasEvidence.reused;
   const result = Object.freeze({
@@ -679,6 +716,7 @@ export async function runDecibelProductionEconomicInputsAuditV1(
     medianGasApt,
     p95GasApt,
     gasEvidenceReused,
+    gasCostSource: gasEvidence.source,
     gasJournalDiagnostic,
     aptUsd,
     aptUsdSources,
@@ -710,7 +748,7 @@ export async function runDecibelProductionEconomicInputsAuditV1(
           makerFeeSource,
           conservativeGasCostUsd: result.conservativeGasCostUsd,
           gasCostObservedAt: observedAt,
-          gasCostSource: 'HISTORICAL_SUCCESSFUL_TX_P95',
+          gasCostSource: gasEvidence.source,
           observedGasTxCount,
           medianGasApt,
           p95GasApt,

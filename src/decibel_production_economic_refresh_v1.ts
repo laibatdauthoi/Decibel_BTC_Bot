@@ -542,7 +542,10 @@ function publishGasP95Component(
     ...current,
     p95GasApt,
     gasP95ObservedAt: observedAt,
-    gasP95Source: 'HISTORICAL_SUCCESSFUL_TX_P95',
+    gasP95Source:
+      candidate.gasCostSource === 'BOOTSTRAP_CONSERVATIVE_PRIOR'
+        ? 'BOOTSTRAP_CONSERVATIVE_PRIOR'
+        : 'HISTORICAL_SUCCESSFUL_TX_P95',
   };
   for (const key of ['observedGasTxCount', 'medianGasApt'])
     if (candidate[key] !== undefined) updated[key] = candidate[key];
@@ -582,7 +585,10 @@ function publishDerivedGasCostComponent(path: string, now: number, maximumAgeMs:
     'GAS_COST',
     {
       conservativeGasCostUsd: p95GasApt * aptUsd,
-      gasCostSource: 'HISTORICAL_SUCCESSFUL_TX_P95',
+      gasCostSource:
+        current.gasP95Source === 'BOOTSTRAP_CONSERVATIVE_PRIOR'
+          ? 'BOOTSTRAP_CONSERVATIVE_PRIOR'
+          : 'HISTORICAL_SUCCESSFUL_TX_P95',
       gasCostObservedAt: Math.min(gasObservedAt, aptObservedAt),
       observedGasTxCount: current.observedGasTxCount,
       medianGasApt: current.medianGasApt,

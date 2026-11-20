@@ -84,9 +84,9 @@ import {
 
 import {
   decibel_operator_settings_store_v1,
+  resolveDecibelInitialOperatorSettingsV1,
   deriveDecibelSessionTradingLimitsV1,
   validateDecibelCapitalAllocationV1,
-  type decibel_operator_settings_values_v1,
 } from './decibel_operator_settings_v1.js';
 import { decibel_execution_lifecycle_journal_v1 } from './decibel_execution_lifecycle_journal_v1.js';
 import {
@@ -365,16 +365,7 @@ export async function runDecibelProductionWebV1(
     }
   };
   const configuration = parseDecibelProductionLiveConfigurationV1(environment);
-  const configuredCapital = Number(
-    environment.DECIBEL_PRODUCTION_CAPITAL_TO_USE_USD ??
-      environment.DECIBEL_PRODUCTION_LIVE_MAX_NOTIONAL_USD ??
-      '100',
-  );
-  const initialSettings: decibel_operator_settings_values_v1 = Object.freeze({
-    capitalToUseUsd: configuredCapital,
-    maxLossUsd: Number(environment.DECIBEL_PRODUCTION_MAX_DRAWDOWN_USD ?? configuredCapital),
-    targetMakerVolumeUsd: Number(environment.DECIBEL_PASSIVE_RECYCLING_TARGET_VOLUME_USD ?? '-1'),
-  });
+  const initialSettings = resolveDecibelInitialOperatorSettingsV1(environment);
   const SettingsStore = new decibel_operator_settings_store_v1(
     web.DECIBEL_OPERATOR_SETTINGS_PATH,
     initialSettings,

@@ -104,7 +104,8 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
       | 'DECIBEL_AUTHENTICATED_STRATEGY_MAKER_FILL_HISTORY'
       | 'UNKNOWN';
     estimatedGasCostUsd: number | null;
-    estimatedGasCostSource: 'CONFIG' | 'HISTORICAL_SUCCESSFUL_TX_P95' | 'UNKNOWN';
+    estimatedGasCostSource:
+      'CONFIG' | 'HISTORICAL_SUCCESSFUL_TX_P95' | 'BOOTSTRAP_CONSERVATIVE_PRIOR' | 'UNKNOWN';
     adverseSelectionBufferBps: number | null;
     adverseSelectionSource:
       'CONFIG' | 'SYNTHETIC_BBO_BLOCK_AWARE_REGIME_P95' | 'GLOBAL_FALLBACK' | 'UNKNOWN';
