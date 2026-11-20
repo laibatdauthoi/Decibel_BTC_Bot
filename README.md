@@ -61,7 +61,8 @@ Copy-Item config/allowed_wallets.example.json config/allowed_wallets.json
 
 1. Fill `DECIBEL_NODE_API_KEY` in `.env`. Leave the other values at their safe defaults until
    you intend to trade.
-2. List your owner wallet address in `config/allowed_wallets.json`.
+2. Add your owner wallet with `npm run wl` (a menu to list, add and remove allowed wallets),
+   or edit `config/allowed_wallets.json` by hand.
 3. Start the bot and open the dashboard at http://127.0.0.1:4173:
 
    ```powershell
