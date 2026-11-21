@@ -106,4 +106,38 @@ describe('decibel strategy backtest v1', () => {
       overrideDecibelBacktestPolicyV1(DECIBEL_STRATEGY_POLICY_V1, 'adverse.safeBand', 1),
     ).toThrow('BACKTEST_POLICY_PATH_NOT_NUMBER');
   });
+  it('sizes the entry from the risk capacity left, like production', () => {
+    const rows = [
+      ...flatBook(start, 3, 100_000),
+      { at: start + 3_000, bid: 99_999.9, ask: 100_000 },
+      { at: start + 4_000, bid: 98_000, ask: 98_000.1 },
+    ];
+    const sized = { ...config, entrySizeUsd: 750, entrySizeFromRiskCapacity: true };
+    // Max Loss 0.5 leaves about $31 of risk capacity: the $750 preference is cut to it.
+    const [trip] = runDecibelStrategyBacktestV1(rows, { ...sized, maxLossUsd: 0.5 }).trips;
+    expect(trip?.entryNotionalUsd).toBeGreaterThan(30);
+    expect(trip?.entryNotionalUsd).toBeLessThan(31.1);
+    // Below the minimum entry it still blocks.
+    expect(runDecibelStrategyBacktestV1(rows, { ...sized, maxLossUsd: 0.1 }).trips).toHaveLength(0);
+  });
+
+  it('blocks only the entry side against a large recent move when the trend filter is on', () => {
+    // 60 bps down over 30 minutes, one row per second (5-minute range stays under the pause).
+    const rows = Array.from({ length: 1_900 }, (_, i) => {
+      const bid = 100_000 * (1 - (0.006 * Math.min(i, 1_800)) / 1_800);
+      return { at: start + i * 1000, bid, ask: bid + 0.1 };
+    });
+    // A tiny Max Loss keeps every side risk-blocked, so no fill interrupts the flat book.
+    const blocked = { ...config, maxLossUsd: 0.1 };
+    const filtered = runDecibelStrategyBacktestV1(rows, {
+      ...blocked,
+      trendFilter: { lookbackMs: 30 * 60_000, maxMoveBps: 50 },
+    });
+    // Only the BUY side (against the drop) is blocked by the trend; SELL stays risk-blocked.
+    expect(filtered.entryBlocks.ENTRY_AGAINST_TREND).toBeGreaterThan(0);
+    expect(filtered.entryBlocks.ENTRY_AGAINST_TREND).toBeLessThan(filtered.cycles);
+    expect(runDecibelStrategyBacktestV1(rows, blocked).entryBlocks.ENTRY_AGAINST_TREND).toBe(
+      undefined,
+    );
+  });
 });

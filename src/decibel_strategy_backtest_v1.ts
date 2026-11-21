@@ -42,6 +42,22 @@ export type decibel_backtest_config_v1 = Readonly<{
   entryCandleFilter: boolean;
   dcaEnabled: boolean;
   adverseRuleEnabled: boolean;
+  /**
+   * Research variant (off by default): no new entry against a move larger than `maxMoveBps`
+   * over the last `lookbackMs` (no BUY after a drop, no SELL after a rise).
+   */
+  trendFilter: Readonly<{ lookbackMs: number; maxMoveBps: number }> | null;
+  /**
+   * Research variant (off by default): the entry size shrinks by referenceRangeBps / range
+   * (5-minute range) above the reference, down to `minimumFraction` of the entry size.
+   */
+  volatilitySizing: Readonly<{ referenceRangeBps: number; minimumFraction: number }> | null;
+  /**
+   * Like production: the entry is the smaller of `entrySizeUsd` and the risk capacity left
+   * (down to `minimumEntryUsd`) instead of being blocked when the capacity is below it.
+   */
+  entrySizeFromRiskCapacity: boolean;
+  minimumEntryUsd: number;
 }>;
 
 export const DECIBEL_BACKTEST_DEFAULT_CONFIG_V1: decibel_backtest_config_v1 = Object.freeze({
@@ -59,6 +75,10 @@ export const DECIBEL_BACKTEST_DEFAULT_CONFIG_V1: decibel_backtest_config_v1 = Ob
   entryCandleFilter: true,
   dcaEnabled: true,
   adverseRuleEnabled: true,
+  trendFilter: null,
+  volatilitySizing: null,
+  entrySizeFromRiskCapacity: false,
+  minimumEntryUsd: 10,
 });
 
 export type decibel_backtest_trip_v1 = Readonly<{
@@ -185,8 +205,10 @@ export function runDecibelStrategyBacktestV1(
     peak = Math.max(peak, netPnl);
     maxDrawdown = Math.max(maxDrawdown, peak - netPnl);
   };
+  // Entry size chosen with the resting quote (volatility sizing), used when it fills.
+  let restingEntrySizeUsd = config.entrySizeUsd;
   const open = (direction: 1 | -1, price: number, at: number) => {
-    const base = Math.floor(config.entrySizeUsd / price / config.lotSize) * config.lotSize;
+    const base = Math.floor(restingEntrySizeUsd / price / config.lotSize) * config.lotSize;
     if (!(base > 0)) return;
     const fee = base * price * maker;
     book(0, base * price, fee, true);
@@ -252,6 +274,18 @@ export function runDecibelStrategyBacktestV1(
       DECIBEL_CAPACITY_POLICY_V1.adverseSelectionBps) /
       10_000);
 
+  // Coarse midpoint history for the trend filter (one sample per 10 s).
+  const trendSamples: Array<{ at: number; midpoint: number }> = [];
+  const trendMoveBps = (now: number, midpoint: number): number | null => {
+    const filter = config.trendFilter;
+    if (filter === null) return null;
+    while (trendSamples.length > 0 && trendSamples[0]!.at < now - filter.lookbackMs)
+      trendSamples.shift();
+    const reference = trendSamples[0];
+    if (reference === undefined || now - reference.at < filter.lookbackMs * 0.8) return null;
+    return ((midpoint - reference.midpoint) / reference.midpoint) * 10_000;
+  };
+
   startSession();
   for (const row of rows) {
     if (!(row.bid > 0) || !(row.ask > row.bid)) continue;
@@ -268,6 +302,8 @@ export function runDecibelStrategyBacktestV1(
     }
     previousAt = now;
     samples.push({ at: now, midpoint: (row.bid + row.ask) / 2 });
+    if (config.trendFilter !== null && (trendSamples.at(-1)?.at ?? -Infinity) <= now - 10_000)
+      trendSamples.push({ at: now, midpoint: (row.bid + row.ask) / 2 });
     while (sampleStart < samples.length && samples[sampleStart]!.at < now - lookback)
       sampleStart += 1;
     if (sampleStart > 50_000) {
@@ -340,13 +376,34 @@ export function runDecibelStrategyBacktestV1(
 
     const pos = position as position_v1 | null;
     if (pos === null) {
+      const sizing = config.volatilitySizing;
+      const sizeBase = config.entrySizeFromRiskCapacity
+        ? Math.min(config.entrySizeUsd, riskCapacityUsd())
+        : config.entrySizeUsd;
+      restingEntrySizeUsd =
+        sizing === null || range === null || range <= sizing.referenceRangeBps
+          ? sizeBase
+          : sizeBase * Math.max(sizing.minimumFraction, sizing.referenceRangeBps / range);
+      const move = trendMoveBps(now, (row.bid + row.ask) / 2);
       for (const side of ['BUY', 'SELL'] as const) {
+        const against =
+          move !== null &&
+          config.trendFilter !== null &&
+          (side === 'BUY' ? -move : move) > config.trendFilter.maxMoveBps;
         const reason = !paused
-          ? config.entryCandleFilter
-            ? getDecibelEntryCandleBlockerV1(side, candles)
-            : null
+          ? against
+            ? 'ENTRY_AGAINST_TREND'
+            : config.entryCandleFilter
+              ? getDecibelEntryCandleBlockerV1(side, candles)
+              : null
           : 'ENTRY_VOLATILITY_PAUSE';
-        const capacity = riskCapacityUsd() < config.entrySizeUsd ? 'RISK_BLOCKED' : null;
+        const capacity = config.entrySizeFromRiskCapacity
+          ? restingEntrySizeUsd < config.minimumEntryUsd
+            ? 'RISK_BLOCKED'
+            : null
+          : riskCapacityUsd() < config.entrySizeUsd
+            ? 'RISK_BLOCKED'
+            : null;
         const blocker = reason ?? capacity;
         if (blocker !== null) {
           block(blocker);

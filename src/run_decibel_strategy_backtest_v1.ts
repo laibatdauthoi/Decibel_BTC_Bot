@@ -6,6 +6,7 @@
  *     [--set adverse.safeBand.maxBps=20,25,30] [--set dca.triggerBps=25,40]
  *     [--entry 30] [--target 200] [--max-loss 1.5] [--maker-fee 1.5] [--taker-fee 4.5]
  *     [--no-filter] [--no-dca] [--no-adverse] [--json]
+ *     [--trend <minutes>:<bps>] [--vol-size <reference bps>:<minimum fraction>]
  *
  * Every `--set` adds a dimension; all combinations are run.
  */
@@ -93,6 +94,24 @@ function parseBacktestArgumentsV1(argv: readonly string[]): parsed_arguments_v1 
       case '--no-dca':
         config = { ...config, dcaEnabled: false };
         break;
+      case '--trend': {
+        // --trend 30:60 = no entry against a move above 60 bps in the last 30 minutes.
+        const [minutes, bps] = (next() ?? '').split(':').map(Number);
+        if (!(minutes! > 0) || !(bps! > 0)) throw new Error(`BACKTEST_ARGUMENT_INVALID:${flag}`);
+        config = { ...config, trendFilter: { lookbackMs: minutes! * 60_000, maxMoveBps: bps! } };
+        break;
+      }
+      case '--vol-size': {
+        // --vol-size 15:0.25 = shrink the entry by 15 / range above a 15 bps range, to 25 %.
+        const [reference, minimum] = (next() ?? '').split(':').map(Number);
+        if (!(reference! > 0) || !(minimum! > 0) || minimum! > 1)
+          throw new Error(`BACKTEST_ARGUMENT_INVALID:${flag}`);
+        config = {
+          ...config,
+          volatilitySizing: { referenceRangeBps: reference!, minimumFraction: minimum! },
+        };
+        break;
+      }
       case '--no-adverse':
         config = { ...config, adverseRuleEnabled: false };
         break;
