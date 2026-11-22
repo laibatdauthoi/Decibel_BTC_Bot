@@ -51,50 +51,6 @@ export type decibel_passive_volume_quote_policy_result_v1 = Readonly<{
   selfTradePermitted: false;
 }>;
 
-export type decibel_passive_volume_run_configuration_v1 = Readonly<{
-  targetExternalVolumeUsd: number | null;
-  maximumSessionDurationMs: number;
-  maximumGrossLossUsd: number;
-  maximumAbsInventoryBase: number;
-}>;
-
-export type decibel_passive_volume_stop_input_v1 = Readonly<{
-  elapsedMs: number;
-  achievedExternalMakerVolumeUsd: number;
-  grossTradingPnlUsd: number;
-  signedBaseInventory: number;
-  riskDisabled: boolean;
-  persistenceAvailable: boolean;
-  marketTrustUsable: boolean;
-  externalStop: boolean;
-}>;
-
-export function evaluateDecibelPassiveVolumeStopV1(
-  input: decibel_passive_volume_stop_input_v1,
-  configuration: decibel_passive_volume_run_configuration_v1,
-) {
-  const reasons: string[] = [];
-  if (input.elapsedMs >= configuration.maximumSessionDurationMs)
-    reasons.push('SESSION_DURATION_REACHED');
-  if (input.grossTradingPnlUsd <= -configuration.maximumGrossLossUsd)
-    reasons.push('LOSS_LIMIT_REACHED');
-  if (Math.abs(input.signedBaseInventory) >= configuration.maximumAbsInventoryBase)
-    reasons.push('EMERGENCY_INVENTORY_LIMIT');
-  if (input.riskDisabled) reasons.push('RISK_CONTROLLER_DISABLED');
-  if (!input.persistenceAvailable) reasons.push('PERSISTENCE_UNAVAILABLE');
-  if (!input.marketTrustUsable) reasons.push('MARKET_TRUST_UNUSABLE');
-  if (input.externalStop) reasons.push('EXTERNAL_STOP');
-  if (
-    configuration.targetExternalVolumeUsd !== null &&
-    input.achievedExternalMakerVolumeUsd >= configuration.targetExternalVolumeUsd
-  )
-    reasons.push('TARGET_EXTERNAL_VOLUME_REACHED');
-  return Object.freeze({
-    disableNewQuotePlacement: reasons.length > 0,
-    reasons: Object.freeze(reasons),
-  });
-}
-
 function hashIdentity(prefix: string, values: readonly unknown[]): string {
   return `${prefix}_${createHash('sha256').update(JSON.stringify(values)).digest('hex')}`;
 }

@@ -121,16 +121,6 @@ export const DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1 =
 export const DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1 =
   DECIBEL_STRATEGY_POLICY_V1.adverse.rescueOffset.maxBps;
 
-export function getDecibelTPRescueOffsetBpsV1(rangeBps: number | null | undefined): number {
-  if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
-    return DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1;
-  return clamp(
-    DECIBEL_TP_RESCUE_OFFSET_FACTOR_V1 * rangeBps,
-    DECIBEL_TP_RESCUE_OFFSET_MIN_BPS_V1,
-    DECIBEL_TP_RESCUE_OFFSET_MAX_BPS_V1,
-  );
-}
-
 /**
  * Candle rule for adverse TP steps (2026-11-13, operator request). The safe band is how far
  * the price may run against the entry before an adverse TP step is considered:
@@ -167,26 +157,10 @@ export const DECIBEL_TP_SAFE_BAND_MIN_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.advers
 // for over an hour while the price chopped 20-40 bps against the entry.
 export const DECIBEL_TP_SAFE_BAND_MAX_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.adverse.safeBand.maxBps;
 export const DECIBEL_TP_ADVERSE_CANDLE_MS_V1 = DECIBEL_STRATEGY_POLICY_V1.market.candleMs;
-export const DECIBEL_TP_ADVERSE_CANDLE_CLOSES_V1 = DECIBEL_STRATEGY_POLICY_V1.adverse.candleCloses;
-/** A TP already at (or past) break-even may take the rescue step after this many closes
- * since the previous step, even if the price came back inside the band in between. */
-// 6 -> 3 closes (about 15 minutes), operator decision 2026-11-14.
-export const DECIBEL_TP_BREAK_EVEN_STALE_CLOSES_V1 =
-  DECIBEL_STRATEGY_POLICY_V1.adverse.breakEvenStaleCloses;
 /** "Break-even" accepts a net loss up to this many bps of the position notional, so a
  * near-miss recovery still fills (live 2026-11-14 00:20 missed by about 1 bps). */
 export const DECIBEL_TP_BREAK_EVEN_TOLERANCE_BPS_V1 =
   DECIBEL_STRATEGY_POLICY_V1.adverse.breakEvenToleranceBps;
-
-export function getDecibelTPSafeBandBpsV1(rangeBps: number | null | undefined): number {
-  if (rangeBps === null || rangeBps === undefined || !Number.isFinite(rangeBps) || rangeBps < 0)
-    return DECIBEL_TP_SAFE_BAND_MIN_BPS_V1;
-  return clamp(
-    DECIBEL_TP_SAFE_BAND_FACTOR_V1 * rangeBps,
-    DECIBEL_TP_SAFE_BAND_MIN_BPS_V1,
-    DECIBEL_TP_SAFE_BAND_MAX_BPS_V1,
-  );
-}
 
 /**
  * Closed 5-minute candles since the price left the safe band without coming back (and since

@@ -20,14 +20,6 @@ export function normalizeDecibelMarketAddressV1(value: unknown): string | null {
   return digits.length <= 64 ? `0x${digits.padStart(64, '0')}` : normalized;
 }
 
-export function getDecibelMarketAddressV1(row: decibel_market_identity_fields_v1): string | null {
-  return (
-    normalizeDecibelMarketAddressV1(row.market) ??
-    normalizeDecibelMarketAddressV1(row.market_address) ??
-    normalizeDecibelMarketAddressV1(row.market_id)
-  );
-}
-
 export function isDecibelBTCMarketActivityV1(row: decibel_market_identity_fields_v1): boolean {
   const expected = normalizeDecibelMarketAddressV1(DECIBEL_BTC_USD_MARKET_ADDRESS_V1);
   return [row.market, row.market_address, row.market_id].some(

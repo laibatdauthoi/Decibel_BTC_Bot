@@ -196,24 +196,4 @@ export function resolveDecibelBulkOrderActivityV1(input: {
     });
   }
 }
-
-export function shouldRunFinalCanaryDryRunPhaseBV1(input: {
-  readConnectivityReady: boolean;
-  noOpenPosition: boolean;
-  openOrderCount: number;
-  activeTwapCount: number;
-  bulkOrderActivityClear: boolean;
-  journalHealthy: boolean;
-  canarySideExplicit: boolean;
-}): boolean {
-  return (
-    input.readConnectivityReady &&
-    input.noOpenPosition &&
-    input.openOrderCount === 0 &&
-    input.activeTwapCount === 0 &&
-    input.bulkOrderActivityClear &&
-    input.journalHealthy &&
-    input.canarySideExplicit
-  );
-}
 import { normalizeDecibelMarketAddressV1 } from './decibel_btc_market_activity_scope_v1.js';

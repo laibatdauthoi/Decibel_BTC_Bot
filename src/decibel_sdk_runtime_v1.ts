@@ -2,27 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { createRequire, registerHooks } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-
-export const DECIBEL_SDK_RUNTIME_V1 = 'DECIBEL_SDK_0_7_0_WINDOWS_ESM_COMPATIBILITY_V1';
 export const DECIBEL_SDK_REQUIRED_VERSION_V1 = '0.7.0';
 
 type sdk_runtime_symbols_v1 = Readonly<{
   DecibelWriteDex: typeof import('@decibeltrade/sdk').DecibelWriteDex;
   DecibelReadDex: typeof import('@decibeltrade/sdk').DecibelReadDex;
   MAINNET_CONFIG: typeof import('@decibeltrade/sdk').MAINNET_CONFIG;
-}>;
-
-export type decibel_sdk_preflight_result_v1 = Readonly<{
-  status: 'PASS';
-  sdkVersion: '0.7.0';
-  nodeVersion: string;
-  platform: NodeJS.Platform;
-  architecture: string;
-  sdkEntrypoint: string;
-  writerEntrypoint: string;
-  mutationInvocations: 0;
-  venueMutations: 0;
-  signedTransactions: 0;
 }>;
 
 type sdk_resolution_v1 = Readonly<{
@@ -120,22 +105,4 @@ export async function loadDecibelSdkRuntimeV1(): Promise<sdk_runtime_symbols_v1>
     }
   })();
   return SymbolsPromise;
-}
-
-export async function runDecibelSdkPreflightV1(): Promise<decibel_sdk_preflight_result_v1> {
-  const resolution = await resolveSdk();
-  validateDecibelSdkVersionV1(resolution.sdkVersion);
-  await loadDecibelSdkRuntimeV1();
-  return Object.freeze({
-    status: 'PASS',
-    sdkVersion: DECIBEL_SDK_REQUIRED_VERSION_V1,
-    nodeVersion: process.version,
-    platform: process.platform,
-    architecture: process.arch,
-    sdkEntrypoint: resolution.sdkEntrypoint,
-    writerEntrypoint: resolution.writerEntrypoint,
-    mutationInvocations: 0,
-    venueMutations: 0,
-    signedTransactions: 0,
-  });
 }

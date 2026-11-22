@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { CandleIntervalSchema, type candle_interval } from './candle_interval.js';
-import type { log_format } from './logger.js';
 
 const optionalSecret = z.preprocess(
   (value) => (value === '' ? undefined : value),
@@ -34,7 +33,6 @@ const EnvironmentSchema = z
       .max(300_000)
       .default(10_000),
     LIVE_TRADING_ENABLED: booleanEnvironmentValue,
-    LOG_FORMAT: z.enum(['pretty', 'json']).default('pretty'),
     MICROSTRUCTURE_SAMPLE_INTERVAL_MS: z.coerce.number().int().min(50).max(5_000).default(250),
     MICROSTRUCTURE_STARTUP_GRACE_MS: z.coerce
       .number()
@@ -107,7 +105,6 @@ export type application_config = {
   candleGapReconciliationBaseDelayMs: number;
   candleGapReconciliationMaximumDelayMs: number;
   liveTradingEnabled: boolean;
-  logFormat: log_format;
   microstructureSampleIntervalMs: number;
   microstructureStartupGraceMs: number;
   microstructureDepthStaleAfterMs: number;
@@ -140,7 +137,6 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): applic
     candleGapReconciliationBaseDelayMs: parsed.data.CANDLE_GAP_RECONCILIATION_BASE_DELAY_MS,
     candleGapReconciliationMaximumDelayMs: parsed.data.CANDLE_GAP_RECONCILIATION_MAX_DELAY_MS,
     liveTradingEnabled: parsed.data.LIVE_TRADING_ENABLED,
-    logFormat: parsed.data.LOG_FORMAT,
     microstructureSampleIntervalMs: parsed.data.MICROSTRUCTURE_SAMPLE_INTERVAL_MS,
     microstructureStartupGraceMs: parsed.data.MICROSTRUCTURE_STARTUP_GRACE_MS,
     microstructureDepthStaleAfterMs: parsed.data.MICROSTRUCTURE_DEPTH_STALE_AFTER_MS,

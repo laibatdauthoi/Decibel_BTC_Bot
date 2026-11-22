@@ -17,34 +17,21 @@ import {
 import {
   buildOperatorAlertsV1,
   canStartOperatorSessionV1,
-  deriveLossLeftV1,
-  deriveMarketFeedHealthV1,
-  deriveQuoteSideHealthV1,
-  deriveSessionProgressV1,
   deriveDashboardPresentationV1,
   deriveSessionStartGateV1,
   formatOperatorPnlV1,
   formatOperatorValueV1,
   getNextAlertDrawerStateV1,
   getNextExpandedSessionIdV1,
-  getDashboardViewsV1,
-  getOperatorMarketLabelV1,
   getOperatorStopReasonV1,
   getReadinessFooterLabelV1,
   formatSessionDurationV1,
   getDashboardTabFromSearchV1,
   getDashboardTabUrlV1,
-  getEffectiveAutoPositionLimitV1,
-  getOverviewSectionsV1,
-  getPrimaryMarketFieldNamesV1,
   getPnlSemanticClassV1,
-  getSessionStateSemanticClassV1,
   getSettingsChangeCountV1,
   hasFullCapitalLossWarningV1,
-  isTimestampInSessionV1,
   getLossUtilizationSemanticClassV1,
-  isDashboardMutationControlEnabledV1,
-  mapQuoteLadderRowsV1,
   MAX_RECENT_OPERATOR_ALERTS_V1,
   selectHighestPriorityOperatorAlertV1,
   sortOperatorSessionsNewestFirstV1,
@@ -512,23 +499,6 @@ describe('Decibel production web presentation V1', () => {
     expect(getNextAlertDrawerStateV1(true, 'CLOSE')).toBe(false);
     expect(getNextAlertDrawerStateV1(true, 'ESCAPE')).toBe(false);
     expect(getNextAlertDrawerStateV1(true, 'OUTSIDE')).toBe(false);
-    expect(isDashboardMutationControlEnabledV1()).toBe(false);
-  });
-
-  it('keeps the primary market view limited to immediate operator decisions', () => {
-    const fields = getPrimaryMarketFieldNamesV1();
-    expect(fields).toEqual([
-      'BTC/USD',
-      'BOT STATE',
-      'LIVE QUOTES',
-      'CAPITAL',
-      'SESSION PNL',
-      'ALL-TIME PNL',
-      'MAX LOSS',
-      'VOLUME',
-      'CURRENT ALERT',
-    ]);
-    expect(fields.join(' ')).not.toMatch(/client|intent|venue|transaction|gas|fee|subaccount/i);
   });
 
   it('prioritizes blockers above reconciliation and healthy status', () => {
@@ -653,33 +623,7 @@ describe('Decibel production web presentation V1', () => {
     ).toBe('Session is stopping: cancelling orders and closing the position');
   });
 
-  it('maps the compact quote ladder with only operational fields and state marks', () => {
-    expect(
-      mapQuoteLadderRowsV1([
-        { levelId: 'SELL-1', side: 'SELL', price: 81_251.8, quantity: 0.00025, active: true },
-        { levelId: 'BUY-1', side: 'BUY', price: 81_238.9, quantity: 0.00025, active: false },
-      ]),
-    ).toEqual([
-      { level: 'L1', side: 'SELL', price: 81_251.8, quantity: 0.00025, stateMark: '●' },
-      { level: 'L1', side: 'BUY', price: 81_238.9, quantity: 0.00025, stateMark: '○' },
-    ]);
-  });
-
-  it('provides only read-only navigation and no browser mutation controls', () => {
-    expect(getDashboardViewsV1()).toEqual(['OVERVIEW', 'ACTIVITY', 'SETTINGS']);
-    expect(isDashboardMutationControlEnabledV1()).toBe(false);
-  });
-
   it('uses human market labels and compact unavailable placeholders', () => {
-    expect(getOperatorMarketLabelV1('BTC/USD')).toEqual({
-      primary: 'BTC/USD',
-      secondary: null,
-    });
-    expect(
-      getOperatorMarketLabelV1(
-        '0xc14841cb334f31adfbdcf2c535ee90c7cbd504fbbd1cd889aa83067fcfab66d9',
-      ),
-    ).toEqual({ primary: 'UNKNOWN MARKET', secondary: '0xc14841...66d9' });
     expect(formatOperatorValueV1(null, 2, '$')).toBe('\u2014');
   });
 
@@ -789,57 +733,14 @@ describe('Decibel production web presentation V1', () => {
     expect(
       sortOperatorSessionsNewestFirstV1([older, ended, active]).map((item) => item.sessionId),
     ).toEqual(['active', 'ended', 'older']);
-    expect(isTimestampInSessionV1(350, ended)).toBe(true);
-    expect(isTimestampInSessionV1(450, ended)).toBe(false);
     expect(getOperatorStopReasonV1('PROCESS_INTERRUPTED')).toBe('PROCESS INTERRUPTED');
     expect(getOperatorStopReasonV1('CUSTOM_STOP')).toBe('CUSTOM STOP');
   });
 
-  it('keeps overview minimal and expands only one selected session at a time', () => {
-    const sections = getOverviewSectionsV1();
-    expect(sections).toEqual([
-      'MARKET STRIP',
-      'BOT STATE',
-      'LIVE QUOTES',
-      'PERFORMANCE STRIP',
-      'CURRENT ALERT',
-      'FOOTER',
-    ]);
-    expect(sections.join(' ')).not.toMatch(
-      /SESSION PROGRESS|RISK HEADROOM|QUOTE HEALTH|MARKET HEALTH|LAST FILL|OPEN POSITIONS/,
-    );
+  it('expands only one selected session at a time', () => {
     expect(getNextExpandedSessionIdV1(null, 'session-1')).toBe('session-1');
     expect(getNextExpandedSessionIdV1('session-1', 'session-1')).toBeNull();
     expect(getNextExpandedSessionIdV1('session-1', 'session-2')).toBe('session-2');
-  });
-
-  it('derives fixed and unlimited session progress without inventing unlimited percentages', () => {
-    expect(deriveSessionProgressV1(true, 187, 10_000)).toEqual({
-      mode: 'FIXED_TARGET',
-      makerVolumeUsd: 187,
-      targetVolumeUsd: 10_000,
-      ratio: 0.0187,
-    });
-    expect(deriveSessionProgressV1(true, 187, -1)).toEqual({
-      mode: 'UNTIL_CAPITAL_LIMIT',
-      makerVolumeUsd: 187,
-      targetVolumeUsd: null,
-      ratio: null,
-    });
-    expect(deriveSessionProgressV1(false, 187, 10_000).mode).toBe('NOT_STARTED');
-  });
-
-  it('derives only proven loss headroom and operator-safe quote and market health', () => {
-    expect(deriveLossLeftV1(50, -3.8, true)).toBe(46.2);
-    expect(deriveLossLeftV1(50, -3.8, false)).toBeNull();
-    expect(deriveLossLeftV1(50, null, true)).toBeNull();
-    expect(deriveQuoteSideHealthV1(1, 1, false)).toBe('ACTIVE');
-    expect(deriveQuoteSideHealthV1(0, 0, false)).toBe('SUPPRESSED');
-    expect(deriveQuoteSideHealthV1(1, 0, false)).toBe('HOLD');
-    expect(deriveQuoteSideHealthV1(1, 1, true)).toBe('BLOCKED');
-    expect(deriveMarketFeedHealthV1(14, false)).toBe('FRESH');
-    expect(deriveMarketFeedHealthV1(5_001, false)).toBe('STALE');
-    expect(deriveMarketFeedHealthV1(null, false)).toBe('UNKNOWN');
   });
 
   it('maps PnL, session state, and loss utilization to restrained semantic classes', () => {
@@ -849,12 +750,6 @@ describe('Decibel production web presentation V1', () => {
       getPnlSemanticClassV1(0),
       getPnlSemanticClassV1(null),
     ]).toEqual(['positive', 'negative', 'neutral', 'neutral']);
-    expect([
-      getSessionStateSemanticClassV1('RUNNING'),
-      getSessionStateSemanticClassV1('BLOCKED'),
-      getSessionStateSemanticClassV1('INTERRUPTED'),
-      getSessionStateSemanticClassV1('ENDED'),
-    ]).toEqual(['active', 'negative', 'warning', 'neutral']);
     expect([
       getLossUtilizationSemanticClassV1(0.49),
       getLossUtilizationSemanticClassV1(0.5),
@@ -933,19 +828,6 @@ it('replaces debug readiness abbreviations without claiming blocked or degraded 
   expect(source).not.toContain('READY P:');
   expect(source).not.toContain('const leverage = props.maximumEffectiveLeverage ?? 1');
 });
-it('shows only authenticated active-session effective exposure, never a settings-derived substitute', () => {
-  const base = {
-    accountReady: true,
-    marketReady: true,
-    sessionActive: true,
-    effectivePositionLimitUsd: 24.8,
-  };
-  expect(getEffectiveAutoPositionLimitV1(base)).toBe(24.8);
-  expect(getEffectiveAutoPositionLimitV1({ ...base, effectivePositionLimitUsd: 0 })).toBe(0);
-  for (const field of ['accountReady', 'marketReady', 'sessionActive'] as const)
-    expect(getEffectiveAutoPositionLimitV1({ ...base, [field]: false })).toBe(null);
-  expect(getEffectiveAutoPositionLimitV1({ ...base, effectivePositionLimitUsd: null })).toBe(null);
-});
 
 it('uses tab query as truth and preserves other URL parameters and fragments', () => {
   for (const [query, tab] of [
@@ -996,7 +878,6 @@ it('uses authoritative session timestamps, freezes ended duration and handles mi
 
 import {
   appendSessionVolumeSampleV1,
-  formatSessionEtaV1,
   formatSettingsSessionEtaV1,
 } from '../web_dashboard/src/presentation.js';
 describe('Executed-volume Settings ETA', () => {
@@ -1014,45 +895,6 @@ describe('Executed-volume Settings ETA', () => {
     targetUsd: 201,
     samples: [sample(0, 0), sample(30000, 25), sample(60000, 50)],
   };
-  it('uses executed maker+taker deltas and handles near-target completion', () => {
-    expect(formatSessionEtaV1(base)).toBe('~ 4 min');
-    expect(formatSessionEtaV1({ ...base, targetUsd: 50.01 })).toBe('~ 1 min');
-    expect(formatSessionEtaV1({ ...base, targetUsd: 50 })).toContain('TARGET REACHED');
-  });
-  it('rejects zero, tiny, single-burst and insufficient coverage', () => {
-    for (const samples of [
-      [],
-      [sample(0, 0), sample(60000, 0)],
-      [sample(0, 0), sample(30000, 0.000001), sample(60000, 0.000002)],
-      [sample(0, 0), sample(30000, 0), sample(60000, 50)],
-      [sample(40000, 0), sample(50000, 25), sample(60000, 50)],
-    ])
-      expect(formatSessionEtaV1({ ...base, samples })).toBe('UNKNOWN');
-  });
-  it('shows UNKNOWN for non-running states even at target or until-limit', () => {
-    expect(formatSessionEtaV1({ ...base, running: false, targetUsd: 50 })).toBe('UNKNOWN');
-    expect(formatSessionEtaV1({ ...base, running: false, targetUsd: -1 })).toBe('UNKNOWN');
-    expect(formatSessionEtaV1({ ...base, targetUsd: -1 })).toBe('NO FIXED END');
-    expect(formatSessionEtaV1({ ...base, targetUsd: null })).toBe('UNKNOWN');
-  });
-  it('rejects stale throughput, other sessions, corrections and timestamp units/skew', () => {
-    for (const change of [
-      { now: start + 80000 },
-      { startedAt: start / 1000 },
-      { now: start * 1000 },
-      { now: start + 59000 },
-      { sessionId: 'other' },
-      { samples: [sample(0, 0), sample(30000, 25), sample(60000, 20)] },
-    ])
-      expect(formatSessionEtaV1({ ...base, ...change })).toBe('UNKNOWN');
-    expect(
-      formatSessionEtaV1({
-        ...base,
-        now: start + 120001,
-        samples: [...base.samples, sample(120001, 50)],
-      }),
-    ).toBe('UNKNOWN');
-  });
   it('resets on session switch, corrections, out-of-order evidence and invalid units', () => {
     expect(
       appendSessionVolumeSampleV1(base.samples, { ...sample(65000, 0), sessionId: 'new' }, start),
@@ -1062,26 +904,6 @@ describe('Executed-volume Settings ETA', () => {
     expect(appendSessionVolumeSampleV1([], sample(0, 0), start / 1000)).toEqual([]);
     expect(appendSessionVolumeSampleV1(base.samples, sample(60000, 50), start)).toBe(base.samples);
   });
-});
-
-import { getTradingDecisionReasonV1 } from '../web_dashboard/src/presentation.js';
-it('keeps decision diagnostics outside minimal Settings without changing elapsed clock', () => {
-  expect(getTradingDecisionReasonV1('LIFECYCLE_COST_BUDGET_EXCEEDED')).toBe(
-    'Waiting for an economically eligible quote',
-  );
-  expect(getTradingDecisionReasonV1('CAPACITY_VENUE_MARGIN_RULES_STALE')).toBe(
-    'Refreshing required account and market evidence',
-  );
-  expect(getTradingDecisionReasonV1('SESSION_MAX_LOSS_REACHED')).toBe('Session loss limit reached');
-  const source = readFileSync(resolve('web_dashboard/src/main.tsx'), 'utf8');
-  const bot = source.split('<section className="bot-state-panel">')[1]?.split('</section>')[0];
-  expect(bot).not.toContain('tradingDecision');
-  expect(bot).toContain('CURRENT ACTION');
-  expect(source).not.toContain('overview-diagnostics');
-  expect(source).toContain('authenticatedVolumeReady: props.etaEvidenceReady');
-  expect(source).toContain('ENTRY SIZE');
-  expect(source).toContain('const estimatedTime = formatSettingsSessionEtaV1({');
-  expect(source).toContain('<SessionDuration');
 });
 
 it('restores the minimal session summary using the existing typography and lifecycle heading', () => {
@@ -1438,7 +1260,6 @@ describe('Settings ETA inputs and refresh', () => {
     })),
   };
   it('preserves the measured model and updates when the entered target changes', () => {
-    expect(formatSettingsSessionEtaV1(base)).toBe(formatSessionEtaV1(base));
     expect(formatSettingsSessionEtaV1(base)).toBe('~ 4 min');
     expect(formatSettingsSessionEtaV1({ ...base, targetUsd: 301 })).toBe('~ 6 min');
     expect(formatSettingsSessionEtaV1({ ...base, targetUsd: 50 })).toContain('TARGET REACHED');

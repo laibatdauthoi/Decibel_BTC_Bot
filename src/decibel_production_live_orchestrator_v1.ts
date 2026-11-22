@@ -170,8 +170,6 @@ import type {
   decibel_market_regime_bootstrap_v1,
 } from './decibel_production_live_types_v1.js';
 
-export const DECIBEL_PRODUCTION_REPRICE_POLICY_V1 = 'BEHIND_5_TICKS' as const;
-
 export function assertDecibelProductionControlLivenessV1(
   result: decibel_production_live_cycle_result_v1,
 ): void {

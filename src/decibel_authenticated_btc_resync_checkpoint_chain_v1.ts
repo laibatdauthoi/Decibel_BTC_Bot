@@ -12,18 +12,6 @@ export const DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_ROOT_PATH =
 export const DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_ROLLOVER_PATTERN =
   /^decibel_authenticated_btc_resync_checkpoint_v2_(\d+)\.json$/;
 
-export function getDecibelAuthenticatedBtcResyncRolloverPathV1(
-  checkpointSequence: number,
-  rootPath: string = DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_ROOT_PATH,
-): string {
-  if (!Number.isSafeInteger(checkpointSequence) || checkpointSequence < 2)
-    throw new Error('BTC_RESYNC_CHECKPOINT_SEQUENCE_INVALID');
-  return resolve(
-    dirname(rootPath),
-    `decibel_authenticated_btc_resync_checkpoint_v2_${String(checkpointSequence).padStart(4, '0')}.json`,
-  );
-}
-
 export function loadLatestDecibelAuthenticatedBtcResyncCheckpointV1(
   rootPath: string = DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_ROOT_PATH,
 ): decibel_authenticated_btc_resync_checkpoint {
@@ -50,12 +38,4 @@ export function loadLatestDecibelAuthenticatedBtcResyncCheckpointV1(
     latest = candidate;
   }
   return latest;
-}
-
-export function getDecibelAuthenticatedBtcResyncCheckpointSequenceV1(
-  checkpoint: decibel_authenticated_btc_resync_checkpoint,
-): number {
-  return checkpoint.schemaVersion === 'DECIBEL_AUTHENTICATED_BTC_RESYNC_CHECKPOINT_V1'
-    ? 1
-    : checkpoint.checkpointSequence;
 }

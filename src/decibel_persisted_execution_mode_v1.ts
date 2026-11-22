@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import { parse as parseDotenv } from 'dotenv';
 import { z } from 'zod';
@@ -17,15 +17,6 @@ const PersistedExecutionModeSchema = z.object({
   persistedAt: z.number().int().positive(),
   source: z.string().min(1),
 });
-
-const RequestedExecutionModeSchema = PersistedExecutionModeSchema.pick({
-  executionMode: true,
-  releaseStage: true,
-  executorEnabled: true,
-  dryRun: true,
-  tradingMode: true,
-  liveTradingEnabled: true,
-}).strict();
 
 const EnvironmentExecutionModeSchema = z
   .object({
@@ -52,7 +43,10 @@ const EnvironmentExecutionModeSchema = z
   });
 
 export type decibel_persisted_execution_mode_v1 = z.infer<typeof PersistedExecutionModeSchema>;
-export type decibel_requested_execution_mode_v1 = z.infer<typeof RequestedExecutionModeSchema>;
+export type decibel_requested_execution_mode_v1 = Omit<
+  decibel_persisted_execution_mode_v1,
+  'schemaVersion' | 'persistedAt' | 'source'
+>;
 
 function parseEnvironmentModeV1(
   environment: NodeJS.ProcessEnv,
@@ -95,50 +89,6 @@ export function executionModesEqualV1(
     left.tradingMode === right.tradingMode &&
     left.liveTradingEnabled === right.liveTradingEnabled
   );
-}
-
-export class decibel_persisted_execution_mode_store_v1 {
-  public readonly path: string;
-
-  public constructor(path: string) {
-    this.path = resolve(path);
-  }
-
-  public read(): decibel_persisted_execution_mode_v1 {
-    return Object.freeze(
-      PersistedExecutionModeSchema.parse(JSON.parse(readFileSync(this.path, 'utf8')) as unknown),
-    );
-  }
-
-  public update(
-    input: Readonly<{
-      expectedPersistedAt: number;
-      requestedMode: unknown;
-      changedAt?: number;
-    }>,
-  ): decibel_persisted_execution_mode_v1 {
-    const current = this.read();
-    if (input.expectedPersistedAt !== current.persistedAt)
-      throw new Error('EXECUTION_MODE_REVISION_CONFLICT');
-    const requested = RequestedExecutionModeSchema.parse(input.requestedMode);
-    const changedAt = Math.max(input.changedAt ?? Date.now(), current.persistedAt + 1);
-    const next = Object.freeze(
-      PersistedExecutionModeSchema.parse({
-        schemaVersion: DECIBEL_PERSISTED_EXECUTION_MODE_V1,
-        ...requested,
-        persistedAt: changedAt,
-        source: 'OPERATOR_API',
-      }),
-    );
-    mkdirSync(dirname(this.path), { recursive: true });
-    const temporaryPath = `${this.path}.${process.pid}.${changedAt}.tmp`;
-    writeFileSync(temporaryPath, `${JSON.stringify(next, null, 2)}\n`, {
-      encoding: 'utf8',
-      flag: 'wx',
-    });
-    renameSync(temporaryPath, this.path);
-    return next;
-  }
 }
 
 export function loadDecibelPersistedExecutionModeV1(environment: NodeJS.ProcessEnv): Readonly<{

@@ -123,10 +123,6 @@ function assessSessionEtaV1(
   );
 }
 
-export function formatSessionEtaV1(input: Parameters<typeof assessSessionEtaV1>[0]): string {
-  return assessSessionEtaV1(input).value ?? 'UNKNOWN';
-}
-
 export function formatSettingsSessionEtaV1(
   input: Parameters<typeof assessSessionEtaV1>[0] & Readonly<{ authenticatedVolumeReady: boolean }>,
 ): string {
@@ -549,31 +545,6 @@ export function deriveDashboardPresentationV1(
   });
 }
 
-export function getPrimaryMarketFieldNamesV1(): readonly string[] {
-  return Object.freeze([
-    'BTC/USD',
-    'BOT STATE',
-    'LIVE QUOTES',
-    'CAPITAL',
-    'SESSION PNL',
-    'ALL-TIME PNL',
-    'MAX LOSS',
-    'VOLUME',
-    'CURRENT ALERT',
-  ]);
-}
-
-export function getOverviewSectionsV1(): readonly string[] {
-  return Object.freeze([
-    'MARKET STRIP',
-    'BOT STATE',
-    'LIVE QUOTES',
-    'PERFORMANCE STRIP',
-    'CURRENT ALERT',
-    'FOOTER',
-  ]);
-}
-
 export function getNextExpandedSessionIdV1(
   currentSessionId: string | null,
   clickedSessionId: string,
@@ -581,53 +552,8 @@ export function getNextExpandedSessionIdV1(
   return currentSessionId === clickedSessionId ? null : clickedSessionId;
 }
 
-export function getDashboardViewsV1(): readonly dashboard_view_v1[] {
-  return Object.freeze(['OVERVIEW', 'ACTIVITY', 'SETTINGS']);
-}
-
-export function mapQuoteLadderRowsV1(
-  levels: readonly Readonly<{
-    levelId: string;
-    side: 'BUY' | 'SELL';
-    price: number;
-    quantity: number;
-    active: boolean;
-  }>[],
-): readonly Readonly<{
-  level: string;
-  side: 'BUY' | 'SELL';
-  price: number;
-  quantity: number;
-  stateMark: '●' | '○';
-}>[] {
-  return Object.freeze(
-    levels.map((level) =>
-      Object.freeze({
-        level: level.levelId.replace(/^(BUY|SELL)-/, 'L'),
-        side: level.side,
-        price: level.price,
-        quantity: level.quantity,
-        stateMark: level.active ? ('●' as const) : ('○' as const),
-      }),
-    ),
-  );
-}
-
-export function isDashboardMutationControlEnabledV1(): false {
-  return false;
-}
-
 export function getPnlSemanticClassV1(value: number | null): 'positive' | 'negative' | 'neutral' {
   return value === null || value === 0 ? 'neutral' : value > 0 ? 'positive' : 'negative';
-}
-
-export function getSessionStateSemanticClassV1(
-  state: string,
-): 'active' | 'negative' | 'warning' | 'neutral' {
-  if (state === 'RUNNING') return 'active';
-  if (state === 'BLOCKED' || state === 'RECONCILE_ONLY') return 'negative';
-  if (state === 'STARTING' || state === 'STOPPING' || state === 'INTERRUPTED') return 'warning';
-  return 'neutral';
 }
 
 export function getLossUtilizationSemanticClassV1(
@@ -638,18 +564,6 @@ export function getLossUtilizationSemanticClassV1(
 }
 
 export type operator_market_label_v1 = Readonly<{ primary: string; secondary: string | null }>;
-
-export function getOperatorMarketLabelV1(market: string): operator_market_label_v1 {
-  const trimmed = market.trim();
-  if (/^[A-Z0-9]+\/[A-Z0-9]+$/i.test(trimmed))
-    return Object.freeze({ primary: trimmed.toUpperCase(), secondary: null });
-  if (/^0x[0-9a-f]+$/i.test(trimmed))
-    return Object.freeze({
-      primary: 'UNKNOWN MARKET',
-      secondary: `${trimmed.slice(0, 8)}...${trimmed.slice(-4)}`,
-    });
-  return Object.freeze({ primary: 'UNKNOWN MARKET', secondary: null });
-}
 
 export function formatOperatorValueV1(value: number | null, digits: number, prefix = ''): string {
   if (value === null) return '\u2014';
@@ -696,14 +610,6 @@ export function sortOperatorSessionsNewestFirstV1<T extends session_time_range_v
   );
 }
 
-export function isTimestampInSessionV1(timestamp: number, session: session_time_range_v1): boolean {
-  return (
-    session.startedAt !== null &&
-    timestamp >= session.startedAt &&
-    (session.endedAt === null || timestamp <= session.endedAt)
-  );
-}
-
 export function getOperatorStopReasonV1(reason: string | null): string {
   if (reason === null) return 'NONE';
   const known: Readonly<Record<string, string>> = Object.freeze({
@@ -725,64 +631,6 @@ export type session_progress_v1 = Readonly<{
   targetVolumeUsd: number | null;
   ratio: number | null;
 }>;
-
-export function deriveSessionProgressV1(
-  running: boolean,
-  makerVolumeUsd: number | null,
-  targetVolumeUsd: number | null,
-): session_progress_v1 {
-  if (!running)
-    return Object.freeze({
-      mode: 'NOT_STARTED',
-      makerVolumeUsd: null,
-      targetVolumeUsd: null,
-      ratio: null,
-    });
-  if (targetVolumeUsd === null || targetVolumeUsd < 0)
-    return Object.freeze({
-      mode: 'UNTIL_CAPITAL_LIMIT',
-      makerVolumeUsd,
-      targetVolumeUsd: null,
-      ratio: null,
-    });
-  return Object.freeze({
-    mode: 'FIXED_TARGET',
-    makerVolumeUsd,
-    targetVolumeUsd,
-    ratio:
-      makerVolumeUsd === null || targetVolumeUsd <= 0
-        ? null
-        : Math.max(0, makerVolumeUsd / targetVolumeUsd),
-  });
-}
-
-export function deriveLossLeftV1(
-  maximumLossUsd: number | null,
-  sessionPnlUsd: number | null,
-  pnlComplete: boolean,
-): number | null {
-  if (!pnlComplete || maximumLossUsd === null || sessionPnlUsd === null) return null;
-  return Math.max(0, maximumLossUsd - Math.max(0, -sessionPnlUsd));
-}
-
-export function deriveQuoteSideHealthV1(
-  desiredCount: number,
-  activeCount: number,
-  blocked: boolean,
-): 'ACTIVE' | 'HOLD' | 'SUPPRESSED' | 'BLOCKED' {
-  if (blocked) return 'BLOCKED';
-  if (activeCount > 0) return 'ACTIVE';
-  return desiredCount > 0 ? 'HOLD' : 'SUPPRESSED';
-}
-
-export function deriveMarketFeedHealthV1(
-  bookAgeMs: number | null,
-  degraded: boolean,
-  maximumBookAgeMs = 5_000,
-): 'FRESH' | 'STALE' | 'UNKNOWN' {
-  if (degraded) return 'STALE';
-  return bookAgeMs === null ? 'UNKNOWN' : bookAgeMs > maximumBookAgeMs ? 'STALE' : 'FRESH';
-}
 
 export function getSettingsChangeCountV1(
   current: Readonly<Record<string, number | null>>,
@@ -818,25 +666,6 @@ export function getReadinessFooterLabelV1(
   return 'Execution checks passed';
 }
 
-export function getEffectiveAutoPositionLimitV1(
-  input: Readonly<{
-    accountReady: boolean;
-    marketReady: boolean;
-    sessionActive: boolean;
-    effectivePositionLimitUsd: number | null;
-  }>,
-): number | null {
-  const value = input.effectivePositionLimitUsd;
-  return input.accountReady &&
-    input.marketReady &&
-    input.sessionActive &&
-    value !== null &&
-    Number.isFinite(value) &&
-    value >= 0
-    ? value
-    : null;
-}
-
 export function getDashboardTabFromSearchV1(search: string): dashboard_view_v1 {
   const tab = new URLSearchParams(search).get('tab');
   return tab === 'activity' ? 'ACTIVITY' : tab === 'settings' ? 'SETTINGS' : 'OVERVIEW';
@@ -865,23 +694,6 @@ export function formatSessionDurationV1(
   return [Math.floor(seconds / 3600), Math.floor((seconds % 3600) / 60), seconds % 60]
     .map((value) => value.toString().padStart(2, '0'))
     .join(':');
-}
-
-export function getTradingDecisionReasonV1(reason: string): string {
-  if (/MAX_LOSS/.test(reason)) return 'Session loss limit reached';
-  if (/SESSION_STOPPING|SESSION_ENDED/.test(reason)) return 'Ending session safely';
-  if (/IDENTITY|MISMATCH|RECONCIL|EXCLUSIVITY|UNRESOLVED_EXTERNAL/.test(reason))
-    return 'Waiting for verified account and order reconciliation';
-  if (/PERSISTENT/.test(reason)) return 'Required account evidence remains unavailable';
-  if (/STALE|EVIDENCE|AUTHENTICATED|SNAPSHOT/.test(reason))
-    return 'Refreshing required account and market evidence';
-  if (/COST|EDGE|ECONOMIC|REGIME|NO_QUOTE|NO_EXECUTABLE/.test(reason))
-    return 'Waiting for an economically eligible quote';
-  if (/HEADROOM|MINIMUM|MARGIN|CAPACITY|LEVERAGED/.test(reason))
-    return 'Waiting for executable account capacity';
-  if (reason === 'EXECUTABLE_QUOTE_AVAILABLE') return 'Execution checks passed';
-  if (reason === 'SESSION_NOT_RUNNING') return 'No active trading session';
-  return 'Waiting for execution safety checks';
 }
 
 export type trading_decision_display_v1 = Readonly<{

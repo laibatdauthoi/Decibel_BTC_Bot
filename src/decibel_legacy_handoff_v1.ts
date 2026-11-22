@@ -1,20 +1,10 @@
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import Database from 'better-sqlite3';
 import { z } from 'zod';
-import { DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1 } from './decibel_lifecycle_statuses_v1.js';
 
 export const DECIBEL_LEGACY_HANDOFF_MAX_AGE_MS_V1 = 5_000;
-
-const ProcessIdentitySchema = z.object({
-  pid: z.number().int().positive(),
-  startMs: z.number().int().positive(),
-  executablePath: z.string().min(1),
-  commandLine: z.string().min(1),
-});
 
 const OpenOrderSchema = z.object({ venueOrderId: z.string().min(1) }).passthrough();
 const HandoffSchema = z.object({
@@ -84,23 +74,6 @@ export function deriveDecibelLegacyStablePairV1(
   });
 }
 
-export function getDecibelLegacyProcessIdentityV1(
-  pid: number,
-): z.infer<typeof ProcessIdentitySchema> {
-  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('LEGACY_PID_INVALID');
-  const script = `$p=Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}'; if($null -eq $p){throw 'LEGACY_PID_ABSENT'}; [pscustomobject]@{pid=[int]$p.ProcessId;startMs=([DateTimeOffset]$p.CreationDate).ToUnixTimeMilliseconds();executablePath=[string]$p.ExecutablePath;commandLine=[string]$p.CommandLine} | ConvertTo-Json -Compress`;
-  const output = execFileSync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', script],
-    {
-      encoding: 'utf8',
-      timeout: 5_000,
-      windowsHide: true,
-    },
-  );
-  return ProcessIdentitySchema.parse(JSON.parse(output) as unknown);
-}
-
 export function getDecibelLegacyProcessStartV1(pid: number): number | null {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   try {
@@ -118,19 +91,6 @@ export function getDecibelLegacyProcessStartV1(pid: number): number | null {
     return Number.isSafeInteger(startMs) && startMs > 0 ? startMs : null;
   } catch {
     return null;
-  }
-}
-
-export function countDecibelLegacyUnresolvedIntentsV1(journalPath: string): number {
-  const Journal = new Database(resolve(journalPath), { readonly: true, fileMustExist: true });
-  try {
-    const row = Journal.prepare(
-      `SELECT COUNT(*) AS count FROM execution_intents
-       WHERE status NOT IN ${DECIBEL_TERMINAL_INTENT_STATUSES_SQL_V1}`,
-    ).get() as { count: number };
-    return row.count;
-  } finally {
-    Journal.close();
   }
 }
 
@@ -214,119 +174,4 @@ export function readDecibelLegacyHandoffV1(
       snapshotAgeMs: null,
     });
   }
-}
-
-export async function publishDecibelLegacyHandoffV1(
-  input: Readonly<{
-    pid: number;
-    expectedStartMs: number;
-    expectedExecutablePath: string;
-    expectedRunnerPath: string;
-    httpUrl: string;
-    journalPath: string;
-    outputPath: string;
-    previousSnapshot?: decibel_legacy_handoff_snapshot_v1 | null;
-  }>,
-): Promise<
-  Readonly<{
-    snapshot: decibel_legacy_handoff_snapshot_v1;
-    safeToTerminate: boolean;
-    blocker: string | null;
-  }>
-> {
-  const before = getDecibelLegacyProcessIdentityV1(input.pid);
-  if (
-    before.startMs !== input.expectedStartMs ||
-    before.executablePath.toLowerCase() !== input.expectedExecutablePath.toLowerCase() ||
-    !before.commandLine.toLowerCase().includes(input.expectedRunnerPath.toLowerCase())
-  )
-    throw new Error('LEGACY_HANDOFF_PROCESS_IDENTITY_MISMATCH');
-  const response = await fetch(input.httpUrl, {
-    signal: AbortSignal.timeout(8_000),
-    redirect: 'error',
-  });
-  if (!response.ok) throw new Error(`LEGACY_HANDOFF_HTTP_${response.status}`);
-  const body = z
-    .object({
-      operatorPaused: z.boolean().optional(),
-      snapshot: z
-        .object({
-          input: z
-            .object({
-              now: z.number().int().positive(),
-              maxBboAgeMs: z.number().int().positive(),
-              actualInventoryBase: z.number().finite(),
-              openOrders: z.array(OpenOrderSchema),
-            })
-            .passthrough(),
-        })
-        .passthrough(),
-    })
-    .parse(await response.json());
-  const after = getDecibelLegacyProcessIdentityV1(input.pid);
-  if (
-    after.startMs !== before.startMs ||
-    after.executablePath !== before.executablePath ||
-    after.commandLine !== before.commandLine
-  )
-    throw new Error('LEGACY_HANDOFF_PID_REUSED_DURING_READ');
-  const now = Date.now();
-  const unresolvedIntents = countDecibelLegacyUnresolvedIntentsV1(input.journalPath);
-  const pair = deriveDecibelLegacyStablePairV1(
-    input.previousSnapshot ?? null,
-    {
-      timestamp: body.snapshot.input.now,
-      positionBase: body.snapshot.input.actualInventoryBase,
-      openOrders: body.snapshot.input.openOrders,
-      unresolvedIntents,
-      operatorPaused: body.operatorPaused ?? null,
-      legacyPid: input.pid,
-      legacyStartMs: before.startMs,
-    },
-    now,
-    Math.min(body.snapshot.input.maxBboAgeMs, DECIBEL_LEGACY_HANDOFF_MAX_AGE_MS_V1),
-  );
-  const candidate = HandoffSchema.parse({
-    legacyPid: input.pid,
-    legacyProcessStartTime: before.startMs,
-    executablePath: before.executablePath,
-    commandLineSha256: createHash('sha256').update(before.commandLine).digest('hex'),
-    publisherReady: true,
-    legacyOperatorPaused: body.operatorPaused ?? null,
-    firstSnapshotTimestamp: pair.firstSnapshotTimestamp,
-    firstSnapshotAgeMsAtVerification: pair.firstSnapshotAgeMsAtVerification,
-    stateStable: pair.stateStable,
-    appHttpSnapshotTimestamp: body.snapshot.input.now,
-    publishedAt: now,
-    authenticatedPositionBase: body.snapshot.input.actualInventoryBase,
-    openOrders: body.snapshot.input.openOrders,
-    unresolvedIntents,
-    maxSnapshotAgeMs: body.snapshot.input.maxBboAgeMs,
-  });
-  const validated = validateDecibelLegacyHandoffV1(
-    candidate,
-    {
-      pid: input.pid,
-      processStartMs: input.expectedStartMs,
-      observedProcessStartMs: after.startMs,
-    },
-    now,
-  );
-  const outputPath = resolve(input.outputPath);
-  const temporaryPath = `${outputPath}.tmp-${process.pid}`;
-  writeFileSync(
-    temporaryPath,
-    JSON.stringify({
-      ...candidate,
-      safeToTerminate: validated.safeToTerminate,
-      blocker: validated.blocker,
-    }),
-    { encoding: 'utf8', flag: 'w' },
-  );
-  renameSync(temporaryPath, outputPath);
-  return Object.freeze({
-    snapshot: candidate,
-    safeToTerminate: validated.safeToTerminate,
-    blocker: validated.blocker,
-  });
 }

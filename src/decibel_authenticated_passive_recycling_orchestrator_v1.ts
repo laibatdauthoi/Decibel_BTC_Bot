@@ -28,8 +28,6 @@ import {
 
 export const DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_ORCHESTRATOR_V1 =
   'DECIBEL_AUTHENTICATED_PASSIVE_RECYCLING_ORCHESTRATOR_V1' as const;
-export const LIVE_EXECUTION_ENABLED = false as const;
-export const VENUE_MUTATION_ENABLED = false as const;
 
 const DECIBEL_PASSIVE_RECYCLING_CLIENT_ORDER_ID_V1 =
   /^(?:dpvr1-[bs]-\d+-[0-9a-f]{32}|d1[bs][0-9a-f]{29})$/;
