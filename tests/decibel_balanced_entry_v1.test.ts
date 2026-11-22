@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { assessDecibelEntryReplacementEconomicsV1 as assess } from '../src/decibel_smart_ladder_v1.js';
 
@@ -188,18 +188,6 @@ describe('Balanced ENTRY competition', () => {
       expect(after.missedMeaningfulReplacements).toBe(0);
       expect(after.meanDistanceWhileOnBook).toBeLessThan(before.meanDistanceWhileOnBook * 1.25);
     }
-    writeFileSync(
-      '.tmp_balanced_entry_metrics.log',
-      JSON.stringify(
-        {
-          provenance:
-            'Synthetic timeline, no fills; before is the preceding predicate on these valid admitted frames',
-          metrics,
-        },
-        null,
-        2,
-      ),
-    );
   });
 
   it('measures small PID 24216 gap progress without inventing unavailable historical depth', () => {

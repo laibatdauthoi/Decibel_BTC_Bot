@@ -18327,7 +18327,11 @@ describe('PID 14112 timestamped maker lifecycle replay', () => {
         baseline,
         after,
       };
-      writeFileSync('.tmp_entry_stability_metrics.log', JSON.stringify(metrics, null, 2) + '\n');
+      // Diagnostic dump outside the repository (never in the repo root).
+      writeFileSync(
+        join(tmpdir(), 'decibel_entry_stability_metrics.log'),
+        JSON.stringify(metrics, null, 2) + '\n',
+      );
     } finally {
       await test.orchestrator.close();
     }
