@@ -24,6 +24,10 @@ import {
   getCostPerMillionDisplayValueV1,
 } from './overview_share_v1';
 import { selectNewerSnapshotV1 } from './snapshot_v1';
+import {
+  mergeDecibelTelemetryActivityV1,
+  type decibel_telemetry_activity_delta_v1,
+} from '../../src/decibel_telemetry_activity_delta_v1';
 import { WalletMenu } from './wallet_panel_v1';
 import { AuthGate } from './auth_gate_v1';
 import type { trading_decision_display_v1 as trading_decision_v1 } from './presentation';
@@ -1736,6 +1740,8 @@ const App = () => {
     return () => window.removeEventListener('popstate', syncTab);
   }, []);
   const [eventStreamEpoch, setEventStreamEpoch] = useState(0);
+  // The last full snapshot from the stream, for activity deltas (independent of React batching).
+  const LatestTelemetry = useRef<Telemetry | null>(null);
   const EventStream = useRef<EventSource | null>(null);
   usePageVisibilityV1({
     // A stream left open in a hidden tab queues a large snapshot every few seconds, and the
@@ -1759,13 +1765,16 @@ const App = () => {
     };
     Source.onerror = () => setConnected(false);
     Source.onmessage = (event) => {
-      let next: Telemetry;
+      let received: Telemetry | decibel_telemetry_activity_delta_v1<Telemetry>;
       try {
-        next = JSON.parse(String(event.data)) as Telemetry;
+        received = JSON.parse(String(event.data)) as typeof received;
       } catch {
         setConnected(false);
         return;
       }
+      // A delta reuses the lists already shown; without them, wait for a full snapshot.
+      const next = mergeDecibelTelemetryActivityV1(LatestTelemetry.current, received);
+      if (next === null) return;
       if (
         !next ||
         !Number.isFinite(next.generatedAt) ||
@@ -1777,6 +1786,7 @@ const App = () => {
         return;
       }
       setConnected(true);
+      LatestTelemetry.current = next;
       setTelemetry((current) => selectNewerSnapshotV1(current, next));
     };
     return () => Source.close();

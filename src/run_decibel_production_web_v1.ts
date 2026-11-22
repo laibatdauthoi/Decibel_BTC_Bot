@@ -13,6 +13,10 @@ import {
   planDecibelReplacementFollowUpV1,
 } from './decibel_replacement_follow_up_v1.js';
 import { calculateDecibelPreferredEntrySizeUsdV1 } from './decibel_entry_size_v1.js';
+import {
+  getDecibelTelemetryActivityKeyV1,
+  omitDecibelTelemetryActivityV1,
+} from './decibel_telemetry_activity_delta_v1.js';
 import { validateSettingsCapitalMarginV1 } from './settings_capital_margin_v1.js';
 import { readDecibelOverviewSessionCountV1 } from './decibel_overview_metrics_v1.js';
 import { validateDecibelFinalMakerAdmissionV1 } from './decibel_final_maker_admission_v1.js';
@@ -1652,6 +1656,7 @@ export async function runDecibelProductionWebV1(
     return historyCache;
   };
   let RefreshInFlight: Promise<void> | null = null;
+  let LastBroadcastActivityKey: string | null = null;
   let lastSessionControlSignature = '';
   let lastSessionControlLogAt = 0;
   const runRefresh = (): Promise<void> => {
@@ -1737,7 +1742,14 @@ export async function runDecibelProductionWebV1(
         authenticatedObservedAt === null ? null : Math.max(0, Date.now() - authenticatedObservedAt),
       build: readEffectiveBuildFingerprint(),
     });
-    const payload = `data: ${JSON.stringify(telemetry)}\n\n`;
+    // Unchanged fills / intents / events are left out (decibel_telemetry_activity_delta_v1);
+    // a new client gets the full snapshot from /api/events first.
+    const activityKey = getDecibelTelemetryActivityKeyV1(telemetry);
+    const activityUnchanged = activityKey === LastBroadcastActivityKey;
+    LastBroadcastActivityKey = activityKey;
+    const payload = `data: ${JSON.stringify(
+      activityUnchanged ? omitDecibelTelemetryActivityV1(telemetry) : telemetry,
+    )}\n\n`;
     for (const client of clients) client.write(payload);
     return Promise.resolve();
   };
