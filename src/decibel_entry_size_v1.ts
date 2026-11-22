@@ -48,6 +48,8 @@ export function calculateDecibelEntrySizeV1(
     lotSize: number;
     maximumExecutableNotionalUsd: number;
     riskCapacityUsd?: number;
+    /** Volatility sizing (0 < fraction <= 1): shrinks the entry, never below the venue minimum. */
+    sizeFraction?: number;
   }>,
 ) {
   if (
@@ -75,10 +77,22 @@ export function calculateDecibelEntrySizeV1(
     ).toFixed(12),
   );
   const preferredQuantity = Math.max(minimumQuantity, input.preferredEntrySizeUsd / input.price);
+  const fraction =
+    input.sizeFraction !== undefined &&
+    Number.isFinite(input.sizeFraction) &&
+    input.sizeFraction > 0 &&
+    input.sizeFraction < 1
+      ? input.sizeFraction
+      : 1;
+  const unscaledQuantity = Math.min(preferredQuantity, ceilingUsd / input.price);
   const quantity = floorDecibelQuantityToLotV1(
-    Math.min(preferredQuantity, ceilingUsd / input.price),
+    fraction < 1
+      ? Math.min(unscaledQuantity, Math.max(minimumQuantity, unscaledQuantity * fraction))
+      : unscaledQuantity,
     input.lotSize,
   );
+  const volatilityAdapted =
+    fraction < 1 && floorDecibelQuantityToLotV1(unscaledQuantity, input.lotSize) > quantity;
   const available = quantity + 1e-12 >= minimumQuantity && quantity > 0;
   return Object.freeze({
     policy: DECIBEL_DYNAMIC_ENTRY_SIZE_V1,
@@ -88,15 +102,17 @@ export function calculateDecibelEntrySizeV1(
     minimumExecutableNotionalUsd: minimumQuantity * input.price,
     reason: !available
       ? 'AVAILABLE_MARGIN_BELOW_VENUE_MINIMUM'
-      : riskCapacityUsd < input.maximumExecutableNotionalUsd &&
-          riskCapacityUsd + 1e-9 < input.preferredEntrySizeUsd
-        ? 'RISK_CAPACITY_ADAPTED'
-        : input.maximumExecutableNotionalUsd + 1e-9 < input.preferredEntrySizeUsd
-          ? 'MARGIN_ADAPTED'
-          : minimumQuantity * input.price > input.preferredEntrySizeUsd
-            ? 'VENUE_MINIMUM'
-            : quantity * input.price + 1e-9 < input.preferredEntrySizeUsd
-              ? 'LOT_ROUNDED'
-              : 'PREFERRED_ENTRY_SIZE',
+      : volatilityAdapted
+        ? 'VOLATILITY_ADAPTED'
+        : riskCapacityUsd < input.maximumExecutableNotionalUsd &&
+            riskCapacityUsd + 1e-9 < input.preferredEntrySizeUsd
+          ? 'RISK_CAPACITY_ADAPTED'
+          : input.maximumExecutableNotionalUsd + 1e-9 < input.preferredEntrySizeUsd
+            ? 'MARGIN_ADAPTED'
+            : minimumQuantity * input.price > input.preferredEntrySizeUsd
+              ? 'VENUE_MINIMUM'
+              : quantity * input.price + 1e-9 < input.preferredEntrySizeUsd
+                ? 'LOT_ROUNDED'
+                : 'PREFERRED_ENTRY_SIZE',
   });
 }

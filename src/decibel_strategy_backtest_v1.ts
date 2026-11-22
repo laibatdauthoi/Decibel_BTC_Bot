@@ -76,7 +76,8 @@ export const DECIBEL_BACKTEST_DEFAULT_CONFIG_V1: decibel_backtest_config_v1 = Ob
   dcaEnabled: true,
   adverseRuleEnabled: true,
   trendFilter: null,
-  volatilitySizing: null,
+  // Production sizing since 2026-11-22; `--no-vol-size` turns it off.
+  volatilitySizing: DECIBEL_STRATEGY_POLICY_V1.entry.volatilitySizing,
   entrySizeFromRiskCapacity: false,
   minimumEntryUsd: 10,
 });

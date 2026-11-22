@@ -22,6 +22,7 @@ import {
   getDecibelEntryCandleBlockerV1,
   getDecibelEntryQuoteLimitsV1,
   getDecibelEntryVolatilityPauseReasonV1,
+  getDecibelEntryVolatilitySizeFractionV1,
   getDecibelReentryDistanceBpsV1,
   getDecibelReentryPriceLimitV1,
 } from './decibel_volatility_targets_v1.js';
@@ -845,6 +846,11 @@ export class decibel_production_live_orchestrator_v1 {
                   : {
                       riskCapacityUsd: snapshot.sessionConfiguration.exposureLimits.riskCapacityUsd,
                     }),
+              // A flat entry is smaller while the market is already moving (policy
+              // entry.volatilitySizing); a DCA addition keeps its own sizing.
+              ...(snapshot.input.actualInventoryBase === 0
+                ? { sizeFraction: getDecibelEntryVolatilitySizeFractionV1(snapshot.priceRangeBps) }
+                : {}),
             })
           : null;
         let assessment = calculateDecibelDynamicQuoteSizeV1({

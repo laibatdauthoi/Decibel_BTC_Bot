@@ -153,6 +153,15 @@ export function getDecibelEntryVolatilityPauseReasonV1(
     ? 'ENTRY_VOLATILITY_PAUSE'
     : null;
 }
+/** Fraction of the entry size kept at this 5-minute range (1 when calm or unknown). */
+export function getDecibelEntryVolatilitySizeFractionV1(
+  rangeBps: number | null | undefined,
+): number {
+  const { referenceRangeBps, minimumFraction } = DECIBEL_STRATEGY_POLICY_V1.entry.volatilitySizing;
+  if (typeof rangeBps !== 'number' || !Number.isFinite(rangeBps) || rangeBps <= referenceRangeBps)
+    return 1;
+  return Math.max(minimumFraction, referenceRangeBps / rangeBps);
+}
 export const DECIBEL_TP_SAFE_BAND_MIN_BPS_V1 = DECIBEL_STRATEGY_POLICY_V1.adverse.safeBand.minBps;
 // 40 -> 25 (2026-11-14): with a 35 bps range the band hit 40 bps and a break-even TP sat
 // for over an hour while the price chopped 20-40 bps against the entry.

@@ -12,6 +12,7 @@ import {
   calculateDecibelPreferredEntrySizeUsdV1,
 } from '../src/decibel_entry_size_v1.js';
 import { calculateDecibelRiskCapacityV1 } from '../src/decibel_risk_capacity_v1.js';
+import { getDecibelEntryVolatilitySizeFractionV1 } from '../src/decibel_volatility_targets_v1.js';
 
 function assessTestCycle(input: {
   positionBase: number;
@@ -379,5 +380,36 @@ describe('Dynamic entry allocation and independent hard risk', () => {
         ],
       }).blocker,
     ).toBe('ENTRY_CYCLE_FILL_SEQUENCE_EVIDENCE_REQUIRED');
+  });
+});
+
+describe('Volatility sizing', () => {
+  it('keeps the full entry up to a 15 bps range, then shrinks it to at least half', () => {
+    expect(getDecibelEntryVolatilitySizeFractionV1(null)).toBe(1);
+    expect(getDecibelEntryVolatilitySizeFractionV1(10)).toBe(1);
+    expect(getDecibelEntryVolatilitySizeFractionV1(15)).toBe(1);
+    expect(getDecibelEntryVolatilitySizeFractionV1(20)).toBeCloseTo(0.75);
+    expect(getDecibelEntryVolatilitySizeFractionV1(30)).toBe(0.5);
+    expect(getDecibelEntryVolatilitySizeFractionV1(39)).toBe(0.5);
+  });
+
+  it('scales the capped entry, never below the venue minimum or above the unscaled size', () => {
+    // $15 preferred at 80,000: 0.00018 BTC unscaled, 0.00009 at half size.
+    const half = calculateDecibelEntrySizeV1({ ...size, sizeFraction: 0.5 });
+    expect(half).toMatchObject({ quantity: 0.00009, reason: 'VOLATILITY_ADAPTED' });
+    // The fraction applies after the risk capacity, like the backtest.
+    expect(
+      calculateDecibelEntrySizeV1({ ...size, riskCapacityUsd: 8, sizeFraction: 0.5 }).quantity,
+    ).toBe(0.00005);
+    // Never below the venue minimum.
+    expect(
+      calculateDecibelEntrySizeV1({ ...size, minimumSize: 0.00015, sizeFraction: 0.5 }).quantity,
+    ).toBe(0.00015);
+    // A fraction of 1 or an invalid one changes nothing.
+    for (const sizeFraction of [1, 0, -1, Number.NaN])
+      expect(calculateDecibelEntrySizeV1({ ...size, sizeFraction })).toMatchObject({
+        quantity: 0.00018,
+        reason: calculateDecibelEntrySizeV1(size).reason,
+      });
   });
 });

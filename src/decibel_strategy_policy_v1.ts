@@ -37,6 +37,14 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
     maxChaseBps: 0,
     /** No new entry or DCA while the 5-minute range is wider than this (bps). */
     volatilityPauseBps: 40,
+    /** Below the pause, a flat entry shrinks by referenceRangeBps / 5-minute range once the
+     * range is above the reference, down to minimumFraction of its size. A large candle cannot
+     * be predicted, but it usually follows an already-moving market, so entries there are
+     * smaller. 2026-11-22 backtest (05-21/11, production-like sizing): net loss per volume
+     * 3.80 -> 2.91 bps, consistent in both halves (05-14: 3.27 -> 2.87, 14-21: 4.24 -> 2.94),
+     * Max Loss sessions 11 -> 2. A trend filter was inconsistent between halves; a fixed size
+     * cap mainly shrank the large losses. */
+    volatilitySizing: Object.freeze({ referenceRangeBps: 15, minimumFraction: 0.5 }),
     /** A flat entry rests at least clamp(factor x 5-minute range, min, max) bps behind the
      * touch: a volatility-scaled half-spread (Avellaneda-Stoikov style) instead of quoting
      * at the best bid/ask. 2026-11-15 backtest (05-10, 10-14, 14-15/11): 0.3 lowered the
