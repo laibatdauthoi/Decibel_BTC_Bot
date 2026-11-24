@@ -407,6 +407,25 @@ export async function convergeDecibelStartupRecoveryV1<TSnapshot>(
   }
 }
 
+/**
+ * Wraps a callback so a call made while it is already running is ignored (the running call
+ * finishes the work). Used for the "execution snapshot ready" signal: activating a session
+ * re-reads the economic evidence, which rebuilds the snapshot and raised the same signal
+ * again, recursing until the stack overflowed (session start, 2026-11-24 12:55 UTC).
+ */
+export function createDecibelReentryGuardV1(callback: () => void): () => void {
+  let running = false;
+  return () => {
+    if (running) return;
+    running = true;
+    try {
+      callback();
+    } finally {
+      running = false;
+    }
+  };
+}
+
 export function isDecibelExecutionCompositeReadyV1(
   Supervisor: decibel_runtime_supervisor_v1,
   sessionState: string,

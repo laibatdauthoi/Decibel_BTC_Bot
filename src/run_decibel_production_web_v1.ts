@@ -46,6 +46,7 @@ import {
   assertDecibelSessionMutationOwnerV1,
   recoverDecibelProductionSessionBeforeListenV1,
   convergeDecibelStartupRecoveryV1,
+  createDecibelReentryGuardV1,
   isDecibelExecutionCompositeReadyV1,
   resolveDecibelStartupRecoveryBlockerV1,
   selectDecibelLastCompletedExecutionActionV1,
@@ -1624,11 +1625,13 @@ export async function runDecibelProductionWebV1(
       );
     },
   );
-  notifyExecutionSnapshotReady = (): void => {
+  // Activation re-reads the economic evidence, which rebuilds the snapshot and raises this
+  // signal again; the guard drops that nested call instead of recursing.
+  notifyExecutionSnapshotReady = createDecibelReentryGuardV1(() => {
     if (isDecibelExecutionCompositeReadyV1(RuntimeSupervisor, SessionController.getState().state))
       SessionController.activateRuntime();
     SessionController.wakeRuntime();
-  };
+  });
   SessionController.setRecoveryBlocker('PRODUCTION_STARTUP_RECOVERY_PENDING');
   let StartupRecovery: Promise<void> = Promise.resolve();
   let lastStartupRecoveryBlockedSignature: string | null = null;
