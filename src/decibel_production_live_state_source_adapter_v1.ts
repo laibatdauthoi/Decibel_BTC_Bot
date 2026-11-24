@@ -88,6 +88,12 @@ export function wrapDecibelProductionLiveStateSourceV1(
           readExchangeCandles1m: (startMs: number, endMs: number) =>
             Source.readExchangeCandles1m!(startMs, endMs),
         }),
+    ...(Source.readExchangeCandles5m === undefined
+      ? {}
+      : {
+          readExchangeCandles5m: (startMs: number, endMs: number) =>
+            Source.readExchangeCandles5m!(startMs, endMs),
+        }),
     ...(Source.close === undefined ? {} : { close: () => Source.close!() }),
   });
 }

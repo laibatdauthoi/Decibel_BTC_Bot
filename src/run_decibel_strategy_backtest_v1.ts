@@ -6,7 +6,7 @@
  *     [--set adverse.safeBand.maxBps=20,25,30] [--set dca.triggerBps=25,40]
  *     [--entry 30] [--target 200] [--max-loss 1.5] [--maker-fee 1.5] [--taker-fee 4.5]
  *     [--no-filter] [--no-dca] [--no-adverse] [--json]
- *     [--trend <minutes>:<bps>] [--vol-size <reference bps>:<minimum fraction>] [--no-vol-size]
+ *     [--trend <minutes>:<bps>] [--vol-size <reference bps>:<minimum fraction>] [--no-vol-size] [--no-trend]
  *
  * Every `--set` adds a dimension; all combinations are run.
  */
@@ -112,6 +112,9 @@ function parseBacktestArgumentsV1(argv: readonly string[]): parsed_arguments_v1 
         };
         break;
       }
+      case '--no-trend':
+        config = { ...config, trendFilter: null };
+        break;
       case '--no-vol-size':
         config = { ...config, volatilitySizing: null };
         break;

@@ -34,8 +34,9 @@ export type decibel_exchange_candle_v1 = Readonly<{
 export function normalizeDecibelExchangeCandlesV1(
   rows: readonly Readonly<{ t: number; o: number; h: number; l: number; c: number }>[],
   now: number,
+  intervalMs: number = DECIBEL_EXCHANGE_CANDLE_MS_V1,
 ): readonly decibel_exchange_candle_v1[] {
-  const minute = DECIBEL_EXCHANGE_CANDLE_MS_V1;
+  const minute = intervalMs;
   const byStart = new Map<number, decibel_exchange_candle_v1>();
   for (const row of rows) {
     const values = [row.t, row.o, row.h, row.l, row.c];

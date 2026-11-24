@@ -33,6 +33,8 @@ export type decibel_production_live_snapshot_v1 = Readonly<{
   priceRangeBps?: number | null;
   /** While flat: why each side may not open now (entry candle filter), or null. */
   entryCandleBlockers?: Readonly<{ BUY: string | null; SELL: string | null }> | null;
+  /** While flat: entries against the recent trend (decibel_entry_trend_v1), or null. */
+  entryTrendBlockers?: Readonly<{ BUY: string | null; SELL: string | null }> | null;
   /** Set while the gas wallet is below the entry reserve (decibel_gas_reserve_v1). */
   executionGasBlocker?: string | null;
   /** Candle rules' market structure (decibel_market_structure_v1), built once per cycle. */
@@ -195,6 +197,11 @@ export interface DecibelProductionLiveStateSourceV1 {
   >;
   /** Closed venue 1-minute candles (decibel_exchange_candles_v1); optional. */
   readExchangeCandles1m?(
+    startMs: number,
+    endMs: number,
+  ): Promise<readonly import('./decibel_exchange_candles_v1.js').decibel_exchange_candle_v1[]>;
+  /** Closed venue 5-minute candles for the entry trend filter; optional. */
+  readExchangeCandles5m?(
     startMs: number,
     endMs: number,
   ): Promise<readonly import('./decibel_exchange_candles_v1.js').decibel_exchange_candle_v1[]>;

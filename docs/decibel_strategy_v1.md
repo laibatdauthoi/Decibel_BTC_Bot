@@ -35,6 +35,10 @@ Volatility-scaled values use `clamp(factor x R, min, max)` bps, where **R** is t
    (`entry.volatilitySizing`, reason `VOLATILITY_ADAPTED`; 2026-11-22). Backtest 05-21/11: net
    loss per volume 3.80 -> 2.91 bps, better in both halves. A resting entry keeps its size until
    it is repriced.
+   **Trend filter** (`entry.trendFilter`, 2026-11-24): no flat entry against a move above 150 bps
+   over the last 4 hours, read from venue 5-minute candles (`ENTRY_AGAINST_TREND`; no BUY after a
+   drop, no SELL after a rise). Without 4 hours of candles it does not block. Backtest 05-24/11:
+   net loss per volume 3.18 -> 2.07 bps, better in both halves, about the same trip count.
 3. **Gas reserve.** No new entry or DCA while the gas wallet holds < 0.1 APT
    (`ENTRY_GAS_BALANCE_LOW`). Exits are never blocked.
 4. **Size.** Preferred entry = target × 3/20, raised to the venue minimum, floored to the lot,

@@ -75,7 +75,8 @@ export const DECIBEL_BACKTEST_DEFAULT_CONFIG_V1: decibel_backtest_config_v1 = Ob
   entryCandleFilter: true,
   dcaEnabled: true,
   adverseRuleEnabled: true,
-  trendFilter: null,
+  // Production entry trend filter since 2026-11-24; `--no-trend` turns it off.
+  trendFilter: DECIBEL_STRATEGY_POLICY_V1.entry.trendFilter,
   // Production sizing since 2026-11-22; `--no-vol-size` turns it off.
   volatilitySizing: DECIBEL_STRATEGY_POLICY_V1.entry.volatilitySizing,
   entrySizeFromRiskCapacity: false,

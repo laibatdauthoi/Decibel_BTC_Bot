@@ -28,7 +28,7 @@ export const DECIBEL_RECONCILING_ESCALATION_MS_V1 = 60_000;
  * them for a position reduction (see `entryCapacityOnly` in decibel_trading_decision_v1).
  */
 const ENTRY_ONLY_REASON_PATTERN_V1 =
-  /^(?:RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|ENTRY_REQUIRES_NEW_LOW|ENTRY_REQUIRES_NEW_HIGH|ENTRY_CANDLE_EVIDENCE_REQUIRED|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/;
+  /^(?:RISK_BLOCKED|ENTRY_CYCLE_[A-Z_]+|DCA_[A-Z_]+|ENTRY_EXCEEDS_REMAINING_TARGET|ENTRY_VOLATILITY_PAUSE|ENTRY_GAS_BALANCE_LOW|ENTRY_REQUIRES_NEW_LOW|ENTRY_REQUIRES_NEW_HIGH|ENTRY_AGAINST_TREND|ENTRY_CANDLE_EVIDENCE_REQUIRED|NO_NEW_QUOTE_HEADROOM|QUOTE_CAPACITY_BELOW_MINIMUM_ORDER|INSUFFICIENT_LEVERAGED_BUYING_POWER|MINIMUM_NOTIONAL_EXCEEDS_MAXIMUM_NOTIONAL)$/;
 
 /** Stale or unverified sizing evidence: skipped for a proven reduction candidate only. */
 const CAPACITY_EVIDENCE_REASON_PATTERN_V1 =
@@ -235,6 +235,7 @@ const MEANINGS_V1: Readonly<Record<string, string>> = Object.freeze({
     'Entry filter: a long opens only after the last closed 5-minute candle made a lower low.',
   ENTRY_REQUIRES_NEW_HIGH:
     'Entry filter: a short opens only after the last closed 5-minute candle made a higher high.',
+  ENTRY_AGAINST_TREND: `Trend filter: the price moved more than ${POLICY_V1.entry.trendFilter.maxMoveBps} bps in the last ${POLICY_V1.entry.trendFilter.lookbackMs / 3_600_000} hours. No entry against that move; the other side and exits continue.`,
   ENTRY_CANDLE_EVIDENCE_REQUIRED:
     'Entry filter: waiting for two closed 5-minute candles of price history.',
   ENTRY_VOLATILITY_PAUSE: `The 5-minute price range is above ${POLICY_V1.entry.volatilityPauseBps} bps. New entries and DCA are paused until it calms down; exits continue.`,

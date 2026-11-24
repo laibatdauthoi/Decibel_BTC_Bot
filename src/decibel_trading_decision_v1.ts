@@ -419,7 +419,9 @@ export function evaluateTradingDecision(
     }
     // Entry candle filter (from flat only; additions have their own DCA rule).
     const candleBlocker =
-      source && source.actualInventoryBase === 0 ? snapshot.entryCandleBlockers?.[side] : null;
+      source && source.actualInventoryBase === 0
+        ? (snapshot.entryTrendBlockers?.[side] ?? snapshot.entryCandleBlockers?.[side])
+        : null;
     if (!reducing && candleBlocker) {
       tpReasons[side] = candleBlocker;
       return null;

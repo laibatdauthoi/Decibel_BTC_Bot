@@ -659,6 +659,11 @@ export interface DecibelProductionLiveAuthenticatedReaderV1 {
     endMs: number,
     signal?: AbortSignal,
   ): Promise<readonly Readonly<{ t: number; o: number; h: number; l: number; c: number }>[]>;
+  /** Venue 5-minute BTC/USD candles, for the entry trend filter. */
+  readCandles5m?(
+    startMs: number,
+    endMs: number,
+  ): Promise<readonly Readonly<{ t: number; o: number; h: number; l: number; c: number }>[]>;
   readCurrentBook(marketAddress: string): Promise<unknown>;
   readMarketDataDiagnostics?(): ReturnType<market_client_adapter['getBTCMarketDataDiagnostics']>;
   verifyTransactionExpiredUncommitted?(
@@ -1163,6 +1168,17 @@ export function makeSDKReader(
         endTime: endMs,
         hideOutliers: true,
         fetchOptions: signal === undefined ? {} : { signal },
+      });
+    },
+    readCandles5m: async (startMs: number, endMs: number) => {
+      assertDecibelHTTPReadAllowedV1();
+      const { Reader } = await initialized;
+      return Reader.candlesticks.getByName({
+        marketName: 'BTC/USD',
+        interval: '5m',
+        startTime: startMs,
+        endTime: endMs,
+        hideOutliers: true,
       });
     },
     readCurrentBook: async (marketAddress: string) => {
@@ -2340,6 +2356,15 @@ export class decibel_production_live_state_source_v1 implements DecibelProductio
   }
 
   /** Closed venue 1-minute candles for [startMs, endMs], validated; [] when unsupported. */
+  public async readExchangeCandles5m(
+    startMs: number,
+    endMs: number,
+  ): Promise<readonly decibel_exchange_candle_v1[]> {
+    if (this.Reader.readCandles5m === undefined) return [];
+    const rows = await this.Reader.readCandles5m(startMs, endMs);
+    return normalizeDecibelExchangeCandlesV1(rows, this.getNow(), 5 * 60_000);
+  }
+
   public async readExchangeCandles1m(
     startMs: number,
     endMs: number,

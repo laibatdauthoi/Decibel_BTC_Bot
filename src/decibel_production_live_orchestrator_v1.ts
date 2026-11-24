@@ -27,6 +27,11 @@ import {
   getDecibelReentryPriceLimitV1,
 } from './decibel_volatility_targets_v1.js';
 import {
+  getDecibelEntryTrendBlockersV1,
+  getDecibelTrendMoveBpsV1,
+  mergeDecibelEntrySideBlockersV1,
+} from './decibel_entry_trend_v1.js';
+import {
   assessDecibelProtectiveRecoveryV1,
   assertDecibelRecoveryIntentV1,
   getDecibelVerifiedCurrentPlaceOwnerV1,
@@ -285,6 +290,24 @@ export class decibel_production_live_orchestrator_v1 {
   private CatastropheStopAttemptAt = Number.NEGATIVE_INFINITY;
   private ExchangeCandles: readonly decibel_exchange_candle_v1[] = [];
   private ExchangeCandlesCheckedAt = Number.NEGATIVE_INFINITY;
+  private TrendCandles: readonly decibel_exchange_candle_v1[] = [];
+  private TrendCandlesCheckedAt = Number.NEGATIVE_INFINITY;
+
+  /** Re-read the 5-minute trend candles once a minute; failures keep the last set. */
+  private async refreshTrendCandles(): Promise<void> {
+    const read = this.Source.readExchangeCandles5m?.bind(this.Source);
+    if (read === undefined) return;
+    const now = this.getDecisionNow();
+    if (now - this.TrendCandlesCheckedAt < 60_000) return;
+    this.TrendCandlesCheckedAt = now;
+    try {
+      const lookback = DECIBEL_STRATEGY_POLICY_V1.entry.trendFilter.lookbackMs;
+      const candles = await read(now - lookback - 10 * 60_000, now);
+      if (candles.length > 0) this.TrendCandles = candles;
+    } catch {
+      // Keep the last set; without history the trend filter does not block.
+    }
+  }
   private GasBalanceApt: number | null = null;
 
   /** Re-read venue candles at most once per refresh interval; failures keep the last set. */
@@ -706,7 +729,10 @@ export class decibel_production_live_orchestrator_v1 {
           ? { side: dca.side, priceLimit: dca.priceLimit }
           : null,
       positionGrowthBlocker: dca !== null && !dca.allowed ? dca.reason : null,
-      entryCandleBlockers: snapshot.entryCandleBlockers ?? null,
+      entryCandleBlockers: mergeDecibelEntrySideBlockersV1(
+        snapshot.entryTrendBlockers,
+        snapshot.entryCandleBlockers,
+      ),
       entryPauseReason:
         getDecibelEntryVolatilityPauseReasonV1(snapshot.priceRangeBps) ??
         snapshot.executionGasBlocker ??
@@ -1252,6 +1278,7 @@ export class decibel_production_live_orchestrator_v1 {
     try {
       await this.refreshGasBalance();
       await this.refreshExchangeCandles();
+      await this.refreshTrendCandles();
       const cycle = await this.evaluateOnceInternal();
       await this.maintainCatastropheStop(cycle);
       return cycle;
@@ -3260,6 +3287,16 @@ export class decibel_production_live_orchestrator_v1 {
       ...snapshot,
       priceRangeBps: calculateDecibelMidpointRangeBpsV1(structure.samples, now),
       executionGasBlocker: getDecibelGasEntryBlockerV1(this.GasBalanceApt),
+      entryTrendBlockers:
+        snapshot.input.actualInventoryBase === 0
+          ? getDecibelEntryTrendBlockersV1(
+              getDecibelTrendMoveBpsV1(
+                this.TrendCandles,
+                (snapshot.input.book.bestBid + snapshot.input.book.bestAsk) / 2,
+                now,
+              ),
+            )
+          : null,
       entryCandleBlockers:
         this.Config.entryCandleFilterEnabled && snapshot.input.actualInventoryBase === 0
           ? Object.freeze({

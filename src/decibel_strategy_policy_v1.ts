@@ -45,6 +45,13 @@ export const DECIBEL_STRATEGY_POLICY_V1 = Object.freeze({
      * Max Loss sessions 11 -> 2. A trend filter was inconsistent between halves; a fixed size
      * cap mainly shrank the large losses. */
     volatilitySizing: Object.freeze({ referenceRangeBps: 15, minimumFraction: 0.5 }),
+    /** No flat entry against a move above maxMoveBps over lookbackMs (no BUY after a drop,
+     * no SELL after a rise), read from venue 5-minute candles (decibel_entry_trend_v1).
+     * 2026-11-24 backtest (05-24/11, with volatility sizing): net loss per volume
+     * 3.18 -> 2.07 bps, better in both halves (05-14: 2.87 -> 2.51, 14-24: 3.42 -> 1.73) at
+     * about the same number of trips; 3-4 h with 120-180 bps all beat no filter, 5-6 h and
+     * 30 min were inconsistent. */
+    trendFilter: Object.freeze({ lookbackMs: 4 * 60 * 60_000, maxMoveBps: 150 }),
     /** A flat entry rests at least clamp(factor x 5-minute range, min, max) bps behind the
      * touch: a volatility-scaled half-spread (Avellaneda-Stoikov style) instead of quoting
      * at the best bid/ask. 2026-11-15 backtest (05-10, 10-14, 14-15/11): 0.3 lowered the
