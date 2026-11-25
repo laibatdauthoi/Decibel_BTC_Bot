@@ -40,6 +40,10 @@ subaccount of the first whitelisted wallet. The owner is read from the subaccoun
    WITHDRAW GAS sends the APT amount you type (or everything with MAX, minus about 0.006 APT kept
    for the transfer fee) from the bot key back to the owner wallet. The transfer is simulated
    first to size its gas. It is refused while a session runs or orders are open.
+   TOP UP GAS (`POST /api/wallet/topup-gas`) returns a Petra transfer of the typed amount (at most
+   10 APT) from the owner to the bot key, using only the key's public address; it works at any time.
+   Below 0.1 APT (`gas.entryReserveApt`) new entries pause, the bell shows `ENTRY_GAS_BALANCE_LOW`
+   and the wallet menu marks the balance LOW. Recent use was about 0.05 APT a day.
 
 ## Collateral
 

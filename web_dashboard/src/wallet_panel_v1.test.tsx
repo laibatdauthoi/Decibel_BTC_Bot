@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { noticeLifetimeMsV1 } from './notice_timing_v1';
 import { shouldReopenEventStreamV1 } from './page_visibility_v1';
 import {
+  checkTopUpAmountV1,
   checkWithdrawAmountV1,
   describeWalletErrorV1,
   normalizeWalletAddressV1,
@@ -35,6 +36,14 @@ describe('Wallet panel presentation', () => {
     expect(checkWithdrawAmountV1('0', 46_550_000)).toBe('Enter an amount above zero.');
     expect(checkWithdrawAmountV1('0.4655', 46_550_000)).toMatch(/Use MAX/);
     expect(checkWithdrawAmountV1('', 46_550_000)).toMatch(/Enter an amount/);
+  });
+
+  it('checks a typed gas top-up between zero and 10 APT', () => {
+    expect(checkTopUpAmountV1('0.5')).toBeNull();
+    expect(checkTopUpAmountV1('10')).toBeNull();
+    expect(checkTopUpAmountV1('0')).toBe('Enter an amount above zero.');
+    expect(checkTopUpAmountV1('10.00000001')).toBe('At most 10 APT per top-up.');
+    expect(checkTopUpAmountV1('abc')).toMatch(/Enter an amount/);
   });
 
   it('normalizes Petra addresses for the owner comparison', () => {

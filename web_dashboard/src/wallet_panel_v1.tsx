@@ -59,6 +59,7 @@ const FRIENDLY_ERRORS_V1: Readonly<Record<string, string>> = {
   GAS_WITHDRAW_SIMULATION_FAILED:
     'The node rejected the withdrawal in simulation. Nothing was sent.',
   GAS_WITHDRAW_TRANSACTION_FAILED: 'The withdrawal transaction failed on-chain.',
+  TOPUP_AMOUNT_INVALID: 'Enter a top-up between 0 and 10 APT.',
 };
 
 /** APT amount from octas, for display. */
@@ -81,6 +82,20 @@ export function checkWithdrawAmountV1(text: string, balanceOctas: number | null)
   if (octas <= 0) return 'Enter an amount above zero.';
   if (balanceOctas !== null && octas >= balanceOctas)
     return 'Above what the bot wallet can send after the fee. Use MAX for everything.';
+  return null;
+}
+
+/** Bot gas below this pauses new entries (policy gas.entryReserveApt = 0.1 APT). */
+export const WALLET_GAS_ENTRY_RESERVE_OCTAS_V1 = 10_000_000;
+/** Amount the top-up dialog suggests: about 10 days of trading at the observed rate. */
+export const WALLET_GAS_TOPUP_SUGGESTED_APT_V1 = '0.5';
+
+/** Why a typed top-up amount cannot be sent, or null when it can (at most 10 APT). */
+export function checkTopUpAmountV1(text: string): string | null {
+  const octas = parseAptToOctasV1(text);
+  if (octas === null) return 'Enter an amount in APT, for example 0.5.';
+  if (octas <= 0) return 'Enter an amount above zero.';
+  if (octas > 1_000_000_000) return 'At most 10 APT per top-up.';
   return null;
 }
 
@@ -133,6 +148,8 @@ export const WalletMenu = () => {
   const [confirmingWithdraw, setConfirmingWithdraw] = useState(false);
   const [withdrawText, setWithdrawText] = useState('');
   const [withdrawAll, setWithdrawAll] = useState(false);
+  const [confirmingTopUp, setConfirmingTopUp] = useState(false);
+  const [topUpText, setTopUpText] = useState(WALLET_GAS_TOPUP_SUGGESTED_APT_V1);
   /** Subaccounts revoked from this page; Decibel's index may still list them for a while. */
   const [revoked, setRevoked] = useState<ReadonlySet<string>>(new Set());
   const Root = useRef<HTMLDivElement | null>(null);
@@ -285,6 +302,23 @@ export const WalletMenu = () => {
       return `Withdrew ${formatAptV1(amountOctas)} to your wallet.`;
     });
 
+  /** Petra sends APT from the connected owner wallet to the bot key's address. */
+  const topUpGas = () =>
+    run(async () => {
+      setConfirmingTopUp(false);
+      if (connected === null) return;
+      const amountOctas = parseAptToOctasV1(topUpText);
+      if (amountOctas === null) throw new Error('TOPUP_AMOUNT_INVALID');
+      const { payload } = await postJson<{ payload: wallet_payload_v1 }>('/api/wallet/topup-gas', {
+        owner: connected,
+        amountOctas,
+      });
+      await sign(payload);
+      await load(connected).catch(() => undefined);
+      return `Sent ${formatAptV1(amountOctas)} to the bot wallet.`;
+    });
+
+  const topUpCheck = checkTopUpAmountV1(topUpText);
   const withdrawCheck = withdrawAll
     ? null
     : checkWithdrawAmountV1(withdrawText, accounts?.botGasOctas ?? null);
@@ -363,7 +397,32 @@ export const WalletMenu = () => {
               </div>
               {accounts.botGasOctas !== null && (
                 <div className="wallet-gas">
-                  <span>Bot gas {formatAptV1(accounts.botGasOctas)}</span>
+                  <span
+                    className={
+                      accounts.botGasOctas < WALLET_GAS_ENTRY_RESERVE_OCTAS_V1
+                        ? 'wallet-gas-low'
+                        : undefined
+                    }
+                    title={
+                      accounts.botGasOctas < WALLET_GAS_ENTRY_RESERVE_OCTAS_V1
+                        ? 'Below the 0.1 APT reserve: new entries are paused.'
+                        : undefined
+                    }
+                  >
+                    Bot gas {formatAptV1(accounts.botGasOctas)}
+                    {accounts.botGasOctas < WALLET_GAS_ENTRY_RESERVE_OCTAS_V1 ? ' · LOW' : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="wallet-link"
+                    disabled={busy}
+                    onClick={() => {
+                      setTopUpText(WALLET_GAS_TOPUP_SUGGESTED_APT_V1);
+                      setConfirmingTopUp(true);
+                    }}
+                  >
+                    TOP UP GAS
+                  </button>
                   <button
                     type="button"
                     className="wallet-link"
@@ -383,8 +442,8 @@ export const WalletMenu = () => {
                   title="WITHDRAW GAS"
                   message={
                     `Send APT from the bot wallet back to ${shortAddressV1(connected)}. ` +
-                    'New entries pause while the bot wallet holds too little gas (CONFIRM offers ' +
-                    'a top-up).'
+                    'New entries pause while the bot wallet holds less than 0.1 APT (TOP UP GAS ' +
+                    'adds more).'
                   }
                   confirmLabel="WITHDRAW"
                   confirmDisabled={withdrawCheck !== null}
@@ -433,6 +492,43 @@ export const WalletMenu = () => {
                       : withdrawAll
                         ? 'MAX sends everything except about 0.006 APT kept for the transfer fee.'
                         : `Bot wallet holds ${formatAptV1(accounts.botGasOctas)}.`}
+                  </p>
+                </ConfirmDialog>
+              )}
+              {confirmingTopUp && (
+                <ConfirmDialog
+                  title="TOP UP GAS"
+                  message={
+                    `Send APT from ${shortAddressV1(connected)} to the bot wallet, which pays the ` +
+                    'fee of every order, cancel and exit. New entries pause below 0.1 APT.'
+                  }
+                  confirmLabel="TOP UP"
+                  confirmDisabled={topUpCheck !== null}
+                  onConfirm={topUpGas}
+                  onCancel={() => setConfirmingTopUp(false)}
+                >
+                  <label className="confirm-dialog-field">
+                    <span>Amount</span>
+                    <span className="confirm-dialog-input">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        placeholder={WALLET_GAS_TOPUP_SUGGESTED_APT_V1}
+                        value={topUpText}
+                        autoFocus
+                        aria-invalid={topUpText !== '' && topUpCheck !== null}
+                        onChange={(event) => setTopUpText(event.target.value.trim())}
+                      />
+                      <em>APT</em>
+                    </span>
+                  </label>
+                  <p
+                    className={`confirm-dialog-hint ${topUpText !== '' && topUpCheck ? 'invalid' : ''}`}
+                  >
+                    {topUpText !== '' && topUpCheck
+                      ? topUpCheck
+                      : `Bot wallet holds ${formatAptV1(accounts.botGasOctas ?? 0)}. About 0.05 APT a day at recent activity; Petra asks you to sign.`}
                   </p>
                 </ConfirmDialog>
               )}

@@ -7,6 +7,7 @@
  *   POST /api/wallet/prepare             bot key (created once, automatically) + Petra payloads
  *   POST /api/wallet/revoke              Petra payload that withdraws the bot's access
  *   POST /api/wallet/subaccount          run the bot on this subaccount (switches when idle)
+ *   POST /api/wallet/topup-gas           Petra payload that sends APT from the owner to the bot key
  *   POST /api/wallet/withdraw-gas        send the bot key's spare APT back to the owner (idle only)
  */
 import type { Network } from '@aptos-labs/ts-sdk';
@@ -35,6 +36,9 @@ import {
 
 /** Gas top-up is offered only when the bot key holds less than 0.1 APT. */
 export const DECIBEL_MINIMUM_AGENT_GAS_OCTAS_V1 = 10_000_000;
+
+/** Largest manual gas top-up (10 APT), the transfer builder's own limit. */
+export const DECIBEL_MAXIMUM_AGENT_GAS_TOPUP_OCTAS_V1 = 1_000_000_000;
 
 export type decibel_wallet_subaccount_v1 = Readonly<{
   address: string;
@@ -275,6 +279,28 @@ export async function handleDecibelWalletRequestV1(
     );
     dependencies.switchNow();
     return { status: 200, body: { status: 'SWITCHING', subaccount: target.subaccount } };
+  }
+  if (pathname === '/api/wallet/topup-gas') {
+    if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };
+    const parsed = z.object({ owner: z.string(), amountOctas: z.unknown() }).safeParse(input.body);
+    const owner = parsed.success ? optionalAddress(parsed.data.owner) : null;
+    if (owner === null) return { status: 400, body: { error: 'WALLET_ADDRESS_INVALID' } };
+    const amount = z
+      .number()
+      .int()
+      .positive()
+      .max(DECIBEL_MAXIMUM_AGENT_GAS_TOPUP_OCTAS_V1)
+      .safeParse(parsed.data?.amountOctas);
+    if (!amount.success) return { status: 400, body: { error: 'TOPUP_AMOUNT_INVALID' } };
+    if (!dependencies.isWhitelisted(owner))
+      return { status: 403, body: { error: 'WALLET_NOT_WHITELISTED' } };
+    // Only the public address of the bot key is needed; Petra signs the transfer itself.
+    const agent = readDecibelAgentKeystoreV1(keystorePathFor(owner, dependencies));
+    if (agent === null) return { status: 409, body: { error: 'NO_BOT_KEY' } };
+    return {
+      status: 200,
+      body: { payload: buildDecibelGasTopUpPayloadV1(agent.address, amount.data) },
+    };
   }
   if (pathname === '/api/wallet/withdraw-gas') {
     if (method !== 'POST') return { status: 405, body: { error: 'METHOD_NOT_ALLOWED' } };

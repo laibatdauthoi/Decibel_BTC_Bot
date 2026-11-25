@@ -4511,6 +4511,25 @@ body:has(.settings-view:not([hidden])) {
   font-size: 13px;
 }
 
+.wallet-dropdown .wallet-gas {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 8px;
+}
+
+.wallet-dropdown .wallet-gas span:first-child {
+  flex-basis: 100%;
+}
+
+.wallet-dropdown .wallet-gas button {
+  white-space: nowrap;
+}
+
+.wallet-dropdown .wallet-gas-low {
+  color: #ffb3ac;
+  font-weight: 600;
+}
+
 .wallet-dropdown .wallet-gas button:disabled {
   opacity: 0.45;
   cursor: default;

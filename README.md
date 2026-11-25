@@ -39,6 +39,9 @@ No private key is stored in `.env`. The owner connects **Petra** in the dashboar
 5. **WITHDRAW GAS** sends the bot key's spare APT back to the owner wallet (only while no session
    runs and no order is open). Type an amount or press MAX for everything. The bot key signs this
    transfer; the destination is always the connected owner.
+6. **TOP UP GAS** sends the APT amount you type (0.5 suggested, at most 10) from the connected
+   wallet to the bot key; Petra signs it, at any time. Below 0.1 APT new entries pause and the
+   bell shows a warning; the wallet menu marks the balance LOW.
 
 Each wallet has its own data set in `data/wallets/<owner>/`. The wallet's subaccounts share it.
 Details: [docs/decibel_wallet_setup_v1.md](docs/decibel_wallet_setup_v1.md).

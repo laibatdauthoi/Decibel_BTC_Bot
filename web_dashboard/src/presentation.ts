@@ -324,6 +324,8 @@ export function buildOperatorAlertsV1(
     }> | null;
     admissionReadinessBlocker?: string | null;
     lossUtilization: number | null;
+    /** The bot gas wallet is below its reserve, so new entries are paused. */
+    gasEntryPaused?: boolean;
   }>,
 ): Readonly<{ active: readonly operator_alert_v1[]; recent: readonly operator_alert_v1[] }> {
   // Normal waits and routine order confirmation are not alerts (decibel_runtime_condition_v1).
@@ -371,6 +373,20 @@ export function buildOperatorAlertsV1(
       }),
     );
   }
+  // An entry wait, but one only the operator can clear: shown in the bell until topped up.
+  if (input.gasEntryPaused === true)
+    active.push(
+      Object.freeze({
+        id: 'gas-entry-reserve',
+        timestamp: input.now,
+        severity: 'WARNING' as const,
+        source: 'WALLET',
+        message:
+          'Bot gas wallet is below 0.1 APT: new entries are paused, exits continue. Use TOP UP GAS in the wallet menu.',
+        code: 'ENTRY_GAS_BALANCE_LOW',
+        active: true,
+      }),
+    );
   if (!input.connected || input.degraded)
     active.push(
       Object.freeze({

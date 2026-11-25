@@ -451,3 +451,47 @@ describe('Subaccount listing', () => {
     expect(rows.map((row) => row.address)).toEqual([IN_USE, SECOND]);
   });
 });
+
+describe('Wallet gas top-up', () => {
+  const topUp = (deps: ReturnType<typeof setup>['deps'], body: unknown) =>
+    handleDecibelWalletRequestV1('POST', '/api/wallet/topup-gas', deps, { body });
+
+  it('returns a Petra transfer of the typed amount to the bot key, without unlocking it', async () => {
+    const { deps, keystore } = setup();
+    expect(await topUp(deps, { owner: OWNER, amountOctas: 50_000_000 })).toEqual({
+      status: 409,
+      body: { error: 'NO_BOT_KEY' },
+    });
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    // A wrong secret proves the key is never unlocked: only its public address is read.
+    const locked = { ...deps, keystoreSecret: () => 'x'.repeat(40) };
+    expect(await topUp(locked, { owner: OWNER, amountOctas: 50_000_000 })).toEqual({
+      status: 200,
+      body: {
+        payload: {
+          function: '0x1::aptos_account::transfer',
+          typeArguments: [],
+          functionArguments: [AGENT, '50000000'],
+        },
+      },
+    });
+  });
+
+  it('rejects invalid amounts and wallets outside the whitelist', async () => {
+    const { deps, keystore } = setup();
+    createDecibelAgentKeystoreV1(keystore, SECRET, () => material);
+    for (const amountOctas of [0, -1, 1.5, '50000000', 1_000_000_001, undefined])
+      expect(await topUp(deps, { owner: OWNER, amountOctas })).toEqual({
+        status: 400,
+        body: { error: 'TOPUP_AMOUNT_INVALID' },
+      });
+    expect(await topUp(deps, { owner: OTHER, amountOctas: 50_000_000 })).toEqual({
+      status: 403,
+      body: { error: 'WALLET_NOT_WHITELISTED' },
+    });
+    expect(await topUp(deps, { owner: 'nope', amountOctas: 1 })).toEqual({
+      status: 400,
+      body: { error: 'WALLET_ADDRESS_INVALID' },
+    });
+  });
+});

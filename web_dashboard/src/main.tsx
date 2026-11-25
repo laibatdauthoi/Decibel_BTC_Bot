@@ -1851,6 +1851,9 @@ const App = () => {
     sessionAdmissionError: sessionWarning,
     lastStartAttempt: session?.lastStartAttempt,
     admissionReadinessBlocker: telemetry.runtime.readiness.blockingReason,
+    gasEntryPaused:
+      telemetry.runtime.tradingDecision?.detailedReasons?.includes('ENTRY_GAS_BALANCE_LOW') ??
+      false,
   });
   const currentAlert = selectHighestPriorityOperatorAlertV1(alerts.active);
   const sessionStartGate = deriveSessionStartGateV1({

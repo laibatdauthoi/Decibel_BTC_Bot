@@ -441,6 +441,18 @@ describe('Decibel production web presentation V1', () => {
     });
   });
 
+  it('warns in the bell while the bot gas wallet pauses entries', () => {
+    expect(buildOperatorAlertsV1({ ...alertBase, gasEntryPaused: false }).active).toEqual([]);
+    const [alert] = buildOperatorAlertsV1({ ...alertBase, gasEntryPaused: true }).active;
+    expect(alert).toMatchObject({
+      severity: 'WARNING',
+      source: 'WALLET',
+      code: 'ENTRY_GAS_BALANCE_LOW',
+      active: true,
+    });
+    expect(alert?.message).toMatch(/TOP UP GAS/);
+  });
+
   it('maps warning, session interruption, and max-loss states without retaining cleared alerts', () => {
     expect(buildOperatorAlertsV1({ ...alertBase, degraded: true }).active[0]).toMatchObject({
       severity: 'WARNING',
